@@ -1,7 +1,7 @@
 import type { SpeciesConfig } from './types';
 
-const SPRITE = (dex: number) =>
-  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/other/showdown/${dex}.gif`;
+/** Animated Showdown sprites, vendored into public/sprites/pokemon so the game never depends on a remote host. */
+const SPRITE = (dex: number) => `/sprites/pokemon/${dex}.gif`;
 
 /**
  * Canonical Sea World roster.

@@ -88,7 +88,7 @@ export interface TrainerConfig {
   accent: string;
   /** Emoji/initials fallback avatar. */
   avatar: string;
-  /** Official artwork (full body). */
+  /** Official artwork (full body), served from public/sprites/trainers. */
   image: string;
   /** Face crop for circular avatars: rendered image height as a multiple of the avatar size, and offsets (×size). */
   face: { scale: number; x: number; y: number };

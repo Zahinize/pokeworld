@@ -42,7 +42,7 @@ function makeFallback(speciesId: string): SpriteSheet {
 
 async function decode(speciesId: string): Promise<SpriteSheet> {
   const url = SPECIES[speciesId].sprite;
-  const res = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+  const res = await fetch(url, { cache: 'force-cache' });
   if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
   const gif = parseGIF(buf);

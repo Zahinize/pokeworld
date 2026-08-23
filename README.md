@@ -26,6 +26,28 @@ npm run build      # production bundle in dist/
 
 Touch: left stick swims, drag the right side to look, 🔴 throws, ▲▼ swim up/down, `»` toggles sprint, tap the tray to switch balls.
 
+## Deploy (Vercel)
+
+PokeWorld is a fully static single-page app — **no backend and no environment variables**. Player saves live in the
+browser's localStorage; Pokémon base stats come from the public PokeAPI (fetched client-side, cached in localStorage,
+with embedded fallback stats if it is unreachable). All sprites and trainer portraits are vendored under
+`public/sprites/`, so the game does not depend on any third-party image host.
+
+1. Push the repository to GitHub and import it at [vercel.com/new](https://vercel.com/new).
+2. Vercel auto-detects Vite; the included [`vercel.json`](vercel.json) pins the settings and adds cache headers:
+
+   | Setting | Value |
+   | --- | --- |
+   | Framework preset | Vite |
+   | Build command | `npm run build` |
+   | Output directory | `dist` |
+   | Install command | `npm install` |
+   | Node.js version | 18 or newer |
+
+3. Deploy. No rewrites are needed (all screens are in-app state, not URL routes).
+
+Any other static host (Netlify, Cloudflare Pages, GitHub Pages, an S3 bucket) works the same way: build, then serve `dist/`.
+
 ## Architecture
 
 ```
