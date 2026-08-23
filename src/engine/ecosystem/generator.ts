@@ -229,7 +229,21 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     if (s.id === 'gyarados') gyaradosCount++;
     preds.push(s);
   }
-  preds.forEach((s) => { addSolo(s, 'solo', undefined, true); summary.predators.push(s.name); });
+  // Predators roam in small packs (Carvanha 2–3, Sharpedo/Barraskewda 1–2, the big ones alone) sharing a territory.
+  const PACK: Record<string, [number, number]> = { carvanha: [2, 3], sharpedo: [1, 2], barraskewda: [1, 2], veluza: [1, 2], gyarados: [1, 1] };
+  preds.forEach((s) => {
+    const [lo, hi] = PACK[s.id] ?? [1, 1];
+    const n = rng.int(lo, hi);
+    const idx = addSolo(s, 'solo', undefined, true);
+    if (n > 1) {
+      const base = spawns[idx].pos;
+      const gi = groups.length;
+      groups.push({ kind: 'pack', speciesId: s.id, zone: spawns[idx].zone, anchor: { ...base }, radius: 4 });
+      spawns[idx].groupIndex = gi;
+      for (let i = 1; i < n; i++) spawns.push({ speciesId: s.id, role: 'solo', groupIndex: gi, ambient: true, zone: spawns[idx].zone, pos: { x: base.x + rng.range(-5, 5), y: base.y + rng.range(-1.5, 1.5), z: base.z + rng.range(-5, 5) } });
+    }
+    summary.predators.push(n > 1 ? `${s.name} ×${n}` : s.name);
+  });
 
   // ---- Bottom dwellers ----
   const bottomPool = SPECIES_LIST.filter((s) => s.primary === 'bottom' && !used.has(s.id));

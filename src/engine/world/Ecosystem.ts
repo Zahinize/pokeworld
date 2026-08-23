@@ -99,7 +99,7 @@ export class Ecosystem {
       state: defaultState(), stateT: 0, nextThink: this.rng.next() * 0.3, lod: 0,
       hp: maxHp, maxHp, hpBarT: 0, flashT: 0, animT: 0,
       home: { ...sp.pos }, target: { x: 0, y: sp.pos.y, z: 0 }, wander: { x: this.rng.next() - 0.5, y: 0, z: this.rng.next() - 0.5 },
-      targetId: -1, huntCooldown: 20 + this.rng.next() * 20, curiosityCooldown: 8 + this.rng.next() * 20, threatId: -1, threatT: 99,
+      targetId: -1, huntCooldown: 8 + this.rng.next() * 14, curiosityCooldown: 8 + this.rng.next() * 20, threatId: -1, threatT: 99,
       lured: false, lureOrbit: this.rng.next() * Math.PI * 2, facing: 1, zone: sp.zone, t1: behavior === 'bottom' ? 10 + this.rng.next() * 30 : 0, t2: 120 + this.rng.next() * 200,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
@@ -213,7 +213,7 @@ export class Ecosystem {
     if (this.groupThinkAcc >= 0.25) {
       const gdt = this.groupThinkAcc; this.groupThinkAcc = 0;
       for (const g of this.groups) {
-        if (g.memberIds.length === 0 && g.guardianId < 0) continue;
+        if (g.kind === 'pack' || (g.memberIds.length === 0 && g.guardianId < 0)) continue;
         let anyLured = false;
         if (luring) for (const id of g.memberIds) { const m = this.byId.get(id); if (m?.lured) { anyLured = true; break; } }
         groupThink(g, ctx, gdt, anyLured);

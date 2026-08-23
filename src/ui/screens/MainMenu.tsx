@@ -1,7 +1,7 @@
 import { useStore } from '@/state/store';
 import { getTrainer } from '@/data/trainers';
 import { getLevel } from '@/data/levels';
-import { OceanBackdrop, Panel } from '../components/common';
+import { OceanBackdrop, Panel, TrainerAvatar } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 
 export function MainMenu({ onPlay, onResume }: { onPlay: (levelId: number) => void; onResume: () => void }) {
@@ -18,12 +18,12 @@ export function MainMenu({ onPlay, onResume }: { onPlay: (levelId: number) => vo
       <div className="screen">
         <div className="screen-inner" style={{ maxWidth: 760 }}>
           <div className="center" style={{ marginBottom: 26 }}>
-            <div className="logo">PokeWorld<small>A living Pokémon reef</small></div>
+            <div className="logo"><span className="logo-text">PokeWorld</span><small>Where Pokémon live wild</small></div>
           </div>
           <Panel style={{ padding: 22 }}>
             <div className="row between wrap" style={{ marginBottom: 14 }}>
               <div className="row">
-                <div className="trainer-avatar" style={{ width: 44, height: 44, fontSize: 22, margin: 0 }}>{trainer?.avatar ?? '🧭'}</div>
+                <TrainerAvatar trainer={trainer} size={48} />
                 <div>
                   <div style={{ fontWeight: 800, fontFamily: 'var(--font-display)' }}>{trainer?.name ?? 'Trainer'}</div>
                   <div className="muted small">{caughtSpecies} species caught · {save.stats.totalCaught} total · Level {save.progression.unlockedLevel} unlocked</div>

@@ -48,7 +48,7 @@ export class PlayerController {
     let az = fz * input.forward + rz * input.strafe;
     const al = Math.hypot(ax, ay, az);
     if (al > 1) { ax /= al; ay /= al; az /= al; }
-    const accel = GAME.SWIM_ACCEL;
+    const accel = input.sprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
     this.vx += ax * accel * dt; this.vy += ay * accel * dt; this.vz += az * accel * dt;
     // Damping (water resistance)
     const damp = Math.exp(-GAME.SWIM_DAMPING * dt);

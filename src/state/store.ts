@@ -9,7 +9,7 @@ import { loadGame, saveGame, resetGame, type SaveData, type CollectionEntry, typ
 import type { MissionState } from '@/engine/sim/mission';
 import { SPECIES } from '@/data/species';
 
-export type Screen = 'loading' | 'trainer' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings';
+export type Screen = 'loading' | 'start' | 'trainer' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings';
 
 export interface Toast {
   id: number;
@@ -145,7 +145,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   resetAll() {
     const save = resetGame();
-    set({ save, screen: 'trainer', mission: null, toasts: [], lastCatch: null });
+    set({ save, screen: 'start', mission: null, toasts: [], lastCatch: null });
   },
   setMission(mission) { set({ mission }); },
   setLevel(levelId, seed) { set({ levelId, seed }); },

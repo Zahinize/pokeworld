@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { TRAINERS } from '@/data/trainers';
 import { useStore } from '@/state/store';
-import { OceanBackdrop, Panel } from '../components/common';
+import { OceanBackdrop, Panel, TrainerAvatar } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 
 export function TrainerSelect() {
@@ -20,7 +20,7 @@ export function TrainerSelect() {
             <div className="trainer-grid" style={{ marginTop: 22 }}>
               {TRAINERS.map((t) => (
                 <button key={t.id} className={`card clickable trainer-card ${picked === t.id ? 'selected' : ''}`} onClick={() => { Audio.init(); Audio.uiClick(); setPicked(t.id); }} aria-pressed={picked === t.id}>
-                  <div className="trainer-avatar" style={{ borderColor: picked === t.id ? t.accent : undefined, boxShadow: picked === t.id ? `0 0 0 4px ${t.accent}33, inset 0 0 30px rgba(0,0,0,.25)` : undefined }}>{t.avatar}</div>
+                  <TrainerAvatar trainer={t} size={120} style={{ margin: '0 auto 12px', borderColor: picked === t.id ? t.accent : undefined, boxShadow: picked === t.id ? `0 0 0 4px ${t.accent}33, inset 0 0 30px rgba(0,0,0,.25)` : undefined }} />
                   <div className="trainer-name">{t.name}</div>
                   <div className="muted small" style={{ marginTop: 4 }}>{t.tagline}</div>
                 </button>

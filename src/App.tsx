@@ -4,6 +4,7 @@ import { session } from '@/engine/GameSession';
 import { preloadSpeciesData } from '@/pokeapi/client';
 import { LoadingScreen } from './ui/screens/LoadingScreen';
 import { TrainerSelect } from './ui/screens/TrainerSelect';
+import { StartScreen } from './ui/screens/StartScreen';
 import { MainMenu } from './ui/screens/MainMenu';
 import { LevelSelect } from './ui/screens/LevelSelect';
 import { MissionBrief } from './ui/screens/MissionBrief';
@@ -39,13 +40,13 @@ export default function App() {
     setIsTouch(touch);
     let done = false;
     const t0 = performance.now();
-    setLoadLabel('Reading Pokémon data from PokeAPI…');
+    setLoadLabel('Fetching Pokémon data…');
     preloadSpeciesData(undefined, (d, t) => setLoadProgress(d / t)).finally(() => {
       const wait = Math.max(0, 900 - (performance.now() - t0));
-      setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'trainer'); }, wait);
+      setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'start'); }, wait);
     });
     // hard cap so a slow network never blocks the menu
-    const cap = setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'trainer'); }, 9000);
+    const cap = setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'start'); }, 9000);
     return () => clearTimeout(cap);
   }, [boot, setIsTouch]);
 
@@ -81,6 +82,7 @@ export default function App() {
 
   switch (screen) {
     case 'loading': return <LoadingScreen progress={loadProgress} label={loadLabel} />;
+    case 'start': return <StartScreen onStart={() => setScreen('trainer')} />;
     case 'trainer': return <TrainerSelect />;
     case 'menu': return <MainMenu onPlay={(id) => goBrief(id)} onResume={() => { const r = save.currentRun; if (r) goBrief(r.levelId, r.seed, r); }} />;
     case 'levels': return <LevelSelect onPlay={(id) => goBrief(id)} />;

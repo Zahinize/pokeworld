@@ -39,7 +39,9 @@ export const GAME = {
   /** Player swimming. */
   SWIM_SPEED: 5.5,
   SWIM_SPRINT: 9.5,
-  SWIM_ACCEL: 9,
+  /** Acceleration is tuned against damping so cruise tops out near SWIM_SPEED and sprint near SWIM_SPRINT. */
+  SWIM_ACCEL: 13.5,
+  SWIM_SPRINT_ACCEL: 24,
   SWIM_DAMPING: 2.4,
   VERTICAL_SPEED: 3.8,
 
@@ -50,7 +52,7 @@ export const GAME = {
   BALL_HIT_RADIUS: 0.55,
 
   /** Minimum time in a level before a predator first hunts (s) — protects the 30-second hook. */
-  PREDATOR_GRACE: 35,
+  PREDATOR_GRACE: 25,
   /** School reinforcement: when a mission group can no longer be completed, new members migrate in after this delay (s). */
   REINFORCE_DELAY: 20,
 

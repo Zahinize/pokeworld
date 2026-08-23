@@ -25,6 +25,11 @@ import { len3 } from './ai/steering';
 import type { CurrentRun } from '@/persistence';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 
+/** Exit pointer lock if held (desktop). Safe to call anywhere. */
+function releasePointer() {
+  try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock?.(); } catch { /* ignore */ }
+}
+
 export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete';
 
 export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number }
@@ -154,6 +159,7 @@ export class GameSession {
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
   end() {
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null;
+    releasePointer();
     Audio.stopAmbience();
     useStore.getState().setPaused(false);
     this.emit();
@@ -351,12 +357,14 @@ export class GameSession {
     this.persistRun();
     if (this.mission?.complete && this.phase === 'playing') {
       this.phase = 'completing'; this.completeTimer = 1.6;
+      releasePointer(); // give the cursor back right away — the level-complete UI needs it
     }
   }
 
   private finishLevel() {
     const store = useStore.getState();
     this.phase = 'complete';
+    releasePointer();
     Audio.levelComplete();
     store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed });
     store.completeLevel(this.level.id, Math.round(this.elapsed));

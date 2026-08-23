@@ -53,7 +53,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
               <div className="row between wrap">
                 <div className="grow">
                   <div className="progress"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-                  <div className="dim small" style={{ marginTop: 6 }}>{ready ? `Reef ready · seed #${session.seed.toString(16)}` : progress < 0.3 ? 'Reading Pokémon data…' : 'Loading Pokémon…'}</div>
+                  <div className="dim small" style={{ marginTop: 6 }}>{ready ? `Reef ready · seed #${session.seed.toString(16)}` : progress < 0.3 ? 'Fetching Pokémon data…' : 'Loading Pokémon…'}</div>
                 </div>
                 <div className="row">
                   <button className="btn ghost" onClick={() => { Audio.uiClick(); onBack(); }}>← Back</button>

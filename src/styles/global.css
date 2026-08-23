@@ -66,8 +66,9 @@ a { color: var(--aqua); }
 .eyebrow { font-family: var(--font-display); font-weight: 800; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; color: var(--aqua); }
 .title { font-family: var(--font-display); font-weight: 900; font-size: clamp(28px, 5vw, 52px); line-height: 1.02; letter-spacing: -0.01em; }
 .subtitle { color: var(--muted); font-size: clamp(14px, 1.8vw, 17px); }
-.logo { font-family: var(--font-display); font-weight: 900; font-size: clamp(42px, 9vw, 96px); letter-spacing: -0.03em; line-height: .95; background: linear-gradient(180deg, #ffffff 0%, #bfefff 50%, #35d0ff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 6px 24px rgba(53,208,255,.25)); }
-.logo small { display: block; font-size: .22em; letter-spacing: .4em; color: var(--aqua); -webkit-text-fill-color: var(--aqua); font-weight: 800; margin-top: 6px; }
+.logo { font-family: var(--font-display); font-weight: 900; font-size: clamp(42px, 9vw, 96px); line-height: 1.05; filter: drop-shadow(0 6px 24px rgba(53,208,255,.25)); }
+.logo .logo-text { display: inline-block; padding: 0 .12em; letter-spacing: -0.02em; background: linear-gradient(180deg, #ffffff 0%, #bfefff 50%, #35d0ff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+.logo small { display: block; font-size: .22em; letter-spacing: .4em; padding-left: .4em; color: var(--aqua); -webkit-text-fill-color: var(--aqua); font-weight: 800; margin-top: 6px; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .row { display: flex; align-items: center; gap: 12px; }
 .row.between { justify-content: space-between; }
@@ -112,11 +113,25 @@ a { color: var(--aqua); }
 .sprite { image-rendering: auto; object-fit: contain; }
 .sprite.unseen { filter: brightness(0) saturate(0); opacity: .35; }
 
+/* ---------- Start screen ---------- */
+.start-screen { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.start-logo { font-size: clamp(56px, 12vw, 132px); animation: pop .9s cubic-bezier(.2,.9,.3,1.2) both; }
+.start-tagline { font-family: var(--font-display); font-weight: 700; font-size: clamp(16px, 2.6vw, 24px); letter-spacing: .12em; color: #bfefff; text-shadow: 0 2px 18px rgba(53,208,255,.35); margin: 0 0 34px; animation: fadeUp .8s .35s ease both; }
+.start-btn { min-height: 64px; padding: 0 54px; font-size: 20px; letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; color: #04162b; position: relative; overflow: hidden; isolation: isolate;
+  background: linear-gradient(180deg, #ffe9a3, #ffd166 45%, #ff9f43); box-shadow: 0 0 0 3px rgba(255,209,102,.25), 0 14px 44px rgba(255,159,67,.45), inset 0 1px 0 rgba(255,255,255,.7); animation: fadeUp .8s .7s ease both, startGlow 2.4s 1.5s ease-in-out infinite; }
+.start-btn::after { content: ''; position: absolute; inset: -40% -60%; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.85) 50%, transparent 60%); transform: translateX(-100%); animation: shine 2.6s 1.6s ease-in-out infinite; z-index: -1; }
+.start-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 0 4px rgba(255,209,102,.35), 0 18px 54px rgba(255,159,67,.6), inset 0 1px 0 rgba(255,255,255,.7); }
+@keyframes shine { 0% { transform: translateX(-100%) } 45%, 100% { transform: translateX(100%) } }
+@keyframes startGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(255,209,102,.25), 0 14px 44px rgba(255,159,67,.45), inset 0 1px 0 rgba(255,255,255,.7) } 50% { box-shadow: 0 0 0 6px rgba(255,209,102,.18), 0 18px 60px rgba(255,159,67,.7), inset 0 1px 0 rgba(255,255,255,.7) } }
+
 /* ---------- Trainer cards ---------- */
 .trainer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .trainer-card { text-align: center; padding: 26px 18px; }
 .trainer-avatar { width: 96px; height: 96px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; font-size: 44px; background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.35), rgba(255,255,255,.05)); border: 2px solid var(--line-strong); box-shadow: inset 0 0 30px rgba(0,0,0,.25); }
 .trainer-name { font-family: var(--font-display); font-weight: 900; font-size: 22px; }
+.trainer-avatar { position: relative; overflow: hidden; }
+.trainer-avatar img { position: absolute; width: auto; max-width: none; }
+.trainer-card .trainer-avatar { width: 120px; height: 120px; background: radial-gradient(circle at 50% 35%, rgba(255,255,255,.28), rgba(255,255,255,.04) 70%); }
 
 /* ---------- Level cards ---------- */
 .level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }

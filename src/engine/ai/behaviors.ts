@@ -379,7 +379,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'approach':
     case 'circle':
     case 'rush':
-      if (!targetOk || tdist > 48) { endHunt(10 + ctx.rng() * 10, false); }
+      if (!targetOk || tdist > 48) { endHunt(5 + ctx.rng() * 6, false); }
       break;
   }
 
@@ -408,17 +408,28 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       }
       seek(e, e.target.x, e.target.y, e.target.z, 1.0, 4);
       accAdd(e.wander.x, e.wander.y * 0.4, e.wander.z, 0.45);
+      // Pack cohesion: stay loosely with pack-mates, never on top of them
+      if (e.groupId >= 0) {
+        let cx = 0, cy = 0, cz = 0, n = 0;
+        const sepD = s.size * 1.4 + 1;
+        ctx.hash.query(e.x, e.y, e.z, 30, (o, d2) => {
+          if (o === e || o.groupId !== e.groupId) return;
+          n++; cx += o.x; cy += o.y; cz += o.z;
+          if (d2 < sepD * sepD) { const d = Math.sqrt(d2) || 0.01; accAdd(e.x - o.x, (e.y - o.y) * 0.5, e.z - o.z, ((sepD - d) / sepD) * 2 / d); }
+        });
+        if (n > 0) seek(e, cx / n, cy / n, cz / n, 0.45, 8);
+      }
       // Hunt check
       if (ctx.predatorGraceOver && e.huntCooldown <= 0 && e.lod < 2) {
         let best: Entity | null = null, bestW = 0;
-        const R = 26;
+        const R = 30;
         ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
           if (o === e) return;
           const w = preyWeight(e, o) * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
           if (w > bestW) { bestW = w; best = o; }
         });
         if (best && bestW > 0.05) {
-          if (ctx.rng() < 0.35) { e.huntCooldown = 6 + ctx.rng() * 8; } // predators often ignore prey
+          if (ctx.rng() < 0.25) { e.huntCooldown = 5 + ctx.rng() * 6; } // predators sometimes ignore prey
           else {
             e.targetId = (best as Entity).id; e.state = 'approach'; e.stateT = 0;
             ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
@@ -451,10 +462,10 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       const hitR = s.size * 0.45 + target!.species.size * 0.45 + 0.4;
       if (tdist < hitR) {
         ctx.damage(target!, predatorDamageFraction(s.stage, target!.species.stage), 'predator', e.id);
-        const cool = s.id === 'gyarados' ? 40 + ctx.rng() * 25 : 24 + ctx.rng() * 22;
+        const cool = s.id === 'gyarados' ? 26 + ctx.rng() * 16 : 15 + ctx.rng() * 15;
         endHunt(cool, true);
       } else if (e.stateT > 6.5) {
-        endHunt(12 + ctx.rng() * 10, true);
+        endHunt(6 + ctx.rng() * 6, true);
       }
       break;
     }

@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { SPECIES } from '@/data/species';
+import type { TrainerConfig } from '@/data/types';
 import { BALLS } from '@/data/balls';
 import type { BallId } from '@/data/types';
 
@@ -45,4 +47,16 @@ export function Panel({ children, className = '', style }: { children: ReactNode
 export function fmtTime(sec: number) {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+/** Trainer avatar: in-game sprite with an emoji fallback if the image cannot load. */
+export function TrainerAvatar({ trainer, size = 96, style }: { trainer?: TrainerConfig; size?: number; style?: React.CSSProperties }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="trainer-avatar" style={{ width: size, height: size, fontSize: size * 0.46, margin: 0, ...style }}>
+      {trainer && !failed
+        ? <img src={trainer.image} alt={trainer.name} draggable={false} onError={() => setFailed(true)} style={{ height: size * trainer.face.scale, left: size * trainer.face.x, top: size * trainer.face.y }} />
+        : <span>{trainer?.avatar ?? '🧭'}</span>}
+    </div>
+  );
 }

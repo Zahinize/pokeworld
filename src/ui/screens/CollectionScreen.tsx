@@ -5,7 +5,7 @@ import { ZONES } from '@/engine/world/zones';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel, SpriteImg } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
-import { maxHpOf, isFromApi } from '@/pokeapi/client';
+import { maxHpOf } from '@/pokeapi/client';
 
 export function CollectionView({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const collection = useStore((s) => s.save.collection);
@@ -51,7 +51,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     <dt>Habitat</dt><dd>{s.habitat.map((h) => ZONES[h].label).join(', ')}</dd>
                     <dt>Depth</dt><dd>{s.depth[0]}–{s.depth[1]} m</dd>
                     <dt>Activity</dt><dd>{s.activity === 'both' ? 'Day & night' : s.activity}</dd>
-                    <dt>Max HP</dt><dd>{maxHpOf(s.id)} <span className="dim small">({isFromApi(s.id) ? 'PokeAPI' : 'offline data'})</span></dd>
+                    <dt>Max HP</dt><dd>{maxHpOf(s.id)}</dd>
                     {s.prey && <><dt>Prefers</dt><dd>{s.prey.map((p) => SPECIES[p]?.name).filter(Boolean).join(', ')}</dd></>}
                   </dl>
                 </>

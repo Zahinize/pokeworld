@@ -63,7 +63,7 @@ export interface Entity {
   t2: number;
 }
 
-export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions';
+export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
 
 export interface Group {
   id: number;

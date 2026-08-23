@@ -1,6 +1,6 @@
 # PokeWorld — Sea Reef
 
-A living underwater Pokémon wildlife adventure: explore a procedurally generated reef, observe schools, guardians,
+Where Pokémon live wild: explore a procedurally generated underwater reef, observe schools, guardians,
 predators and gentle giants behaving naturally, and catch the Pokémon your mission asks for — before the ecosystem gets
 there first. React + React Three Fiber + Three.js, no heavyweight game engine.
 

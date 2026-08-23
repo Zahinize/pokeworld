@@ -18,6 +18,7 @@ export function requestPointerLock() {
 export function CameraRig() {
   const { camera, gl } = useThree();
   const keys = useRef(new Set<string>());
+  const shift = useRef(false);
   const euler = useRef(new THREE.Euler(0, 0, 0, 'YXZ'));
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function CameraRig() {
     const el = gl.domElement;
     const store = useStore.getState;
     const onKeyDown = (e: KeyboardEvent) => {
+      shift.current = e.shiftKey || e.code === 'ShiftLeft' || e.code === 'ShiftRight';
       if (e.repeat) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
@@ -38,9 +40,10 @@ export function CameraRig() {
       if (e.code === 'KeyQ') session.cycleBall(1);
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();
     };
-    const onKeyUp = (e: KeyboardEvent) => keys.current.delete(e.code);
-    const onBlur = () => keys.current.clear();
+    const onKeyUp = (e: KeyboardEvent) => { keys.current.delete(e.code); shift.current = e.shiftKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight'; };
+    const onBlur = () => { keys.current.clear(); shift.current = false; };
     const onMouseMove = (e: MouseEvent) => {
+      shift.current = e.shiftKey; // keeps sprint in sync even if a Shift keyup was swallowed by the OS/browser
       if (document.pointerLockElement !== el) return;
       const sens = store().save.settings.sensitivity;
       session.input.lookDX += e.movementX * sens; session.input.lookDY += e.movementY * sens;
@@ -80,7 +83,7 @@ export function CameraRig() {
       inp.forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
       inp.strafe = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
       inp.up = (k.has('Space') ? 1 : 0) - (k.has('ControlLeft') || k.has('ControlRight') || k.has('KeyX') ? 1 : 0);
-      inp.sprint = k.has('ShiftLeft') || k.has('ShiftRight');
+      inp.sprint = shift.current || k.has('ShiftLeft') || k.has('ShiftRight');
     }
     const p = session.player;
     const sway = p.sway();
