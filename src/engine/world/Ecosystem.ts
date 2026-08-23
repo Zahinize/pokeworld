@@ -61,7 +61,7 @@ export class Ecosystem {
       const g: Group = {
         id: i, kind: gs.kind, speciesId: gs.speciesId, guardianSpeciesId: gs.guardianSpeciesId, guardianId: -1, memberIds: [],
         zone: gs.zone, anchor: { ...gs.anchor }, anchorTarget: { ...gs.anchor }, anchorSpeed: gs.kind === 'school' || gs.kind === 'ambientSchool' ? 0.55 + this.rng.next() * 0.35 : 0.3 + this.rng.next() * 0.2,
-        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20,
+        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20, initialSize: 0,
       };
       this.groups.push(g);
     });
@@ -69,6 +69,7 @@ export class Ecosystem {
     const spawnIdToEntity: number[] = [];
     gen.spawns.forEach((sp, i) => { spawnIdToEntity[i] = this.spawn(sp).id; });
     gen.groups.forEach((gs, i) => { if (gs.followsSpawn !== undefined) this.groups[i].followId = spawnIdToEntity[gs.followsSpawn]; });
+    for (const g of this.groups) g.initialSize = g.memberIds.length;
   }
 
   // ---------------------------------------------------------------------------------------------
@@ -124,13 +125,14 @@ export class Ecosystem {
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
-    if (t.hp <= 0) this.knockOut(t);
+    if (t.hp <= 0) this.knockOut(t, by === 'predator' ? sourceId : -1);
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
   }
 
-  knockOut(t: Entity) {
+  knockOut(t: Entity, bySourceId = -1) {
     t.state = 'ko'; t.stateT = 0; t.animT = 0; t.vx *= 0.2; t.vz *= 0.2; t.vy = 0;
-    this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id });
+    const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
+    this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
   }
 
   /** Begin a capture attempt: the Pokémon freezes in place while the ball shakes. */
@@ -322,6 +324,11 @@ export class Ecosystem {
   }
 
   private checkReinforcements() {
+    // Ambient life migrates back in when a school has been thinned out by predators
+    for (const g of this.groups) {
+      if (g.kind !== 'ambientSchool' && g.kind !== 'drifters') continue;
+      if (g.initialSize >= 2 && g.memberIds.length < Math.ceil(g.initialSize / 2) && !this.pendingReinforce.has(`group-${g.id}`)) this.pendingReinforce.set(`group-${g.id}`, this.time + 40);
+    }
     for (const o of this.objectives) {
       const needMembers = Math.max(0, o.required - o.caught);
       const needGuardian = o.guardianRequired && !o.guardianCaught;
@@ -350,6 +357,17 @@ export class Ecosystem {
     for (const [id, at] of this.pendingReinforce) {
       if (this.time < at) continue;
       this.pendingReinforce.delete(id);
+      if (id.startsWith('group-')) {
+        const g = this.groups[Number(id.slice(6))];
+        if (!g) continue;
+        const need = g.initialSize - g.memberIds.length;
+        if (need <= 0) continue;
+        const pos = this.farSpawnPos(g.zone, g.speciesId);
+        g.anchor = { ...pos }; g.anchorTarget = { ...pos }; g.alarm = 0; g.threatId = -1;
+        for (let i = 0; i < need; i++) this.spawn({ speciesId: g.speciesId, role: 'member', groupIndex: g.id, ambient: true, zone: g.zone, pos: { x: pos.x + this.rng.range(-3, 3), y: pos.y + this.rng.range(-1, 1), z: pos.z + this.rng.range(-3, 3) } });
+        this.events.push({ type: 'reinforce', speciesId: g.speciesId, count: need });
+        continue;
+      }
       const o = this.objectives.find((x) => x.id === id);
       if (!o) continue;
       const have = this.aliveForObjective(o.id);

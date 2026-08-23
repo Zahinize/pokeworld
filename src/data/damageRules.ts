@@ -5,9 +5,9 @@ import type { Stage } from './types';
  * DAMAGE_TABLE[P][T]. Configurable — never hardcode these into the AI.
  */
 export const DAMAGE_TABLE: Record<Stage, Record<Stage, number>> = {
-  0: { 0: 0.30, 1: 0.20, 2: 0.10 },
-  1: { 0: 0.50, 1: 0.30, 2: 0.20 },
-  2: { 0: 0.65, 1: 0.45, 2: 0.30 },
+  0: { 0: 0.35, 1: 0.25, 2: 0.12 },
+  1: { 0: 0.55, 1: 0.35, 2: 0.22 },
+  2: { 0: 0.70, 1: 0.50, 2: 0.32 },
 };
 
 export function predatorDamageFraction(predatorStage: Stage, targetStage: Stage): number {

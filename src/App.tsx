@@ -12,7 +12,7 @@ import { LevelComplete } from './ui/screens/LevelComplete';
 import { CollectionScreen } from './ui/screens/CollectionScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { Scene } from './render/Scene';
-import { HUD, DivePrompt } from './ui/hud/HUD';
+import { HUD, ControlsPrompt } from './ui/hud/HUD';
 import { TouchControls } from './ui/controls/TouchControls';
 import { requestPointerLock } from './render/player/CameraRig';
 import { Audio } from './audio/AudioManager';
@@ -72,9 +72,9 @@ export default function App() {
   const enterReef = useCallback(() => {
     setScreen('play');
     setOverlay('none');
-    if (isTouch) { session.start(); setDived(true); }
-    else { session.start(); session.pause(); setDived(false); }
-  }, [isTouch, setScreen, setOverlay]);
+    // Show the controls first on every platform; the game starts on "Dive in".
+    session.start(); session.pause(); setDived(false);
+  }, [setScreen, setOverlay]);
 
   const dive = useCallback(() => { setDived(true); session.resume(); requestPointerLock(); }, []);
 
@@ -96,7 +96,7 @@ export default function App() {
           <Scene />
           {screen === 'play' && <HUD onQuit={quitToMenu} />}
           {screen === 'play' && isTouch && !paused && <TouchControls />}
-          {screen === 'play' && !isTouch && !dived && <DivePrompt onDive={dive} />}
+          {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}
           {screen === 'complete' && (
             <LevelComplete
               onContinue={() => { const next = brief.levelId + 1; if (getLevel(next).status === 'playable') goBrief(next); else { session.end(); setScreen('levels'); } }}

@@ -13,7 +13,7 @@ export type Screen = 'loading' | 'start' | 'trainer' | 'menu' | 'levels' | 'brie
 
 export interface Toast {
   id: number;
-  kind: 'catch' | 'info' | 'warn' | 'event' | 'miss';
+  kind: 'catch' | 'info' | 'warn' | 'event' | 'miss' | 'alert';
   title: string;
   body?: string;
   speciesId?: string;

@@ -225,7 +225,8 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   const preds: SpeciesConfig[] = [];
   let gyaradosCount = 0;
   for (let i = 0; i < level.spawn.predators; i++) {
-    const s = rng.weighted(predPool, (p) => (p.id === 'gyarados' && gyaradosCount > 0 ? 0 : RARITY_W[p.rarity] * (preds.some((q) => q.id === p.id) ? 0.3 : 1)));
+    // Gyarados is the signature threat of the reef — weighted up so most dives meet one (never more than one).
+    const s = rng.weighted(predPool, (p) => (p.id === 'gyarados' ? (gyaradosCount > 0 ? 0 : 1.1) : RARITY_W[p.rarity] * (preds.some((q) => q.id === p.id) ? 0.3 : 1)));
     if (s.id === 'gyarados') gyaradosCount++;
     preds.push(s);
   }

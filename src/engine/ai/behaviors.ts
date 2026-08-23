@@ -356,7 +356,9 @@ function preyWeight(p: Entity, prey: Entity): number {
   if (prey.species.size > p.species.size * 0.9) return 0;
   let w = p.species.prey?.includes(prey.species.id) ? 1.0 : prey.species.stage === 0 ? 0.25 : prey.species.stage === 1 ? 0.07 : 0.02;
   if (prey.role === 'guardian') w *= 0.3;
-  if (prey.hp < prey.maxHp * 0.5) w *= 1.4; // wounded prey is attractive
+  // Wounded prey is far more attractive — predators converge on whatever the pack has already hurt.
+  const wound = 1 - prey.hp / prey.maxHp;
+  if (wound > 0.05) w = Math.max(w, 0.3) * (1 + wound * 4);
   return w;
 }
 
@@ -379,7 +381,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'approach':
     case 'circle':
     case 'rush':
-      if (!targetOk || tdist > 48) { endHunt(5 + ctx.rng() * 6, false); }
+      if (!targetOk || tdist > 48) { endHunt(3 + ctx.rng() * 3, false); }
       break;
   }
 
@@ -420,16 +422,16 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
         if (n > 0) seek(e, cx / n, cy / n, cz / n, 0.45, 8);
       }
       // Hunt check
-      if (ctx.predatorGraceOver && e.huntCooldown <= 0 && e.lod < 2) {
+      if (ctx.predatorGraceOver && e.huntCooldown <= 0) {
         let best: Entity | null = null, bestW = 0;
-        const R = 30;
+        const R = 34;
         ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
           if (o === e) return;
           const w = preyWeight(e, o) * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
           if (w > bestW) { bestW = w; best = o; }
         });
         if (best && bestW > 0.05) {
-          if (ctx.rng() < 0.25) { e.huntCooldown = 5 + ctx.rng() * 6; } // predators sometimes ignore prey
+          if (ctx.rng() < 0.1) { e.huntCooldown = 3 + ctx.rng() * 3; } // predators occasionally ignore prey
           else {
             e.targetId = (best as Entity).id; e.state = 'approach'; e.stateT = 0;
             ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
@@ -442,7 +444,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       seek(e, target!.x, target!.y, target!.z, 1.6);
       speed = s.speed * 1.5;
       if (tdist < 9) {
-        if (CIRCLERS.has(s.id)) { e.state = 'circle'; e.stateT = 0; e.t1 = 2.5 + ctx.rng() * 2.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
+        if (CIRCLERS.has(s.id)) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
         else { e.state = 'rush'; e.stateT = 0; }
       }
       break;
@@ -459,13 +461,23 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       // lead the target slightly
       seek(e, target!.x + target!.vx * 0.35, target!.y + target!.vy * 0.35, target!.z + target!.vz * 0.35, 2.5);
       speed = s.burst;
-      const hitR = s.size * 0.45 + target!.species.size * 0.45 + 0.4;
+      // Far from the player the AI ticks slowly, so widen the strike window to what a rush covers between thinks
+      const hitR = (s.size * 0.45 + target!.species.size * 0.45 + 0.4) * (e.lod === 2 ? 2.6 : e.lod === 1 ? 1.5 : 1);
       if (tdist < hitR) {
         ctx.damage(target!, predatorDamageFraction(s.stage, target!.species.stage), 'predator', e.id);
-        const cool = s.id === 'gyarados' ? 26 + ctx.rng() * 16 : 15 + ctx.rng() * 15;
+        const cool = s.id === 'gyarados' ? 8 + ctx.rng() * 5 : 4 + ctx.rng() * 4;
+        // Pack up: nearby idle predators join in on the wounded target
+        if (target!.state !== 'ko' && target!.hp > 0) {
+          ctx.hash.query(e.x, e.y, e.z, 45, (o) => {
+            if (o === e || o.behavior !== 'predator' || o.state !== 'patrol' && o.state !== 'retreat') return;
+            if (preyWeight(o, target!) <= 0) return;
+            o.targetId = target!.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
+            ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: target!.id });
+          });
+        }
         endHunt(cool, true);
       } else if (e.stateT > 6.5) {
-        endHunt(6 + ctx.rng() * 6, true);
+        endHunt(3 + ctx.rng() * 3, true);
       }
       break;
     }

@@ -273,10 +273,11 @@ export class GameSession {
           const e = eco.byId.get(ev.entityId);
           if (near(e, 60)) Audio.ko();
           if (e) this.pushFx('ko', e.x, e.y, e.z, e.species.size);
-          if (e && e.objectiveId && this.mission) {
-            const o = this.mission.objectives.find((x) => x.id === e.objectiveId);
-            if (o && !objectiveDone(o)) store.pushToast({ kind: 'warn', title: `${e.species.name} was taken`, body: 'The reef will restore itself… eventually.', speciesId: e.species.id, ttl: 4 });
-          }
+          const victim = getSpecies(ev.speciesId);
+          const pred = ev.bySpeciesId ? getSpecies(ev.bySpeciesId) : null;
+          const o = e?.objectiveId && this.mission ? this.mission.objectives.find((x) => x.id === e.objectiveId) : undefined;
+          const missionHit = !!o && !objectiveDone(o);
+          store.pushToast({ kind: 'alert', title: pred ? `${pred.name} KOed ${victim.name}` : `${victim.name} was KOed`, body: missionHit ? 'A mission target was lost — the reef will send more.' : undefined, speciesId: pred?.id ?? victim.id, ttl: 5 });
           break;
         }
         case 'alarm': {

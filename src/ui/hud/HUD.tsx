@@ -172,6 +172,8 @@ function StatusChips() {
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {SPECIES[hud.huntingSpecies].name} is hunting nearby</span>}
       {hud.lureRemaining > 0 && <span className="chip lure-active">✨ Lure active · {Math.ceil(hud.lureRemaining)}s</span>}
+      <RestoreBanner />
+      <Toasts />
     </div>
   );
 }
@@ -184,6 +186,29 @@ function RestoreBanner() {
   const rem = Math.max(0, endsAt - Date.now());
   const s = Math.ceil(rem / 1000);
   return <Panel className="restore-banner strong"><div className="eyebrow">Restocking Poké Balls</div><b>{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</b><div className="muted small">Observe the reef while you wait</div></Panel>;
+}
+
+export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
+  const K = ({ k }: { k: string }) => <span className="kbd">{k}</span>;
+  return isTouch ? (
+    <div className="controls-grid">
+      <span><b>Left stick</b> swim</span><span><b>Drag right side</b> look around</span>
+      <span><b>🔴 Red button</b> throw the selected ball</span><span><b>▲ ▼</b> swim up / down</span>
+      <span><b>Ball tray</b> switch balls</span><span><b>🪄 Lure</b> draw nearby Pokémon to you</span>
+      <span><b>»</b> toggle fast swim</span><span><b>⏸</b> pause · mission details in the top-left pill</span>
+    </div>
+  ) : (
+    <div className="controls-grid">
+      <span><K k="W" /><K k="A" /><K k="S" /><K k="D" /> <b>swim</b> (you swim where you look)</span>
+      <span><b>Mouse</b> look · <b>Left click</b> throw ball</span>
+      <span><K k="Shift" /> <b>swim faster</b></span>
+      <span><K k="Space" /> up · <K k="Ctrl" /> / <K k="X" /> down</span>
+      <span><K k="1" />–<K k="4" /> or <b>scroll</b> to switch balls</span>
+      <span><K k="E" /> <b>lure</b> nearby Pokémon</span>
+      <span><K k="Tab" /> mission · <K k="C" /> collection</span>
+      <span><K k="Esc" /> / <K k="P" /> pause</span>
+    </div>
+  );
 }
 
 function PauseOverlay({ onQuit }: { onQuit: () => void }) {
@@ -204,20 +229,7 @@ function PauseOverlay({ onQuit }: { onQuit: () => void }) {
           <button className="btn ghost block" onClick={onQuit}>Quit to menu · progress is saved</button>
         </div>
         <div className="hr" style={{ margin: '16px 0 12px' }} />
-        {isTouch ? (
-          <div className="controls-grid">
-            <span><b>Left stick</b> swim</span><span><b>Drag right side</b> look</span>
-            <span><b>🔴</b> throw ball</span><span><b>▲ ▼</b> up / down</span>
-            <span><b>Tray</b> switch balls</span><span><b>🪄</b> lure</span>
-          </div>
-        ) : (
-          <div className="controls-grid">
-            <span><b>W A S D</b> swim</span><span><b>Mouse</b> look · <b>Click</b> throw</span>
-            <span><b>Shift</b> swim faster</span><span><b>Space / Ctrl (or X)</b> up / down</span>
-            <span><b>1–4 / Scroll</b> switch ball</span><span><b>E</b> lure · <b>Tab</b> mission</span>
-            <span><b>C</b> collection</span><span><b>P / Esc</b> pause</span>
-          </div>
-        )}
+        <ControlsLegend isTouch={isTouch} />
       </Panel>
     </div>
   );
@@ -230,6 +242,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   const hint = useStore((s) => s.hud.hint);
   const lureRem = useStore((s) => s.hud.lureRemaining);
   const paused = useStore((s) => s.paused);
+  const restocking = useStore((s) => !!s.save.restoration.endsAt);
   const small = () => window.innerWidth < 760 || window.innerHeight < 560;
   const [compact, setCompact] = useState(() => isTouch || small());
   useEffect(() => { const f = () => setCompact(isTouch || small()); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, [isTouch]);
@@ -237,7 +250,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   const tray = useMemo(() => <BallTray />, []);
   return (
     <>
-      <div className={`hud ${isTouch ? 'touch' : ''}`}>
+      <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
         <div className="hud-top-left">
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
         </div>
@@ -248,8 +261,6 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {tray}
           <LureButton />
         </div>
-        <RestoreBanner />
-        <Toasts />
         <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}
@@ -269,14 +280,21 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   );
 }
 
-export function DivePrompt({ onDive }: { onDive: () => void }) {
+export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouch: boolean }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); Audio.init(); onDive(); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onDive]);
   return (
-    <div className="dive-prompt" onClick={() => { Audio.init(); onDive(); }}>
-      <div className="inner">
-        <div className="ring">🤿</div>
-        <div className="title" style={{ fontSize: 26 }}>Click to dive in</div>
-        <div className="muted small" style={{ marginTop: 6 }}>Your mouse will be captured · press <span className="kbd">Esc</span> to pause</div>
-      </div>
+    <div className="overlay controls-prompt" style={{ zIndex: 30 }}>
+      <Panel className="panel strong">
+        <div className="eyebrow">Before you dive</div>
+        <h2 className="title" style={{ fontSize: 28, margin: '4px 0 12px' }}>Controls</h2>
+        <ControlsLegend isTouch={isTouch} />
+        <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
+        <button className="btn primary big block" onClick={() => { Audio.init(); Audio.uiConfirm(); onDive(); }} autoFocus>🤿 Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
+      </Panel>
     </div>
   );
 }

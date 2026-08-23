@@ -86,11 +86,13 @@ export interface Group {
   objectiveId?: string;
   /** Guardian-specific timers. */
   guardianNextPass: number;
+  /** Member count at spawn — ambient groups replenish toward this by migration. */
+  initialSize: number;
 }
 
 export type EcoEvent =
   | { type: 'hit'; entityId: number; by: 'ball' | 'predator'; damage: number }
-  | { type: 'ko'; entityId: number; speciesId: string }
+  | { type: 'ko'; entityId: number; speciesId: string; bySpeciesId?: string }
   | { type: 'alarm'; groupId: number; threatId: number }
   | { type: 'huntStart'; predatorId: number; targetId: number }
   | { type: 'huntEnd'; predatorId: number }
