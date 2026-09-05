@@ -57,5 +57,5 @@ export const GAME = {
   REINFORCE_DELAY: 20,
 
   SAVE_KEY: 'pokeworld:save:v1',
-  POKEAPI_CACHE_KEY: 'pokeworld:pokeapi:v1',
+  POKEAPI_CACHE_KEY: 'pokeworld:pokeapi:v2',
 } as const;

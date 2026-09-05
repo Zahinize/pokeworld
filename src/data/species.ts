@@ -13,7 +13,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: ['schooling'], guardedBy: ['tentacruel'],
     size: 1.0, speed: 0.9, burst: 2.6, depth: [8, 26], habitat: ['coral', 'openReef'],
     groupSize: [5, 12], curiosity: 0.2, fear: 0.6, aggression: 0.05, activity: 'both',
-    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 40, def: 35, spDef: 100 },
+    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 40, atk: 40, def: 35, spAtk: 50, spDef: 100, speed: 70 },
     blurb: 'Drifts in loose swarms, pulsing with the current. Tentacruel is never far.',
   },
   tentacruel: {
@@ -21,7 +21,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: ['guardian'], guards: ['tentacool'],
     size: 2.0, speed: 1.4, burst: 3.4, depth: [8, 28], habitat: ['coral', 'openReef'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.2, aggression: 0.3, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 80, def: 65, spDef: 120 },
+    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 80, atk: 70, def: 65, spAtk: 80, spDef: 120, speed: 100 },
     blurb: 'Patrols around its Tentacool swarm and drifts through it, watching for predators.',
   },
   dewgong: {
@@ -29,7 +29,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'curious', secondary: [],
     size: 2.2, speed: 1.8, burst: 4.0, depth: [4, 30], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.8, fear: 0.2, aggression: 0.05, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.75, fallbackStats: { hp: 90, def: 80, spDef: 95 },
+    rarity: 'uncommon', catchBase: 0.75, fallbackStats: { hp: 90, atk: 70, def: 80, spAtk: 70, spDef: 95, speed: 70 },
     blurb: 'Glides in wide arcs and will swing by to have a look at a visiting trainer.',
   },
   cloyster: {
@@ -37,7 +37,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'bottom', secondary: [],
     size: 1.6, speed: 0.4, burst: 1.2, depth: [20, 60], habitat: ['rockyFloor', 'darkReef'],
     groupSize: [1, 1], curiosity: 0.1, fear: 0.3, aggression: 0.2, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.6, fallbackStats: { hp: 50, def: 180, spDef: 45 },
+    rarity: 'uncommon', catchBase: 0.6, fallbackStats: { hp: 50, atk: 95, def: 180, spAtk: 85, spDef: 45, speed: 70 },
     blurb: 'Sits wedged among the rocks, shell half-open, rarely bothering to move.',
   },
   horsea: {
@@ -45,7 +45,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [], guardedBy: ['seadra', 'kingdra'],
     size: 0.9, speed: 1.6, burst: 4.2, depth: [6, 24], habitat: ['coral'],
     groupSize: [4, 10], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'day',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 30, def: 70, spDef: 25 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 30, atk: 40, def: 70, spAtk: 70, spDef: 25, speed: 60 },
     blurb: 'Energetic schools dart and circle through the coral, bobbing up and down.',
   },
   seadra: {
@@ -53,7 +53,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'curious', secondary: ['guardian'], guards: ['horsea'],
     size: 1.5, speed: 2.0, burst: 4.6, depth: [6, 26], habitat: ['coral', 'openReef'],
     groupSize: [1, 1], curiosity: 0.6, fear: 0.2, aggression: 0.4, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 55, def: 95, spDef: 45 },
+    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 55, atk: 65, def: 95, spAtk: 95, spDef: 45, speed: 85 },
     blurb: 'Guardian of the Horsea school. Puts itself between the young and any danger.',
   },
   goldeen: {
@@ -61,7 +61,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [], guardedBy: ['seaking'],
     size: 1.0, speed: 1.5, burst: 3.8, depth: [6, 22], habitat: ['coral', 'openReef'],
     groupSize: [4, 10], curiosity: 0.3, fear: 0.7, aggression: 0, activity: 'day',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 45, def: 60, spDef: 50 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 45, atk: 67, def: 60, spAtk: 35, spDef: 50, speed: 63 },
     blurb: 'Elegant schools that fan their fins as they turn together.',
   },
   seaking: {
@@ -69,7 +69,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'defensive', secondary: ['guardian'], guards: ['goldeen'],
     size: 1.6, speed: 1.7, burst: 4.6, depth: [6, 24], habitat: ['coral', 'openReef'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.5, aggression: 0.2, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.75, fallbackStats: { hp: 80, def: 65, spDef: 80 },
+    rarity: 'uncommon', catchBase: 0.75, fallbackStats: { hp: 80, atk: 92, def: 65, spAtk: 65, spDef: 80, speed: 68 },
     blurb: 'Wary and quick to bolt, but loyal to its Goldeen school.',
   },
   gyarados: {
@@ -78,7 +78,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['goldeen', 'remoraid', 'finneon', 'tentacool', 'seadra', 'seaking', 'feebas'],
     size: 5.5, speed: 2.2, burst: 6.5, depth: [8, 40], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.8, activity: 'both',
-    rarity: 'rare', catchBase: 0.35, fallbackStats: { hp: 95, def: 79, spDef: 100 },
+    rarity: 'rare', catchBase: 0.35, fallbackStats: { hp: 95, atk: 125, def: 79, spAtk: 60, spDef: 100, speed: 81 },
     blurb: 'A thunderhead in the open water. Schools scatter the moment it turns their way.',
   },
   lapras: {
@@ -86,7 +86,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'curious', secondary: ['giant'],
     size: 3.2, speed: 1.4, burst: 3.0, depth: [4, 30], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.9, fear: 0.1, aggression: 0, activity: 'both',
-    rarity: 'rare', catchBase: 0.55, fallbackStats: { hp: 130, def: 80, spDef: 95 },
+    rarity: 'rare', catchBase: 0.55, fallbackStats: { hp: 130, atk: 85, def: 80, spAtk: 85, spDef: 95, speed: 60 },
     blurb: 'Gentle and inquisitive. Smaller Pokémon like to swim in its wake.',
   },
   chinchou: {
@@ -95,7 +95,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     size: 0.9, speed: 0.8, burst: 2.4, depth: [20, 60], habitat: ['darkReef', 'deepWater'],
     groupSize: [5, 10], curiosity: 0.4, fear: 0.6, aggression: 0, activity: 'night',
     rarity: 'common', catchBase: 1.2, bioluminescent: true,
-    fallbackStats: { hp: 75, def: 38, spDef: 56 },
+    fallbackStats: { hp: 75, atk: 38, def: 38, spAtk: 56, spDef: 56, speed: 67 },
     blurb: 'Its twin lures glow in the dark reef. A school of them lights the cave walls.',
   },
   lanturn: {
@@ -104,7 +104,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     size: 1.8, speed: 1.1, burst: 3.0, depth: [20, 60], habitat: ['darkReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.4, fear: 0.2, aggression: 0.2, activity: 'night',
     rarity: 'uncommon', catchBase: 0.7, bioluminescent: true,
-    fallbackStats: { hp: 125, def: 58, spDef: 76 },
+    fallbackStats: { hp: 125, atk: 58, def: 58, spAtk: 76, spDef: 76, speed: 67 },
     blurb: 'The Deep-Sea Star. Shepherds the Chinchou swarm through the dark.',
   },
   qwilfish: {
@@ -112,7 +112,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'defensive', secondary: [],
     size: 1.0, speed: 1.0, burst: 3.6, depth: [8, 30], habitat: ['openReef', 'rockyFloor'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.7, aggression: 0.2, activity: 'both',
-    rarity: 'uncommon', catchBase: 1.0, fallbackStats: { hp: 65, def: 85, spDef: 55 },
+    rarity: 'uncommon', catchBase: 1.0, fallbackStats: { hp: 65, atk: 95, def: 85, spAtk: 55, spDef: 55, speed: 85 },
     blurb: 'Puffs up when threatened, then bolts for cover.',
   },
   remoraid: {
@@ -120,7 +120,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [], guardedBy: ['octillery'],
     size: 0.8, speed: 1.7, burst: 4.4, depth: [8, 30], habitat: ['openReef', 'rockyFloor'],
     groupSize: [5, 11], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'both',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 35, def: 35, spDef: 35 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 35, atk: 65, def: 35, spAtk: 65, spDef: 35, speed: 65 },
     blurb: 'Tight, fast schools that shimmer as they turn. Octillery keeps watch nearby.',
   },
   octillery: {
@@ -128,7 +128,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'bottom', secondary: ['guardian'], guards: ['remoraid'],
     size: 1.5, speed: 1.2, burst: 3.2, depth: [10, 34], habitat: ['openReef', 'rockyFloor'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.3, aggression: 0.4, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 75, def: 75, spDef: 75 },
+    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 75, atk: 105, def: 75, spAtk: 105, spDef: 75, speed: 45 },
     blurb: 'Anchors itself near the rocks below its Remoraid school and rises when they are threatened.',
   },
   mantine: {
@@ -136,7 +136,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'giant', secondary: ['guardian'], guards: ['mantyke'],
     size: 3.2, speed: 1.3, burst: 2.6, depth: [6, 30], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.4, fear: 0.1, aggression: 0.1, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.6, fallbackStats: { hp: 85, def: 70, spDef: 140 },
+    rarity: 'uncommon', catchBase: 0.6, fallbackStats: { hp: 85, atk: 40, def: 70, spAtk: 80, spDef: 140, speed: 70 },
     blurb: 'Soars on long, slow wingbeats. Mantyke trail behind it like kites.',
   },
   kingdra: {
@@ -144,7 +144,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'curious', secondary: ['guardian'], guards: ['horsea', 'seadra'],
     size: 2.0, speed: 2.0, burst: 4.8, depth: [10, 40], habitat: ['coral', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.6, fear: 0.1, aggression: 0.4, activity: 'both',
-    rarity: 'rare', catchBase: 0.45, fallbackStats: { hp: 75, def: 95, spDef: 95 },
+    rarity: 'rare', catchBase: 0.45, fallbackStats: { hp: 75, atk: 95, def: 95, spAtk: 95, spDef: 95, speed: 85 },
     blurb: 'Rarely seen. When it guards a Horsea school, nothing gets close.',
   },
   surskit: {
@@ -152,7 +152,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [],
     size: 0.7, speed: 1.6, burst: 4.0, depth: [2, 10], habitat: ['coral'],
     groupSize: [4, 9], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'day',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 40, def: 32, spDef: 52 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 40, atk: 30, def: 32, spAtk: 50, spDef: 52, speed: 65 },
     blurb: 'Skims just below the surface in nervous little groups.',
   },
   carvanha: {
@@ -161,7 +161,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['horsea', 'tympole', 'surskit', 'feebas', 'remoraid', 'finneon', 'arrokuda', 'luvdisc', 'chinchou'],
     size: 1.0, speed: 2.0, burst: 5.6, depth: [6, 30], habitat: ['openReef', 'coral'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.1, aggression: 0.7, activity: 'both',
-    rarity: 'common', catchBase: 1.0, fallbackStats: { hp: 45, def: 20, spDef: 20 },
+    rarity: 'common', catchBase: 1.0, fallbackStats: { hp: 45, atk: 90, def: 20, spAtk: 65, spDef: 20, speed: 65 },
     blurb: 'Small, savage and fast. Harasses the edges of schools.',
   },
   sharpedo: {
@@ -170,7 +170,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['horsea', 'remoraid', 'finneon', 'arrokuda', 'goldeen', 'tentacool'],
     size: 2.2, speed: 2.6, burst: 8.0, depth: [8, 36], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.85, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 70, def: 40, spDef: 40 },
+    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 70, atk: 120, def: 40, spAtk: 95, spDef: 40, speed: 95 },
     blurb: 'Circles its prey before the rush. The reef goes quiet when it passes.',
   },
   wailmer: {
@@ -178,7 +178,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'giant', secondary: [],
     size: 3.0, speed: 1.0, burst: 2.0, depth: [6, 40], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 2], curiosity: 0.3, fear: 0.1, aggression: 0, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 130, def: 35, spDef: 35 },
+    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 130, atk: 70, def: 35, spAtk: 70, spDef: 35, speed: 60 },
     blurb: 'A slow balloon of a whale. Its calls carry across the whole reef.',
   },
   wailord: {
@@ -186,7 +186,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'giant', secondary: [],
     size: 9.0, speed: 1.2, burst: 2.2, depth: [10, 50], habitat: ['deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0, activity: 'both',
-    rarity: 'rare', catchBase: 0.4, fallbackStats: { hp: 170, def: 45, spDef: 45 },
+    rarity: 'rare', catchBase: 0.4, fallbackStats: { hp: 170, atk: 90, def: 45, spAtk: 90, spDef: 45, speed: 60 },
     blurb: 'The Float Whale. When it passes overhead the light dims.',
   },
   feebas: {
@@ -194,7 +194,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [],
     size: 0.8, speed: 1.2, burst: 3.4, depth: [10, 34], habitat: ['rockyFloor', 'openReef'],
     groupSize: [4, 8], curiosity: 0.2, fear: 0.8, aggression: 0, activity: 'both',
-    rarity: 'uncommon', catchBase: 1.2, fallbackStats: { hp: 20, def: 20, spDef: 55 },
+    rarity: 'uncommon', catchBase: 1.2, fallbackStats: { hp: 20, atk: 15, def: 20, spAtk: 10, spDef: 55, speed: 80 },
     blurb: 'Ragged, shy schools that hug the rocks. Easily overlooked.',
   },
   huntail: {
@@ -203,7 +203,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['chinchou', 'feebas', 'tympole', 'luvdisc', 'remoraid'],
     size: 1.7, speed: 1.0, burst: 5.0, depth: [25, 60], habitat: ['deepWater', 'darkReef'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0.1, aggression: 0.5, activity: 'night',
-    rarity: 'uncommon', catchBase: 0.65, fallbackStats: { hp: 55, def: 105, spDef: 75 },
+    rarity: 'uncommon', catchBase: 0.65, fallbackStats: { hp: 55, atk: 104, def: 105, spAtk: 94, spDef: 75, speed: 52 },
     blurb: 'Lies in the deep sand with its tail lure twitching, then strikes.',
   },
   gorebyss: {
@@ -211,7 +211,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: [],
     size: 1.7, speed: 1.0, burst: 3.0, depth: [20, 55], habitat: ['deepWater', 'darkReef'],
     groupSize: [1, 2], curiosity: 0.4, fear: 0.4, aggression: 0.1, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 55, def: 105, spDef: 75 },
+    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 55, atk: 84, def: 105, spAtk: 114, spDef: 75, speed: 52 },
     blurb: 'Drifts serenely through the deep, pink against the dark.',
   },
   luvdisc: {
@@ -219,7 +219,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: ['pair'],
     size: 0.7, speed: 1.0, burst: 3.0, depth: [4, 18], habitat: ['coral'],
     groupSize: [2, 2], curiosity: 0.5, fear: 0.6, aggression: 0, activity: 'day',
-    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 43, def: 55, spDef: 65 },
+    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 43, atk: 30, def: 55, spAtk: 40, spDef: 65, speed: 97 },
     blurb: 'Always in pairs, circling one another among the coral.',
   },
   kyogre: {
@@ -227,7 +227,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'giant', secondary: ['legendary'],
     size: 6.5, speed: 1.8, burst: 4.0, depth: [20, 55], habitat: ['deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.1, activity: 'both',
-    rarity: 'legendary', catchBase: 0.12, fallbackStats: { hp: 100, def: 90, spDef: 140 },
+    rarity: 'legendary', catchBase: 0.12, fallbackStats: { hp: 100, atk: 100, def: 90, spAtk: 150, spDef: 140, speed: 90 },
     blurb: 'The sea itself. A sighting is a once-in-a-lifetime event.',
   },
   finneon: {
@@ -235,7 +235,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [], guardedBy: ['lumineon'],
     size: 0.8, speed: 1.5, burst: 4.0, depth: [6, 26], habitat: ['coral', 'openReef'],
     groupSize: [5, 10], curiosity: 0.3, fear: 0.7, aggression: 0, activity: 'both',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 49, def: 56, spDef: 61 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 49, atk: 49, def: 56, spAtk: 49, spDef: 61, speed: 66 },
     blurb: 'Butterfly-finned schools that glow faintly after dusk.',
   },
   lumineon: {
@@ -243,7 +243,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'curious', secondary: ['guardian'], guards: ['finneon'],
     size: 1.6, speed: 1.6, burst: 4.0, depth: [6, 30], habitat: ['coral', 'openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.6, fear: 0.2, aggression: 0.2, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 69, def: 76, spDef: 86 },
+    rarity: 'uncommon', catchBase: 0.7, fallbackStats: { hp: 69, atk: 69, def: 76, spAtk: 69, spDef: 86, speed: 91 },
     blurb: 'Watches over Finneon and is not shy about inspecting trainers.',
   },
   mantyke: {
@@ -251,7 +251,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: ['follower'], guardedBy: ['mantine'],
     size: 1.1, speed: 1.0, burst: 2.6, depth: [6, 28], habitat: ['openReef', 'deepWater'],
     groupSize: [4, 8], curiosity: 0.5, fear: 0.5, aggression: 0, activity: 'both',
-    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 45, def: 50, spDef: 120 },
+    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 45, atk: 20, def: 50, spAtk: 60, spDef: 120, speed: 50 },
     blurb: 'Follows Mantine in a loose, wobbling procession.',
   },
   phione: {
@@ -259,7 +259,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: [],
     size: 0.8, speed: 0.8, burst: 2.4, depth: [4, 30], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 3], curiosity: 0.5, fear: 0.4, aggression: 0, activity: 'both',
-    rarity: 'rare', catchBase: 0.6, fallbackStats: { hp: 80, def: 80, spDef: 80 },
+    rarity: 'rare', catchBase: 0.6, fallbackStats: { hp: 80, atk: 80, def: 80, spAtk: 80, spDef: 80, speed: 80 },
     blurb: 'Rides the currents with its inflated head-sac. A rare drifter.',
   },
   tympole: {
@@ -267,7 +267,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [],
     size: 0.7, speed: 1.4, burst: 3.6, depth: [8, 24], habitat: ['coral', 'rockyFloor'],
     groupSize: [5, 10], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'both',
-    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 50, def: 40, spDef: 40 },
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 50, atk: 50, def: 40, spAtk: 50, spDef: 40, speed: 64 },
     blurb: 'Round little tadpoles that wriggle along in noisy schools.',
   },
   alomomola: {
@@ -275,7 +275,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'passive', secondary: ['support'],
     size: 1.8, speed: 0.9, burst: 2.4, depth: [6, 30], habitat: ['openReef'],
     groupSize: [1, 1], curiosity: 0.5, fear: 0.3, aggression: 0, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 165, def: 80, spDef: 45 },
+    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 165, atk: 75, def: 80, spAtk: 40, spDef: 45, speed: 65 },
     blurb: 'Drifts toward injured Pokémon and keeps them company while they recover.',
   },
   arrokuda: {
@@ -283,7 +283,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: [],
     size: 0.9, speed: 2.2, burst: 5.2, depth: [6, 26], habitat: ['openReef'],
     groupSize: [5, 10], curiosity: 0.2, fear: 0.7, aggression: 0.1, activity: 'both',
-    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 41, def: 40, spDef: 30 },
+    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 41, atk: 63, def: 40, spAtk: 40, spDef: 30, speed: 66 },
     blurb: 'Arrow-straight schools that cut through open water.',
   },
   barraskewda: {
@@ -292,7 +292,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['arrokuda', 'remoraid', 'finneon', 'goldeen', 'horsea', 'surskit'],
     size: 2.0, speed: 3.0, burst: 9.0, depth: [6, 30], habitat: ['openReef'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.8, activity: 'day',
-    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 61, def: 60, spDef: 50 },
+    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 61, atk: 123, def: 60, spAtk: 60, spDef: 50, speed: 136 },
     blurb: 'The fastest thing in the water. Strikes in a straight line and is gone.',
   },
   arctovish: {
@@ -300,7 +300,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'bottom', secondary: [],
     size: 2.0, speed: 0.7, burst: 2.0, depth: [25, 60], habitat: ['rockyFloor', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0.2, aggression: 0.2, activity: 'both',
-    rarity: 'rare', catchBase: 0.5, fallbackStats: { hp: 90, def: 100, spDef: 80 },
+    rarity: 'rare', catchBase: 0.5, fallbackStats: { hp: 90, atk: 90, def: 100, spAtk: 80, spDef: 90, speed: 55 },
     blurb: 'An ancient, upside-down oddity resting on the cold sea floor.',
   },
   finizen: {
@@ -308,7 +308,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'schooling', secondary: ['playful'],
     size: 1.2, speed: 2.0, burst: 4.6, depth: [4, 20], habitat: ['openReef', 'coral'],
     groupSize: [3, 6], curiosity: 0.7, fear: 0.4, aggression: 0, activity: 'day',
-    rarity: 'uncommon', catchBase: 1.0, fallbackStats: { hp: 70, def: 50, spDef: 65 },
+    rarity: 'uncommon', catchBase: 1.0, fallbackStats: { hp: 70, atk: 45, def: 40, spAtk: 45, spDef: 40, speed: 75 },
     blurb: 'Playful pods that leap and spiral around one another — and around trainers.',
   },
   veluza: {
@@ -317,7 +317,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     prey: ['goldeen', 'remoraid', 'feebas', 'tympole', 'finizen', 'finneon'],
     size: 2.4, speed: 2.2, burst: 7.0, depth: [10, 40], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.7, activity: 'both',
-    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 90, def: 73, spDef: 65 },
+    rarity: 'uncommon', catchBase: 0.55, fallbackStats: { hp: 90, atk: 102, def: 73, spAtk: 78, spDef: 65, speed: 70 },
     blurb: 'A pale blade of a fish. Patrols the mid-water and sheds its flesh to strike.',
   },
   dondozo: {
@@ -325,8 +325,16 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     primary: 'bottom', secondary: ['giant'],
     size: 5.0, speed: 0.6, burst: 1.6, depth: [25, 60], habitat: ['deepWater', 'rockyFloor'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.2, activity: 'both',
-    rarity: 'rare', catchBase: 0.35, fallbackStats: { hp: 150, def: 115, spDef: 65 },
+    rarity: 'rare', catchBase: 0.35, fallbackStats: { hp: 150, atk: 100, def: 115, spAtk: 65, spDef: 65, speed: 35 },
     blurb: 'A mountain of a catfish dozing on the sea floor. It rarely moves. It never hurries.',
+  },
+  tatsugiri: {
+    id: 'tatsugiri', name: 'Tatsugiri', dexId: 978, sprite: SPRITE(978), stage: 2,
+    primary: 'curious', secondary: ['legendary'], bossOnly: true,
+    size: 1.0, speed: 1.6, burst: 4.2, depth: [20, 50], habitat: ['darkReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0.4, fear: 0.1, aggression: 0.6, activity: 'both',
+    rarity: 'legendary', catchBase: 0.3, fallbackStats: { hp: 68, atk: 50, def: 60, spAtk: 120, spDef: 95, speed: 82 },
+    blurb: 'The Mimicry Pokémon. Commands Dondozo from beside its head — never seen apart.',
   },
 };
 

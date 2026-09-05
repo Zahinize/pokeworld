@@ -168,8 +168,8 @@ Legend: **D** damage / **U** utility · **Ph** physical / **Sp** special · powe
 | Dondozo | Wave Crash — D·Ph·100·7s·dash 8m · tidal body check | Heavy Slam — D·Ph·85·5s·melee · mass drop (20% stun 1.5s) | — |
 | Tatsugiri *(new)* | Muddy Water — D·Sp·90·7s·11m · murky wave (20% blind 2s) | Dragon Pulse — D·Sp·85·5s·12m · teal shockwave | — |
 
-Kit-rule audit: every row has ≥1 **D**; no row is U+U. 14 species carry a utility and therefore have a
-companion replacement; the other 26 kits are used as-is by companions.
+Kit-rule audit: every row has ≥1 **D**; no row is U+U. 25 species carry a utility and therefore have a
+companion replacement; the other 15 kits are used as-is by companions.
 
 ---
 
