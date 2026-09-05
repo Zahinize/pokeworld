@@ -328,6 +328,19 @@ a { color: var(--aqua); }
 .stat b { display: block; font-family: var(--font-display); font-size: 22px; }
 .stat span { font-size: 11.5px; color: var(--muted); }
 
+/* Party battle report */
+.roster-report { text-align: left; background: rgba(255,255,255,.04); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.roster-head, .roster-row { display: grid; grid-template-columns: 38px 1fr 74px 74px 44px 56px; gap: 6px; align-items: center; }
+.roster-head { font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); padding-bottom: 6px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.roster-head b { text-align: right; font-weight: 700; }
+.roster-row { padding: 4px 0; }
+.roster-row .rn { font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.roster-row .mvp { font-style: normal; font-size: 10px; font-weight: 900; color: var(--gold); background: rgba(255,209,102,.15); border: 1px solid rgba(255,209,102,.4); padding: 1px 6px; border-radius: 999px; }
+.roster-row b { text-align: right; font-size: 13px; }
+.roster-row .dealt { color: var(--aqua); }
+.roster-row .taken { color: #ff9aa9; }
+@media (max-width: 520px) { .roster-head, .roster-row { grid-template-columns: 30px 1fr 56px 56px 34px 44px; } .roster-row .rn { font-size: 11.5px; } }
+
 /* Collection */
 .collection-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
 .dex-card { padding: 10px 8px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 4px; }

@@ -75,6 +75,33 @@ export class GameSession {
   bossIds: number[] = [];
   /** Camera shake seconds remaining (Kyogre arrival). */
   shakeT = 0;
+  /** Per-companion battle report for this level (keyed by species id). */
+  battleStats = new Map<string, { dealt: number; taken: number; kills: number; assists: number }>();
+  /** Damage attribution: recent partner damagers per victim, and the last hitter overall. */
+  private recentDmg = new Map<number, Map<string, number>>();
+  private lastHitter = new Map<number, { speciesId: string; isPartner: boolean }>();
+
+  private statsOf(speciesId: string) {
+    let st = this.battleStats.get(speciesId);
+    if (!st) { st = { dealt: 0, taken: 0, kills: 0, assists: 0 }; this.battleStats.set(speciesId, st); }
+    return st;
+  }
+
+  /** Credit the killing blow and any recent partner damagers when a victim goes down. */
+  private creditTakedown(victimId: number) {
+    const last = this.lastHitter.get(victimId);
+    const recent = this.recentDmg.get(victimId);
+    if (last?.isPartner) this.statsOf(last.speciesId).kills++;
+    if (recent) {
+      for (const [sp, t] of recent) {
+        if (this.elapsed - t > 12) continue;
+        if (last?.isPartner && sp === last.speciesId) continue;
+        this.statsOf(sp).assists++;
+      }
+    }
+    this.recentDmg.delete(victimId);
+    this.lastHitter.delete(victimId);
+  }
   /** Seconds left of the downed-recovery countdown (0 = not recovering). */
   recoveringT = 0;
   /** Post-respawn calm: incoming damage ignored. */
@@ -136,6 +163,7 @@ export class GameSession {
     this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
     this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
+    this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
     this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -622,6 +650,7 @@ export class GameSession {
         case 'hit': {
           const e = eco.byId.get(ev.entityId);
           if (e) this.pushNumber(`-${ev.damage}`, '#ff8091', e.x, e.y + e.species.size * 0.5, e.z, ev.damage >= e.maxHp * 0.3);
+          if (e?.role === 'partner') this.statsOf(e.species.id).taken += ev.damage;
           if (ev.by === 'predator' && near(e, 45)) Audio.predatorHit();
           break;
         }
@@ -634,6 +663,16 @@ export class GameSession {
           const t = eco.byId.get(ev.targetId);
           if (t) this.pushFx('hit', t.x, t.y, t.z, t.species.size, getMove(ev.moveId).color);
           if (near(t, 45)) Audio.moveHit();
+          const caster = eco.byId.get(ev.casterId);
+          if (caster) {
+            if (caster.role === 'partner') {
+              this.statsOf(caster.species.id).dealt += ev.damage;
+              let recent = this.recentDmg.get(ev.targetId);
+              if (!recent) { recent = new Map(); this.recentDmg.set(ev.targetId, recent); }
+              recent.set(caster.species.id, this.elapsed);
+            }
+            this.lastHitter.set(ev.targetId, { speciesId: caster.species.id, isPartner: caster.role === 'partner' });
+          }
           break;
         }
         case 'playerHit': {
@@ -657,6 +696,7 @@ export class GameSession {
         }
         case 'ko': {
           const e = eco.byId.get(ev.entityId);
+          if (e?.role !== 'partner') this.creditTakedown(ev.entityId);
           if (near(e, 60)) Audio.ko();
           if (e) this.pushFx('ko', e.x, e.y, e.z, e.species.size);
           const victim = getSpecies(ev.speciesId);
@@ -722,6 +762,7 @@ export class GameSession {
         case 'faint': break;
         case 'autoCaught': {
           const e = eco.byId.get(ev.entityId);
+          this.creditTakedown(ev.entityId);
           if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, true); }
           break;
         }
@@ -739,6 +780,7 @@ export class GameSession {
         }
         case 'bossDefeated': {
           const sp = getSpecies(ev.speciesId);
+          this.creditTakedown(ev.entityId);
           if (this.mission) {
             const out = applyBossDefeat(this.mission, ev.speciesId);
             if (out.counted) { this.mission = out.mission; store.setMission(this.mission); }
@@ -812,7 +854,10 @@ export class GameSession {
     this.phase = 'complete';
     releasePointer();
     Audio.levelComplete();
-    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id) });
+    const roster = this.companionsEnabled
+      ? this.party.map((sp) => ({ speciesId: sp, ...( this.battleStats.get(sp) ?? { dealt: 0, taken: 0, kills: 0, assists: 0 }) }))
+      : undefined;
+    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id), roster });
     store.completeLevel(this.level.id, Math.round(this.elapsed));
     store.setScreen('complete');
     this.emit();

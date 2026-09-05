@@ -61,7 +61,7 @@ interface AppState {
   hud: HudState;
   toasts: Toast[];
   lastCatch: { speciesId: string; missionTarget: boolean; objectiveLabel?: string } | null;
-  completeStats: { levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number; worldComplete?: boolean } | null;
+  completeStats: { levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number; worldComplete?: boolean; roster?: { speciesId: string; dealt: number; taken: number; kills: number; assists: number }[] } | null;
   overlay: 'none' | 'mission' | 'collection' | 'pause' | 'settings';
 
   // actions
