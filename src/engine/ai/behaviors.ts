@@ -366,6 +366,7 @@ const CIRCLERS = new Set(['sharpedo', 'gyarados', 'veluza']);
 
 function preyWeight(p: Entity, prey: Entity): number {
   if (prey.behavior === 'predator' || prey.behavior === 'giant' || prey.behavior === 'bottom') return 0;
+  if (prey.role === 'partner') return prey.hp < prey.maxHp * 0.6 ? 0.25 : 0.12; // companions travel with a scary trainer
   if (prey.state === 'captureAttempt' || prey.state === 'ko' || prey.state === 'caught' || prey.state === 'removed') return 0;
   if (prey.species.size > p.species.size * 0.9) return 0;
   let w = p.species.prey?.includes(prey.species.id) ? 1.0 : prey.species.stage === 0 ? 0.25 : prey.species.stage === 1 ? 0.07 : 0.02;

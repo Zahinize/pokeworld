@@ -15,10 +15,13 @@ import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
 import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
-import { movesFor } from '@/data/moves';
+import { companionMovesFor } from '@/data/moves';
+import { kitOf } from '../sim/moveSystem';
 import { floorY } from './terrain';
 import type { Obstacle } from './terrain';
-import { ZONES } from './zones';
+import { ZONES, zoneAt } from './zones';
+
+function zoneAtSafe(x: number, z: number) { return zoneAt(x, z).id; }
 import { len3 } from '../ai/steering';
 
 export interface DamageInfo { entity: Entity; amount: number; by: 'predator' | 'ball'; sourceId: number }
@@ -45,6 +48,8 @@ export class Ecosystem {
   moves!: MoveSystem;
   /** Session hook: apply damage to the player (set by GameSession; no-op headless). */
   onPlayerDamage: (amount: number, casterId: number, moveId: string) => void = () => {};
+  /** Camera yaw, used for companion formation (set by the session each frame). */
+  playerYaw = 0;
   private ctx: SimContext;
   private current: Vec3 = { x: 0, y: 0, z: 0 };
   objectives: MissionObjective[];
@@ -125,6 +130,7 @@ export class Ecosystem {
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
+      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -154,6 +160,10 @@ export class Ecosystem {
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
     const src = this.byId.get(sourceId);
     if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
+    // Companions auto-defend: getting hit locks a duel with the attacker
+    if (t.role === 'partner' && src && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
+    // A wild that strikes a companion gets dueled right back
+    if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith < 0 && src.duelWith < 0) this.startDuel(src, t);
     // Group revenge: a guardian-less group swarms any predator that attacks a member (design §7)
     if (src && src.behavior === 'predator' && t.groupId >= 0) {
       const g = this.groups[t.groupId];
@@ -181,7 +191,11 @@ export class Ecosystem {
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
-    if (t.hp <= 0) this.knockOut(t, by === 'predator' ? sourceId : -1);
+    if (t.hp <= 0) {
+      const src = this.byId.get(sourceId);
+      if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator') this.faint(t); // your team weakens, never destroys
+      else this.knockOut(t, by === 'predator' ? sourceId : -1);
+    }
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
   }
 
@@ -205,8 +219,15 @@ export class Ecosystem {
   }
 
   knockOut(t: Entity, bySourceId = -1) {
+    if (t.duelWith >= 0) {
+      const other = this.byId.get(t.duelWith);
+      if (t.role === 'partner') { if (other) { other.duelWith = -1; if (other.state === 'duel') { other.state = 'flee'; other.stateT = 0; } } this.events.push({ type: 'duelEnd', partnerId: t.id, wildId: t.duelWith, reason: 'partnerDown' }); }
+      else if (other?.role === 'partner') this.endDuel(other, 'gone');
+      t.duelWith = -1;
+    }
     t.state = 'ko'; t.stateT = 0; t.animT = 0; t.vx *= 0.2; t.vz *= 0.2; t.vy = 0;
     const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
+    if (t.role === 'partner') { this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id }); }
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes
     if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: t.species.id, zone: t.zone });
@@ -259,7 +280,7 @@ export class Ecosystem {
     this.lureUntil = this.time + GAME.LURE_DURATION;
     const p = this.player;
     for (const e of this.alive) {
-      if (e.behavior === 'predator' || e.behavior === 'giant' || e.behavior === 'bottom') continue;
+      if (e.behavior === 'predator' || e.behavior === 'giant' || e.behavior === 'bottom' || e.role === 'partner') continue;
       if (e.state === 'ko' || e.state === 'captureAttempt') continue;
       if (len3(e.x - p.x, e.y - p.y, e.z - p.z) < GAME.LURE_RADIUS) { e.lured = true; e.nextThink = this.time; }
     }
@@ -321,6 +342,20 @@ export class Ecosystem {
       if (e.hotT > 0) { e.hotT -= dt; e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt); }
       if (e.hp < e.maxHp && e.state !== 'ko') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
 
+      if (e.state === 'faint') {
+        e.faintT -= dt;
+        e.animT += dt;
+        e.y -= dt * 0.25; e.vx *= 0.96; e.vz *= 0.96; e.x += e.vx * dt; e.z += e.vz * dt;
+        const fy = floorY(e.x, e.z) + e.species.size * 0.4;
+        if (e.y < fy) e.y = fy;
+        e.hpBarT = 1; // keep the bar visible while catchable
+        if (e.faintT <= 0) {
+          e.state = 'flee'; e.stateT = 0; e.hp = Math.max(1, Math.round(e.maxHp * COMBAT.FAINT_RECOVER_HP_FRAC));
+          e.threatId = -2; e.threatT = 0; e.nextThink = this.time;
+          this.events.push({ type: 'recovered', entityId: e.id, speciesId: e.species.id });
+        }
+        continue;
+      }
       if (e.state === 'ko') {
         e.animT += dt; e.y -= dt * 0.35; e.vx *= 0.97; e.vz *= 0.97; e.x += e.vx * dt; e.z += e.vz * dt;
         if (e.animT > 1.6) this.remove(e);
@@ -358,6 +393,8 @@ export class Ecosystem {
       e.state = e.behavior === 'predator' ? 'patrol' : e.behavior === 'curious' ? 'wander' : e.behavior === 'bottom' ? 'retreat' : 'wander';
       e.stateT = 0;
     }
+    if (e.role === 'partner') { this.partnerThink(e, dt); return; }
+    if (e.state === 'duel') { this.duelWildThink(e, dt); return; }
     if (e.role === 'guardian' && e.groupId >= 0) {
       if (e.species.primary === 'giant') { giantThink(e, this.ctx, dt); return; } // Mantine glides; Mantyke trail behind it
       guardianThink(e, this.groups[e.groupId], this.ctx, dt); return;
@@ -374,6 +411,80 @@ export class Ecosystem {
     }
   }
 
+  /** Companion AI: formation follow, commanded casts, duel auto-fighting, auto-defense. */
+  private partnerThink(e: Entity, dt: number) {
+    const p = this.player;
+    // Duel: orbit the opponent and exchange moves automatically
+    if (e.duelWith >= 0) {
+      const w = this.byId.get(e.duelWith);
+      if (!w || w.state === 'removed' || w.state === 'caught' || w.state === 'ko') { this.endDuel(e, 'gone'); return; }
+      const d = len3(w.x - e.x, w.y - e.y, w.z - e.z);
+      if (d > COMBAT.DUEL_BREAK_DIST) { this.endDuel(e, 'separated'); return; }
+      this.orbitOpponent(e, w, dt);
+      const slot = this.moves.pickMove(e, d, false, true);
+      if (slot !== -1) this.moves.cast(e, slot, { kind: 'entity', id: w.id });
+      return;
+    }
+    // Commanded cast: chase the ordered target until the move is in range
+    if (e.orderTarget >= 0 && e.orderMove !== -1) {
+      const t = this.byId.get(e.orderTarget);
+      if (!t || t.state === 'removed' || t.state === 'caught' || t.state === 'ko' || t.state === 'captureAttempt') { e.orderTarget = -1; e.orderMove = -1; }
+      else {
+        const kit = kitOf(e);
+        const move = kit[e.orderMove];
+        const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
+        if (d <= move.range + e.species.size * 0.5) {
+          if (this.moves.cast(e, e.orderMove, { kind: 'entity', id: t.id })) { e.orderTarget = -1; e.orderMove = -1; }
+        } else {
+          const k = e.species.burst / (d || 1);
+          e.dx = (t.x - e.x) * k; e.dy = (t.y - e.y) * k; e.dz = (t.z - e.z) * k;
+          e.maxSpeed = e.species.burst;
+          return;
+        }
+      }
+    }
+    // Formation follow: hover beside/behind the trainer
+    const side = e.partnerSlot === 0 ? -1 : 1;
+    const cy = Math.cos(this.playerYaw), sy = Math.sin(this.playerYaw);
+    const rx = cy, rz = -sy;             // camera right
+    const fx = -sy, fz = -cy;            // camera forward
+    const tx = p.x + rx * side * 2.4 - fx * 1.4;
+    const tz = p.z + rz * side * 2.4 - fz * 1.4;
+    const ty = p.y + 0.15 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.18;
+    const d = len3(tx - e.x, ty - e.y, tz - e.z);
+    const speed = d > 20 ? e.species.burst * 1.4 : d > 6 ? e.species.burst : e.species.speed * Math.min(1.6, 0.4 + d * 0.4);
+    const k = speed / (d || 1);
+    e.dx = (tx - e.x) * k; e.dy = (ty - e.y) * k; e.dz = (tz - e.z) * k;
+    e.maxSpeed = speed;
+    void dt;
+  }
+
+  /** Wild side of a duel: circle the partner and fight back on its own cooldowns. */
+  private duelWildThink(e: Entity, dt: number) {
+    const partner = this.byId.get(e.duelWith);
+    if (!partner || partner.state === 'removed' || partner.state === 'ko') { e.duelWith = -1; e.state = 'flee'; e.stateT = 0; return; }
+    const d = len3(partner.x - e.x, partner.y - e.y, partner.z - e.z);
+    if (d > COMBAT.DUEL_BREAK_DIST) { this.endDuel(partner, 'separated'); return; }
+    // flee roll when badly hurt
+    if (e.hp < e.maxHp * COMBAT.DUEL_FLEE_HP_FRAC && this.rng.next() < COMBAT.DUEL_FLEE_CHANCE * dt * 2) { this.endDuel(partner, 'fled'); return; }
+    this.orbitOpponent(e, partner, dt);
+    const slot = this.moves.pickMove(e, d, e.hp < e.maxHp * 0.5);
+    if (slot !== -1) this.moves.cast(e, slot, { kind: 'entity', id: partner.id });
+  }
+
+  /** Shared duel movement: circle the opponent at 3–5 m with a little vertical life. */
+  private orbitOpponent(e: Entity, o: Entity, dt: number) {
+    e.lureOrbit += dt * (0.5 + e.cs.speed / 300);
+    const r = COMBAT.DUEL_ORBIT_MIN + (e.id % 3) * ((COMBAT.DUEL_ORBIT_MAX - COMBAT.DUEL_ORBIT_MIN) / 2);
+    const tx = o.x + Math.cos(e.lureOrbit) * r;
+    const ty = o.y + Math.sin(this.time * 0.9 + e.phase * 4) * 0.8;
+    const tz = o.z + Math.sin(e.lureOrbit) * r;
+    const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
+    const speed = e.species.speed * 1.3;
+    e.dx = (tx - e.x) / d * speed; e.dy = (ty - e.y) / d * speed; e.dz = (tz - e.z) / d * speed;
+    e.maxSpeed = speed;
+  }
+
   /** Face the attacker, fire the best ready move, then resume normal behavior (design §7). */
   private retaliateThink(e: Entity, dt: number) {
     const tgt = e.retaliateTarget;
@@ -386,7 +497,7 @@ export class Ecosystem {
     }
     const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
     const vsPlayer = tgt === -2; // stat drops mean nothing to a trainer — use damage moves only
-    const kit = movesFor(e.species.id).filter((m) => !vsPlayer || m.kind === 'damage');
+    const kit = kitOf(e).filter((m) => !vsPlayer || m.kind === 'damage');
     const reach = Math.max(...kit.map((m) => m.range));
     if (d > reach * 0.85) {
       // close the distance first — an avenging school visibly surges at its attacker
@@ -537,6 +648,67 @@ export class Ecosystem {
   get nextPredatorRespawn(): number | null {
     if (!this.pendingRespawn.length) return null;
     return Math.max(0, Math.min(...this.pendingRespawn.map((r) => r.at)) - this.time);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Companions (partners) & duels
+  // ---------------------------------------------------------------------------------------------
+
+  /** Spawn a companion beside the player. `slot` is the active-formation slot (0 left, 1 right). */
+  addPartner(speciesId: string, slot: number): Entity {
+    const p = this.player;
+    const side = slot === 0 ? -1 : 1;
+    const e = this.spawn({
+      speciesId, role: 'partner', groupIndex: -1, ambient: true, zone: zoneAtSafe(p.x, p.z),
+      pos: { x: p.x + side * 2.2, y: p.y + 0.2, z: p.z - 1.2 },
+    });
+    const kit = companionMovesFor(speciesId);
+    e.kitOverride = [kit[0].id, kit[1].id];
+    e.partnerSlot = slot;
+    e.state = 'wander';
+    return e;
+  }
+
+  /** Recall / remove a companion (swap, level end). */
+  removePartner(id: number) {
+    const e = this.byId.get(id);
+    if (!e || e.role !== 'partner') return;
+    if (e.duelWith >= 0) this.endDuel(e, 'recalled');
+    this.remove(e);
+  }
+
+  get partners(): Entity[] { return this.alive.filter((e) => e.role === 'partner'); }
+
+  /** Lock a 1v1 duel between a partner and a wild Pokémon (cap enforced). */
+  startDuel(partner: Entity, wild: Entity) {
+    if (partner.duelWith >= 0 || wild.duelWith >= 0) return;
+    if (wild.state === 'ko' || wild.state === 'caught' || wild.state === 'faint' || wild.state === 'captureAttempt') return;
+    const active = this.alive.filter((e) => e.role === 'partner' && e.duelWith >= 0).length;
+    if (active >= COMBAT.DUEL_MAX_CONCURRENT) return;
+    partner.duelWith = wild.id; wild.duelWith = partner.id;
+    partner.state = 'duel'; partner.stateT = 0;
+    wild.state = 'duel'; wild.stateT = 0;
+    partner.orderTarget = -1; partner.orderMove = -1;
+    this.events.push({ type: 'duelStart', partnerId: partner.id, wildId: wild.id });
+  }
+
+  endDuel(partner: Entity, reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone') {
+    const wild = this.byId.get(partner.duelWith);
+    this.events.push({ type: 'duelEnd', partnerId: partner.id, wildId: partner.duelWith, reason });
+    partner.duelWith = -1;
+    if (partner.state === 'duel') { partner.state = 'wander'; partner.stateT = 0; }
+    if (wild) {
+      wild.duelWith = -1;
+      if (wild.state === 'duel') { wild.state = 'flee'; wild.stateT = 0; wild.threatId = partner.id; wild.threatT = 0; }
+    }
+  }
+
+  /** Wild KO'd by a companion: faint window — sinks, hugely catchable, then recovers. Never removed. */
+  private faint(t: Entity) {
+    if (t.duelWith >= 0) { const partner = this.byId.get(t.duelWith); if (partner) this.endDuel(partner, 'faint'); }
+    t.state = 'faint'; t.stateT = 0; t.faintT = COMBAT.FAINT_DURATION;
+    t.vx *= 0.2; t.vy = 0; t.vz *= 0.2; t.hp = 1;
+    this.events.push({ type: 'faint', entityId: t.id, speciesId: t.species.id });
   }
 
   /** Random safe spot for a downed player: mid-depth, in bounds, ≥ minDist from every predator. */

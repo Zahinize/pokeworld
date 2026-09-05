@@ -1,6 +1,7 @@
 import { BALLS } from '@/data/balls';
 import type { BallId, Stage } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
+import { COMBAT } from '@/data/combatConfig';
 import type { Entity } from '../ai/types';
 
 const STAGE_FACTOR: Record<Stage, number> = { 0: 1.0, 1: 0.75, 2: 0.55 };
@@ -10,7 +11,8 @@ export function catchProbability(e: Entity, ball: BallId): number {
   const b = BALLS[ball];
   if (!Number.isFinite(b.multiplier)) return 1;
   const hpFrac = e.maxHp > 0 ? e.hp / e.maxHp : 1;
-  const p = GAME.CATCH_BASE_PROB * e.species.catchBase * b.multiplier * STAGE_FACTOR[e.species.stage] * (1 + GAME.CATCH_LOW_HP_BONUS * (1 - hpFrac));
+  let p = GAME.CATCH_BASE_PROB * e.species.catchBase * b.multiplier * STAGE_FACTOR[e.species.stage] * (1 + GAME.CATCH_LOW_HP_BONUS * (1 - hpFrac));
+  if (e.state === 'faint') p *= COMBAT.FAINT_CATCH_MULT; // the payoff for winning a duel
   return Math.min(GAME.CATCH_MAX, Math.max(GAME.CATCH_MIN, p));
 }
 

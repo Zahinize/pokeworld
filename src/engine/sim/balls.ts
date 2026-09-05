@@ -66,6 +66,7 @@ export class BallSystem {
           let hit: Entity | null = null, hitD = Infinity;
           eco.hash.query(b.x, b.y, b.z, 6, (e, d2) => {
             if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
+            if (e.role === 'partner') return; // your own companions don't block throws
             const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
             if (d2 < r * r && d2 < hitD) { hitD = d2; hit = e; }
           });

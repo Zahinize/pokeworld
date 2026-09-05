@@ -18,6 +18,7 @@ import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
+import { kitOf } from './sim/moveSystem';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt } from './world/zones';
@@ -55,6 +56,12 @@ export class GameSession {
   ballsUsed = 0;
   lureCooldown = 0;
   playerHp: number = COMBAT.PLAYER_MAX_HP;
+  /** Companion party for this level: up to 6 species; slots 0/1 are active in the reef. */
+  party: string[] = [];
+  /** Entity ids of the active companions (index = formation slot), -1 = empty/downed. */
+  activePartners: [number, number] = [-1, -1];
+  /** Species knocked out this level (out until the level ends). */
+  downedSpecies: string[] = [];
   /** Seconds left of the downed-recovery countdown (0 = not recovering). */
   recoveringT = 0;
   /** Post-respawn calm: incoming damage ignored. */
@@ -177,6 +184,7 @@ export class GameSession {
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
   end() {
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null;
+    this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
     useStore.getState().setPaused(false);
@@ -260,6 +268,83 @@ export class GameSession {
     store.pushToast({ kind: 'info', title: 'You recovered', body: 'The current carried you somewhere calmer. Catch your breath.', ttl: 4 });
   }
 
+  // ------------------------------------------------------------------ Companions
+
+  /** Whether this level supports companions (levels 3+). */
+  get companionsEnabled() { return !!this.level.companions; }
+
+  /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
+  setParty(speciesIds: string[]) {
+    if (!this.eco) return;
+    this.party = speciesIds.slice(0, COMBAT.PARTY_SIZE);
+    this.downedSpecies = [];
+    for (const id of this.activePartners) if (id >= 0) this.eco.removePartner(id);
+    this.activePartners = [-1, -1];
+    this.party.slice(0, COMBAT.ACTIVE_COMPANIONS).forEach((sp, i) => { this.activePartners[i] = this.eco!.addPartner(sp, i).id; });
+    this.syncPartyHud();
+  }
+
+  /** Swap the active companion in `slot` for a reserve species. */
+  swapPartner(slot: 0 | 1, speciesId: string): boolean {
+    if (!this.eco || !this.party.includes(speciesId) || this.downedSpecies.includes(speciesId)) return false;
+    const otherSlot = slot === 0 ? 1 : 0;
+    const other = this.eco.byId.get(this.activePartners[otherSlot]);
+    if (other && other.species.id === speciesId) return false; // already out in the other slot
+    if (this.activePartners[slot] >= 0) this.eco.removePartner(this.activePartners[slot]);
+    this.activePartners[slot] = this.eco.addPartner(speciesId, slot).id;
+    Audio.uiConfirm();
+    this.syncPartyHud();
+    return true;
+  }
+
+  /** Aim exactly like a Poké Ball: cast the companion's move along the camera ray. */
+  castPartnerMove(slot: 0 | 1, moveSlot: 0 | 1): boolean {
+    if (!this.playing || !this.eco || this.recoveringT > 0) return false;
+    const partner = this.eco.byId.get(this.activePartners[slot]);
+    if (!partner || partner.state === 'ko') return false;
+    if (!this.eco.moves.ready(partner, moveSlot)) return false;
+    const target = this.aimedEntity(45);
+    if (!target) return false;
+    const move = kitOf(partner)[moveSlot];
+    const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
+    if (partner.duelWith >= 0 && partner.duelWith !== target.id) return false; // locked in its own fight
+    if (d <= move.range + partner.species.size * 0.5) {
+      this.eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
+    } else {
+      partner.orderTarget = target.id; partner.orderMove = moveSlot; partner.nextThink = this.eco.time;
+    }
+    return true;
+  }
+
+  /** First wild Pokémon intersecting the camera ray (within maxDist). */
+  private aimedEntity(maxDist: number): Entity | null {
+    const eco = this.eco!;
+    const p = this.player;
+    const [fx, fy, fz] = p.forward();
+    let best: Entity | null = null, bestT = maxDist;
+    for (const e of eco.alive) {
+      if (e.role === 'partner' || e.state === 'ko' || e.state === 'caught' || e.state === 'removed') continue;
+      const dx = e.x - p.x, dy = e.y - p.y, dz = e.z - p.z;
+      const t = dx * fx + dy * fy + dz * fz;
+      if (t < 0.5 || t > bestT) continue;
+      const px = dx - fx * t, py = dy - fy * t, pz = dz - fz * t;
+      const r = e.species.size * 0.5 + 0.45;
+      if (px * px + py * py + pz * pz <= r * r) { best = e; bestT = t; }
+    }
+    return best;
+  }
+
+  private syncPartyHud() {
+    const eco = this.eco;
+    const active = this.activePartners.map((id) => {
+      const e = id >= 0 ? eco?.byId.get(id) : undefined;
+      if (!e || e.state === 'ko' || e.state === 'removed') return null;
+      const kit = kitOf(e);
+      return { speciesId: e.species.id, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
+    });
+    useStore.getState().setHud({ party: { list: this.party.slice(), downed: this.downedSpecies.slice(), active: active as any } });
+  }
+
   activateLure(): boolean {
     if (!this.playing || !this.eco || this.lureCooldown > 0 || this.eco.lureRemaining > 0 || this.recoveringT > 0) return false;
     this.eco.activateLure();
@@ -296,6 +381,7 @@ export class GameSession {
     this.input.lookDX = 0; this.input.lookDY = 0;
     // Simulation
     const p = this.player;
+    eco.playerYaw = p.yaw;
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
@@ -305,7 +391,7 @@ export class GameSession {
     this.handleEcoEvents();
     this.handleBallEvents();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -404,6 +490,29 @@ export class GameSession {
           break;
         }
         case 'inflate': { if (near(eco.byId.get(ev.entityId), 30)) Audio.inflate(); break; }
+        case 'partnerDown': {
+          const sp = getSpecies(ev.speciesId);
+          this.downedSpecies.push(sp.id);
+          const slot = this.activePartners.indexOf(ev.entityId);
+          if (slot >= 0) this.activePartners[slot as 0 | 1] = -1;
+          Audio.ko();
+          store.pushToast({ kind: 'warn', title: `${sp.name} is exhausted!`, body: 'It returned to its ball. Swap in a reserve from the party bar.', speciesId: sp.id, ttl: 5 });
+          this.syncPartyHud();
+          break;
+        }
+        case 'duelStart': {
+          const w = eco.byId.get(ev.wildId);
+          if (w) store.pushToast({ kind: 'event', title: `Locked on ${w.species.name}!`, body: 'Your companion is dueling it — finish it with a well-timed ball.', speciesId: w.species.id, ttl: 3 });
+          break;
+        }
+        case 'faint': {
+          const sp = getSpecies(ev.speciesId);
+          Audio.catchSuccess();
+          store.pushToast({ kind: 'catch', title: `${sp.name} fainted!`, body: 'It\'s sinking — throw a ball now for a huge catch bonus!', speciesId: sp.id, ttl: 5 });
+          break;
+        }
+        case 'recovered': break;
+        case 'duelEnd': break;
         case 'huntEnd': break;
       }
     }

@@ -31,6 +31,7 @@ export function migrateSave(raw: unknown): SaveData {
     restoration: { endsAt: typeof r.restoration?.endsAt === 'number' ? r.restoration.endsAt : null },
     collection: isObj(r.collection) ? sanitizeCollection(r.collection) : {},
     currentRun: sanitizeRun(r.currentRun),
+    party: Array.isArray(r.party) ? r.party.filter((x: unknown) => typeof x === 'string').slice(0, 6) : [],
     settings: { ...DEFAULT_SETTINGS, ...(isObj(r.settings) ? r.settings : {}) },
     stats: {
       totalCaught: clampInt(r.stats?.totalCaught, 0, 1e9, 0),

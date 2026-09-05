@@ -118,5 +118,50 @@ for (const levelId of [1, 2]) {
   if (dMin === Infinity || dMin >= 20) ok('respawn keeps distance from predators'); else fail(`respawn too close to a predator (${dMin.toFixed(1)}m)`);
 }
 
+// ---- Companions: duel lock-in, faint window, recovery (step 5) ----
+{
+  const gen = generateEcosystem(getLevel(1), 99);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  const events: string[] = [];
+  const step = (sec: number) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (['duelStart', 'duelEnd', 'faint', 'recovered', 'partnerDown'].includes(ev.type)) events.push(ev.type); } };
+  eco.update(1 / 60, p, 0);
+  const partner = eco.addPartner('sharpedo', 0);
+  if (partner.kitOverride && partner.kitOverride.length === 2) ok(`partner spawned with kit ${partner.kitOverride.join('+')}`); else fail('partner has no kit override');
+  step(2);
+  const dFollow = Math.hypot(partner.x - p.x, partner.z - p.z);
+  if (dFollow < 8) ok(`partner follows in formation (${dFollow.toFixed(1)}m from trainer)`); else fail(`partner not following (${dFollow.toFixed(1)}m away)`);
+  // Command a cast at a wild → duel → faint → recover
+  const wild = eco.alive.find((e) => e.species.stage === 0 && e.role !== 'partner' && e.behavior !== 'predator' && e.groupId >= 0)!;
+  wild.x = p.x + 6; wild.y = p.y; wild.z = p.z - 6;
+  partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
+  let guard = 0;
+  while (wild.state !== 'faint' && guard++ < 90) {
+    step(1);
+    if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
+    if (wild.state === 'flee' && wild.duelWith < 0 && !events.includes('faint')) { // fled duel — re-engage
+      wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
+      partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
+    }
+  }
+  if (events.includes('duelStart')) ok('duel locked in after the first hit'); else fail('duel never started');
+  if (wild.state === 'faint') {
+    ok(`wild fainted after ${guard}s of dueling`);
+    const { catchProbability } = await import('@/engine/sim/catching');
+    const pFaint = catchProbability(wild, 'pokeball');
+    wild.state = 'school';
+    const pNormal = catchProbability(wild, 'pokeball');
+    wild.state = 'faint';
+    if (pFaint > pNormal || pFaint >= 0.9) ok(`faint catch bonus active (${(pNormal * 100).toFixed(0)}% → ${(pFaint * 100).toFixed(0)}%)`); else fail(`faint bonus missing (${pFaint} vs ${pNormal})`);
+    let waited = 0;
+    while ((wild.state as string) === 'faint' && waited++ < 20) step(1); // in-flight projectiles can re-faint once
+    if ((wild.state as string) !== 'faint' && (wild.state as string) !== 'ko' && wild.hp > 0) ok(`fainted wild recovered after ${waited}s (state ${wild.state}, hp ${Math.round(wild.hp)})`); else fail(`wild did not recover (state ${wild.state})`);
+  } else fail(`wild never fainted (state ${wild.state}, hp ${Math.round(wild.hp)}/${wild.maxHp})`);
+  // Partner can be KO'd → partnerDown event
+  eco.damageAbs(partner, 9999, eco.alive.find((e) => e.behavior === 'predator')!.id);
+  step(1);
+  if (events.includes('partnerDown')) ok('partner KO emits partnerDown'); else fail('partnerDown never emitted');
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

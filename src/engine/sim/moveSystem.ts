@@ -5,7 +5,13 @@
  */
 import type { Entity, EcoEvent, Vec3 } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
-import { getMove, movesFor } from '@/data/moves';
+import { getMove, movesFor, type MoveConfig as MC } from '@/data/moves';
+
+/** Effective kit for an entity (companions carry an all-damage override). */
+export function kitOf(e: Entity): [MC, MC] {
+  if (e.kitOverride) return [getMove(e.kitOverride[0]), getMove(e.kitOverride[1])];
+  return movesFor(e.species.id);
+}
 import { COMBAT } from '@/data/combatConfig';
 import { computeDamage } from './combat';
 import type { CombatStats } from '@/pokeapi/hp';
@@ -65,8 +71,8 @@ export class MoveSystem {
     }
   }
 
-  /** The wild move kit for an entity (index 0/1). */
-  moveOf(e: Entity, slot: 0 | 1): MoveConfig { return movesFor(e.species.id)[slot]; }
+  /** The effective move kit for an entity (index 0/1). */
+  moveOf(e: Entity, slot: 0 | 1): MoveConfig { return kitOf(e)[slot]; }
 
   /** Whether the entity can cast `slot` right now (cooldown + not stunned). */
   ready(e: Entity, slot: 0 | 1): boolean { return e.mcd[slot] <= 0 && e.stunT <= 0; }
@@ -76,7 +82,7 @@ export class MoveSystem {
    * or when defending. Returns the slot or -1.
    */
   pickMove(e: Entity, dist: number, preferUtility = false, damageOnly = false): -1 | 0 | 1 {
-    const kit = movesFor(e.species.id);
+    const kit = kitOf(e);
     const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= kit[i].range + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
     if (!usable.length) return -1;
     const util = usable.find((i) => kit[i].kind === 'utility');
@@ -148,7 +154,7 @@ export class MoveSystem {
   private targetPos(t: MoveTarget): Vec3 | null {
     if (t.kind === 'player') return this.host.player as Vec3;
     const e = this.host.byId.get(t.id);
-    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught') return null;
+    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint') return null; // fainted = catchable, not hittable
     return e;
   }
 

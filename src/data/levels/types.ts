@@ -44,6 +44,8 @@ export interface LevelConfig {
   spawn: LevelSpawn;
   mission: LevelMission;
   playerStart: { zone: ZoneId; depth: number };
+  /** Companion party (levels 3+). */
+  companions?: boolean;
   status: 'playable' | 'comingSoon';
 }
 
