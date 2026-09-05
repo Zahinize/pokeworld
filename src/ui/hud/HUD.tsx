@@ -41,17 +41,31 @@ function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk:
 export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle: () => void }) {
   const mission = useStore((s) => s.mission);
   const atRisk = useStore((s) => s.hud.atRisk);
+  const collapsed = useStore((s) => s.save.settings.missionCollapsed);
+  const setSettings = useStore((s) => s.setSettings);
   if (!mission) return null;
   const pct = mission.total ? (mission.caught / mission.total) * 100 : 0;
+  if (collapsed) {
+    return (
+      <button className="mission-mini glass interactive" title="Show mission (M)" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: false }); }}>
+        <span>🎯</span>
+        <b className="mono">{mission.caught}<small> / {mission.total}</small></b>
+        <i className="mini-bar"><em style={{ width: `${pct}%` }} /></i>
+      </button>
+    );
+  }
   const schools = mission.objectives.filter((o) => o.kind === 'school').length;
   const passives = mission.objectives.filter((o) => o.kind === 'passive').length;
   let si = 0, pi = 0;
   return (
     <Panel className={`mission-panel interactive ${compact ? 'compact' : ''}`}>
-      <button className="head" style={{ width: '100%', textAlign: 'left' }} onClick={onToggle} aria-expanded={!compact}>
-        <span className="lvl">{compact ? `LEVEL ${session.level.id}` : session.level.title}</span>
-        <span className="tot">{mission.caught} <small>/ {mission.total}</small></span>
-      </button>
+      <div className="head">
+        <button className="grow" style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }} onClick={onToggle} aria-expanded={!compact}>
+          <span className="lvl">{compact ? `LEVEL ${session.level.id}` : session.level.title}</span>
+          <span className="tot">{mission.caught} <small>/ {mission.total}</small></span>
+        </button>
+        <button className="collapse-btn" title="Hide mission panel (M)" aria-label="Hide mission panel" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: true }); }}>▾</button>
+      </div>
       <div className="progress"><i style={{ width: `${pct}%` }} /></div>
       <div className="mission-list" style={{ marginTop: 10 }}>
         {mission.objectives.map((o) => {
@@ -333,7 +347,8 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
       <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
       <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
-      <Row keys={<><K k="Tab" /> · <K k="C" /></>}>mission · collection</Row>
+      <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
+      <Row keys={<K k="C" />}>collection</Row>
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
       {session.companionsEnabled && <Row keys={<><K k="Q" /><K k="F" /> · <K k="Z" /><K k="V" /></>}><b>companion moves</b> · aim with the crosshair</Row>}
     </div>

@@ -34,6 +34,7 @@ export function CameraRig() {
       const s = store();
       if (e.code === 'Tab') { e.preventDefault(); if (session.phase === 'playing' || session.phase === 'paused') s.setOverlay(s.overlay === 'mission' ? 'none' : 'mission'); }
       if (e.code === 'KeyE') session.activateLure();
+      if (e.code === 'KeyM' && (session.phase === 'playing' || session.phase === 'paused')) { const st = store(); st.setSettings({ missionCollapsed: !st.save.settings.missionCollapsed }); }
       if (e.code === 'KeyC' && session.playing) { s.setOverlay('collection'); session.pause(); document.exitPointerLock?.(); }
       if (e.code === 'KeyP') { if (session.playing) { session.pause(); s.setOverlay('pause'); document.exitPointerLock?.(); } }
       if (e.code.startsWith('Digit')) { const n = Number(e.code.slice(5)); if (n >= 1 && n <= 4) session.selectBall(BALL_ORDER[n - 1]); }
