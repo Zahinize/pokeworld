@@ -111,7 +111,11 @@ export class GameSession {
     this.seed = seed ?? randomSeed();
     this.prepareProgress = 0;
     this.gen = generateEcosystem(this.level, this.seed);
-    const ids = Array.from(new Set(this.gen.spawns.map((s) => s.speciesId)));
+    // Preload everything this level can show — including boss species, which spawn later via spawnBoss
+    const ids = Array.from(new Set([
+      ...this.gen.spawns.map((s) => s.speciesId),
+      ...(this.level.bossPhases ?? []).flatMap((ph) => ph.bosses),
+    ]));
     // Also preload the full roster's HP quietly (cheap, cached) so reinforcements/respawns are instant
     let hpDone = 0, spDone = 0;
     const prog = () => { this.prepareProgress = (hpDone / ids.length) * 0.3 + (spDone / ids.length) * 0.7; this.emit(); };
@@ -328,6 +332,8 @@ export class GameSession {
 
   private unleashWave(wave: BossPhase) {
     const eco = this.eco!;
+    // Safety net: make sure every boss sheet is in memory (covers resumes and future dynamic waves)
+    for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => { this.sheets.set(b, sh); rememberSheet(sh); });
     const store = useStore.getState();
     const site = ZONES[wave.site];
     this.bossIds = wave.bosses.map((b, i) => eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4).id);
