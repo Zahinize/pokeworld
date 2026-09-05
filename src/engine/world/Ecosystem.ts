@@ -130,7 +130,7 @@ export class Ecosystem {
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
-      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false,
+      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, pairBossId: -1,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -187,6 +187,7 @@ export class Ecosystem {
   }
 
   private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
+    if (t.isBoss && !this.bossesActive) return; // dormant bosses cannot be harmed — challenge them first
     t.hp = Math.max(0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
@@ -680,6 +681,8 @@ export class Ecosystem {
 
   /** Extra current force applied to everything while a boss event rages (set by the session). */
   bossCurrent = 0;
+  /** Bosses fight only when awakened (the session flips this after the challenge dialog). */
+  bossesActive = true;
 
   /** Spawn a boss at a site with its stat multipliers applied. */
   spawnBoss(speciesId: string, x: number, z: number): Entity {
@@ -700,6 +703,45 @@ export class Ecosystem {
 
   /** Aggressive boss AI: guard the site, brawl with partners/player, telegraphed violent charges. */
   private bossThink(e: Entity, dt: number) {
+    // Commander duo: ride at the partner boss's side (Tatsugiri never leaves Dondozo — Pokémon lore)
+    const pair = e.pairBossId >= 0 ? this.byId.get(e.pairBossId) : undefined;
+    if (pair && pair.state !== 'ko' && pair.state !== 'removed' && pair.state !== 'caught') {
+      const tx = pair.x + Math.sin(this.time * 0.8 + e.phase) * 1.2;
+      const ty = pair.y + pair.species.size * 0.45;
+      const tz = pair.z + Math.cos(this.time * 0.7 + e.phase) * 1.2;
+      const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
+      const sp = Math.max(pair.species.burst, e.species.burst);
+      const k = Math.min(1, d / 3);
+      e.dx = (tx - e.x) / d * sp * k; e.dy = (ty - e.y) / d * sp * k; e.dz = (tz - e.z) / d * sp * k;
+      e.maxSpeed = sp;
+      if (d > 30) { e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0; } // never separated
+      e.state = this.bossesActive ? 'wander' : 'rest';
+      if (!this.bossesActive) return;
+      // command support from the saddle: cast at whatever threatens the pair
+      let focus: Entity | null = null; let bestD = 26;
+      for (const pt of this.alive) {
+        if (pt.role !== 'partner' || pt.state === 'ko') continue;
+        const dd = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+        if (dd < bestD) { bestD = dd; focus = pt; }
+      }
+      const pd = len3(this.player.x - e.x, this.player.y - e.y, this.player.z - e.z);
+      const slot = this.moves.pickMove(e, focus ? bestD : pd, false, !focus);
+      if (slot !== -1 && (focus || pd < 20)) this.moves.cast(e, slot, focus ? { kind: 'entity', id: focus.id } : { kind: 'player' });
+      return;
+    }
+    if (!this.bossesActive) {
+      // Dormant: hover at the lair, radiating menace but touching no one
+      const tx = e.home.x + Math.sin(this.time * 0.25 + e.phase) * 2;
+      const ty = e.home.y + Math.sin(this.time * 0.5 + e.phase * 3) * 0.8;
+      const tz = e.home.z + Math.cos(this.time * 0.22 + e.phase) * 2;
+      const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
+      const sp = e.species.speed * 0.4;
+      e.dx = (tx - e.x) / d * sp; e.dy = (ty - e.y) / d * sp; e.dz = (tz - e.z) / d * sp;
+      e.maxSpeed = sp;
+      e.state = 'rest';
+      return;
+    }
+    if (e.state === 'rest') { e.state = 'wander'; e.stateT = 0; }
     const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     const p = this.player;
     // choose a focus: nearest living partner, else the player

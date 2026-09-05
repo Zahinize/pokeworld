@@ -94,6 +94,8 @@ export interface Entity {
   partnerSlot: number;
   /** Boss entity: stat multipliers applied, aggressive boss AI, immune to faint and lure. */
   isBoss: boolean;
+  /** Commander duo: this boss stays glued to its partner boss (Tatsugiri ↔ Dondozo). */
+  pairBossId: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';

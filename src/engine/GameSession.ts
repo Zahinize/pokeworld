@@ -67,6 +67,9 @@ export class GameSession {
   /** Boss waves: index of the next wave to unleash (-1 = no boss level or all done). */
   private bossWave = -1;
   private bossPhaseActive = false;
+  /** Current wave lifecycle: bosses hover dormant until the player accepts the challenge. */
+  private bossEncounter: 'none' | 'dormant' | 'greeting' | 'battle' = 'none';
+  private pendingWaveConfig: BossPhase | null = null;
   /** Live boss entity ids. */
   bossIds: number[] = [];
   /** Camera shake seconds remaining (Kyogre arrival). */
@@ -127,6 +130,7 @@ export class GameSession {
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
     this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
     this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
+    this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
     this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -295,10 +299,19 @@ export class GameSession {
       return;
     }
     if (!this.bossPhaseActive) return;
+    // Dormant bosses wait for the challenge: approach → greeting dialog
+    if (this.bossEncounter === 'dormant' && this.phase === 'playing' && this.recoveringT <= 0) {
+      const p = this.player;
+      const near = this.bossIds.some((id) => { const e = eco.byId.get(id); return e && len3(e.x - p.x, e.y - p.y, e.z - p.z) < 30; });
+      if (near) this.openBossGreeting();
+      return;
+    }
+    if (this.bossEncounter !== 'battle') return;
     // wave over?
     const alive = this.bossIds.filter((id) => { const e = eco.byId.get(id); return e && e.state !== 'removed' && e.state !== 'ko' && e.state !== 'caught'; });
     if (alive.length === 0 && this.bossIds.length > 0) {
       this.bossPhaseActive = false;
+      this.bossEncounter = 'none';
       this.bossIds = [];
       eco.bossCurrent = 0;
       this.bossWave++;
@@ -317,13 +330,41 @@ export class GameSession {
     const eco = this.eco!;
     const store = useStore.getState();
     const site = ZONES[wave.site];
-    this.bossIds = wave.bosses.map((b, i) => eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 10, site.cz + (i % 2) * 6).id);
+    this.bossIds = wave.bosses.map((b, i) => eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4).id);
+    // Commander duos fight as one: later bosses stay glued to the first (Tatsugiri rides Dondozo)
+    for (let i = 1; i < this.bossIds.length; i++) { const e = eco.byId.get(this.bossIds[i]); if (e) e.pairBossId = this.bossIds[0]; }
     this.bossPhaseActive = true;
-    // environmental drama
+    this.bossEncounter = 'dormant';
+    this.pendingWaveConfig = wave;
+    eco.bossesActive = false; // they wait, glowing in their lair, until challenged
+    store.pushToast({ kind: 'event', title: `Something waits in the ${ZONES[wave.site].label}…`, body: 'Follow the golden arrow when you are ready to face it.', ttl: 6 });
+    this.emit();
+  }
+
+  /** The player swam up to the dormant bosses: pause and present the challenge. */
+  private openBossGreeting() {
+    this.bossEncounter = 'greeting';
+    this.pause();
+    releasePointer();
+    const wave = this.pendingWaveConfig!;
+    Audio.legendary();
+    useStore.getState().setHud({ bossIntro: { label: wave.label, bosses: wave.bosses.slice(), text: wave.arrivalToast } });
+    this.emit();
+  }
+
+  /** "I'm ready!" — the battle (and the environmental drama) begins. */
+  startBossBattle() {
+    if (this.bossEncounter !== 'greeting') return;
+    const eco = this.eco!;
+    const wave = this.pendingWaveConfig!;
+    this.bossEncounter = 'battle';
+    eco.bossesActive = true;
     if (wave.event !== 'none') { eco.bossCurrent = 1; for (const g of eco.groups) { g.alarm = 1; if (g.threatId < 0) g.threatId = this.bossIds[0]; } }
     if (wave.event === 'currents+shake') this.shakeT = 5;
-    Audio.legendary();
-    store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 7 });
+    const store = useStore.getState();
+    store.setHud({ bossIntro: null });
+    store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 6 });
+    this.resume();
     this.emit();
   }
 

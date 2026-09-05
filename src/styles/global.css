@@ -205,6 +205,11 @@ a { color: var(--aqua); }
 .restore-banner .eyebrow { color: var(--gold); }
 .restore-banner b { font-family: var(--font-display); font-size: 20px; }
 
+/* Boss intro */
+.boss-intro { background: rgba(2, 8, 18, .7); }
+.boss-intro-sprites { display: flex; justify-content: center; gap: 18px; align-items: flex-end; animation: pop .6s cubic-bezier(.2,.9,.3,1.2) both; }
+.boss-intro-sprites img { filter: drop-shadow(0 0 24px rgba(244,63,94,.55)); }
+
 /* Boss bar */
 .boss-bar { position: absolute; top: calc(64px + var(--safe-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 120px)); padding: 10px 14px; border-radius: 14px; border-color: rgba(244,63,94,.5); animation: fadeUp .4s ease both; }
 .boss-bar .bn { font-family: var(--font-display); font-weight: 900; font-size: 15px; color: #ffd0d8; }

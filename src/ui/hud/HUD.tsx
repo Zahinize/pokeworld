@@ -249,6 +249,25 @@ function TargetPointer() {
   );
 }
 
+function BossIntro() {
+  const intro = useStore((s) => s.hud.bossIntro);
+  if (!intro) return null;
+  return (
+    <div className="overlay boss-intro" style={{ zIndex: 45 }}>
+      <Panel className="panel strong center" style={{ padding: 30, borderColor: 'rgba(244,63,94,.45)' }}>
+        <div className="boss-intro-sprites">
+          {intro.bosses.map((b) => <SpriteImg key={b} id={b} size={intro.bosses.length > 1 ? 96 : 128} />)}
+        </div>
+        <div className="eyebrow" style={{ color: 'var(--red)', marginTop: 10 }}>Boss Encounter</div>
+        <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => SPECIES[b].name).join(' & ')}</h2>
+        <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
+        <p className="muted small" style={{ margin: '12px 0 18px' }}>They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.</p>
+        <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}>⚔️ I'm ready — battle!</button>
+      </Panel>
+    </div>
+  );
+}
+
 function BossBar() {
   const boss = useStore((s) => s.hud.bossBar);
   if (!boss) return null;
@@ -387,6 +406,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           </div>
         </div>
       )}
+      <BossIntro />
       <RecoveryOverlay />
       {overlay === 'pause' && <PauseOverlay onQuit={onQuit} />}
       {overlay === 'collection' && <div className="overlay"><CollectionView embedded onClose={() => { setOverlay('pause'); }} /></div>}

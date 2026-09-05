@@ -195,9 +195,12 @@ for (const levelId of [1, 2]) {
     const partner1 = eco.addPartner('kingdra', 0);
     const partner2 = eco.addPartner('gyarados', 1);
     const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8));
+    // mirror the session: commander duos ride together
+    const wave0 = getLevel(levelId).bossPhases![0];
+    if (wave0.bosses.length > 1) for (let i = 1; i < wave0.bosses.length; i++) bossEnts[i].pairBossId = bossEnts[0].id;
     const tune = bossEnts.map((b) => `${b.species.id}:${b.maxHp}hp`).join(' ');
     ok(`L${levelId}: bosses spawned (${tune})`);
-    let charges = 0, playerHits = 0, defeated = 0;
+    let charges = 0, playerHits = 0, defeated = 0, maxPairSep = 0;
     let rounds = 0;
     while (defeated < bossEnts.length && rounds++ < 240) {
       for (const partner of [partner1, partner2]) {
@@ -214,9 +217,17 @@ for (const levelId of [1, 2]) {
         if (ev.type === 'playerHit') playerHits++;
         if (ev.type === 'bossDefeated') { defeated++; const out = applyBossDefeat(mission, ev.speciesId); if (out.counted) mission = out.mission; }
       });
+      if (bossEnts.length > 1 && bossEnts[1].pairBossId >= 0) {
+        const a = bossEnts[0], b = bossEnts[1];
+        const bothAlive = ![a.state, b.state].some((x) => x === 'ko' || x === 'removed' || x === 'caught');
+        if (bothAlive) maxPairSep = Math.max(maxPairSep, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
+      }
     }
     if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s)`);
     if (charges > 0) ok(`L${levelId}: bosses charged ${charges}× (stay agile!)`); else fail(`L${levelId}: bosses never charged`);
+    if (bossEnts.length > 1 && bossEnts[1].pairBossId >= 0) {
+      if (maxPairSep > 0 && maxPairSep < 12) ok(`L${levelId}: commander duo stayed together (max separation ${maxPairSep.toFixed(1)}m)`); else fail(`L${levelId}: duo separated (${maxPairSep.toFixed(1)}m)`);
+    }
     if (mission.complete) ok(`L${levelId}: mission complete after boss defeats (${mission.caught}/${mission.total})`); else fail(`L${levelId}: mission incomplete (${mission.caught}/${mission.total})`);
   }
 }

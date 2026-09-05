@@ -42,6 +42,7 @@ export interface HudState {
     active: ({ speciesId: string; hp: number; maxHp: number; moves: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
   };
   bossBar: { name: string; hp: number; maxHp: number } | null;
+  bossIntro: { label: string; bosses: string[]; text: string } | null;
   hint: string | null;
   fps: number;
   ecoSummary: string[];
@@ -99,7 +100,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, hint: null, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, hint: null, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,
