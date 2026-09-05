@@ -696,7 +696,7 @@ export class Ecosystem {
     e.cs = { ...e.cs, atk: e.cs.atk * t.atk, spAtk: e.cs.spAtk * t.atk, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
     e.home = { x, y, z };
     e.state = 'wander'; e.stateT = 0;
-    e.t2 = 6 + this.rng.next() * 4; // first charge comes soon
+    e.t2 = 3 + this.rng.next() * 2; // bosses open aggressively — first charge comes fast
     this.events.push({ type: 'bossSpawn', entityId: e.id, speciesId });
     return e;
   }

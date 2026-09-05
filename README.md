@@ -65,7 +65,8 @@ Any other static host (Netlify, Cloudflare Pages, GitHub Pages, an S3 bucket) wo
   a Poké Ball; the first hit locks a 1v1 duel with automatic exchanges on real cooldowns. A wild your team KOs is
   **caught automatically** — straight into your collection, with mission credit if it's a target. Guardians strike
   back at trainers who catch their group members, so stay alert.
-- **Bosses** guard the end of levels 3–4 with doubled/tripled stats and telegraphed charge attacks. If a boss wipes
+- **Bosses** (Dondozo + Tatsugiri, Wailord, Kyogre) exist only in the boss fights that end levels 3–4 — they never
+  swim the reef as ordinary spawns. They fight at their natural stats with telegraphed charge attacks; if one wipes
   your whole party, you're defeated (restart or pick another level). Full design: [docs/moves-combat-design.md](docs/moves-combat-design.md).
 
 ## Verification

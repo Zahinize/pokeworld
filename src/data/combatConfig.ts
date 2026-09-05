@@ -69,9 +69,10 @@ export const COMBAT = {
 
 /** Per-boss stat multipliers and charge cadence (level configs reference these by boss id). */
 export interface BossTuning { hp: number; atk: number; def: number; chargeEvery: number; chargeSpeed: number }
+/** Bosses fight at their natural stats — their base bulk, charges and pairing carry the fight. */
 export const BOSS_TUNING: Record<string, BossTuning> = {
-  dondozo: { hp: 2, atk: 2, def: 1, chargeEvery: 20, chargeSpeed: 9 },
-  tatsugiri: { hp: 2, atk: 2, def: 1, chargeEvery: 26, chargeSpeed: 7 },
-  wailord: { hp: 1.5, atk: 1.5, def: 1, chargeEvery: 25, chargeSpeed: 8 },
-  kyogre: { hp: 3, atk: 3, def: 3, chargeEvery: 15, chargeSpeed: 11 },
+  dondozo: { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 9 },
+  tatsugiri: { hp: 1, atk: 1, def: 1, chargeEvery: 26, chargeSpeed: 7 },
+  wailord: { hp: 1, atk: 1, def: 1, chargeEvery: 25, chargeSpeed: 8 },
+  kyogre: { hp: 1, atk: 1, def: 1, chargeEvery: 15, chargeSpeed: 11 },
 };

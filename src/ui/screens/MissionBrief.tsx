@@ -19,7 +19,8 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const collection = useStore((s) => s.save.collection);
   const savedParty = useStore((s) => s.save.party);
   const setSavedParty = useStore((s) => s.setSavedParty);
-  const caught = useMemo(() => SPECIES_LIST.filter((sp) => (collection[sp.id]?.caught ?? 0) > 0 && !sp.bossOnly).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
+  // Boss species can only ever be caught in boss fights — if you own one, you earned the right to field it.
+  const caught = useMemo(() => SPECIES_LIST.filter((sp) => (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
   const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((id) => (collection[id]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
   const toggleParty = (id: string) => {
     Audio.uiClick();

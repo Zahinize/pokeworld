@@ -183,7 +183,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
   },
   wailord: {
     id: 'wailord', name: 'Wailord', dexId: 321, sprite: SPRITE(321), stage: 1,
-    primary: 'giant', secondary: [],
+    primary: 'giant', secondary: [], bossOnly: true,
     size: 9.0, speed: 1.2, burst: 2.2, depth: [10, 50], habitat: ['deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0, activity: 'both',
     rarity: 'rare', catchBase: 0.4, fallbackStats: { hp: 170, atk: 90, def: 45, spAtk: 90, spDef: 45, speed: 60 },
@@ -224,7 +224,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
   },
   kyogre: {
     id: 'kyogre', name: 'Kyogre', dexId: 382, sprite: SPRITE(382), stage: 2,
-    primary: 'giant', secondary: ['legendary'],
+    primary: 'giant', secondary: ['legendary'], bossOnly: true,
     size: 6.5, speed: 1.8, burst: 4.0, depth: [20, 55], habitat: ['deepWater'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.1, activity: 'both',
     rarity: 'legendary', catchBase: 0.12, fallbackStats: { hp: 100, atk: 100, def: 90, spAtk: 150, spDef: 140, speed: 90 },
@@ -322,7 +322,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
   },
   dondozo: {
     id: 'dondozo', name: 'Dondozo', dexId: 977, sprite: SPRITE(977), stage: 2,
-    primary: 'bottom', secondary: ['giant'],
+    primary: 'bottom', secondary: ['giant'], bossOnly: true,
     size: 5.0, speed: 0.6, burst: 1.6, depth: [25, 60], habitat: ['deepWater', 'rockyFloor'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0, aggression: 0.2, activity: 'both',
     rarity: 'rare', catchBase: 0.35, fallbackStats: { hp: 150, atk: 100, def: 115, spAtk: 65, spDef: 65, speed: 35 },

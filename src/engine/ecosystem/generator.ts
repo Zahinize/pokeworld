@@ -278,7 +278,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     else addSolo(s, 'solo', undefined, true);
     summary.ambient.push(n > 1 ? `${s.name} ×${n}` : s.name);
   }
-  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3], ['wailord', 1]];
+  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3]]; // Wailord is boss-only now
   for (let i = 0; i < level.spawn.ambient.giants; i++) {
     const id = rng.weighted(giantPool, (g) => (used.has(g[0]) ? g[1] * 0.2 : g[1]))[0];
     const s = getSpecies(id);
@@ -286,8 +286,10 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     addSolo(s, 'solo', undefined, true);
     summary.ambient.push(s.name);
   }
-  const hasLegendary = rng.chance(level.spawn.ambient.legendaryChance);
-  if (hasLegendary) { addSolo(getSpecies('kyogre'), 'solo', undefined, true, 'deepWater'); summary.ambient.push('??? (something massive in the deep)'); }
+  // Legendary/boss species (Kyogre, Wailord, Dondozo, Tatsugiri) never spawn as ordinary Pokémon —
+  // meeting them is reserved for boss fights. Scarcity keeps them special.
+  const hasLegendary = false;
+  void level.spawn.ambient.legendaryChance;
 
   // ---- Obstacles (rocks, coral heads, cave) ----
   const obstacles: Obstacle[] = [];
