@@ -115,7 +115,7 @@ function LureButton() {
   );
 }
 
-const MOVE_KEYS: [string, string][] = [['Q', 'F'], ['Z', 'V']];
+const MOVE_KEYS: [string, string][] = [['5', '6'], ['7', '8']];
 
 function PartyBar() {
   const party = useStore((s) => s.hud.party);
@@ -350,7 +350,8 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
       <Row keys={<K k="C" />}>collection</Row>
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
-      {session.companionsEnabled && <Row keys={<><K k="Q" /><K k="F" /> · <K k="Z" /><K k="V" /></>}><b>companion moves</b> · aim with the crosshair</Row>}
+      {session.companionsEnabled && <Row keys={<b>Right click</b>}><b>quick attack</b> — best ready companion move at your crosshair</Row>}
+      {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
     </div>
   );
 }

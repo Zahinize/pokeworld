@@ -433,18 +433,56 @@ export class GameSession {
   castPartnerMove(slot: 0 | 1, moveSlot: 0 | 1): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const partner = this.eco.byId.get(this.activePartners[slot]);
-    // Empty slot? The same key sends out the next reserve — no mouse needed while pointer-locked.
+    // Empty slot? The same control sends out the next reserve.
     if (!partner || partner.state === 'ko') { this.sendNextReserve(slot); return false; }
-    if (!this.eco.moves.ready(partner, moveSlot)) return false;
     const target = this.aimedEntity(45);
     if (!target) return false;
+    return this.orderCast(partner, moveSlot, target);
+  }
+
+  /**
+   * One-button attack (right-click): auto-picks the strongest ready move across the active
+   * companions and fires it at whatever the crosshair is on. Zero keybinds to remember.
+   */
+  commandAttack(): boolean {
+    if (!this.playing || !this.eco || this.recoveringT > 0) return false;
+    const eco = this.eco;
+    const target = this.aimedEntity(45);
+    if (!target) return false;
+    let best: { partner: Entity; slot: 0 | 1; score: number } | null = null;
+    for (const id of this.activePartners) {
+      const partner = id >= 0 ? eco.byId.get(id) : undefined;
+      if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
+      if (partner.duelWith >= 0 && partner.duelWith !== target.id) continue; // busy with its own fight
+      const kit = kitOf(partner);
+      for (const slot of [0, 1] as const) {
+        if (!eco.moves.ready(partner, slot)) continue;
+        const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
+        // prefer power, then moves already in range (no chase delay)
+        const score = kit[slot].power + (d <= kit[slot].range + partner.species.size * 0.5 ? 25 : 0);
+        if (!best || score > best.score) best = { partner, slot, score };
+      }
+    }
+    if (!best) {
+      // nothing ready: send out a reserve if a slot is empty, otherwise brief feedback
+      if (this.activePartners.some((id) => id < 0) && this.party.length > 0) { this.sendNextReserve(this.activePartners[0] < 0 ? 0 : 1); return false; }
+      if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 3; useStore.getState().pushToast({ kind: 'info', title: 'Moves are recharging…', ttl: 2 }); }
+      return false;
+    }
+    return this.orderCast(best.partner, best.slot, target);
+  }
+  private attackFeedbackT = 0;
+
+  private orderCast(partner: Entity, moveSlot: 0 | 1, target: Entity): boolean {
+    const eco = this.eco!;
+    if (!eco.moves.ready(partner, moveSlot)) return false;
+    if (partner.duelWith >= 0 && partner.duelWith !== target.id) return false; // locked in its own fight
     const move = kitOf(partner)[moveSlot];
     const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
-    if (partner.duelWith >= 0 && partner.duelWith !== target.id) return false; // locked in its own fight
     if (d <= move.range + partner.species.size * 0.5) {
-      this.eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
+      eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
     } else {
-      partner.orderTarget = target.id; partner.orderMove = moveSlot; partner.nextThink = this.eco.time;
+      partner.orderTarget = target.id; partner.orderMove = moveSlot; partner.nextThink = eco.time;
     }
     return true;
   }
@@ -519,6 +557,7 @@ export class GameSession {
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
+    if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
       const [slot, at] = this.autoSend[i];
@@ -691,6 +730,12 @@ export class GameSession {
     for (const ev of this.balls.drainEvents()) {
       switch (ev.type) {
         case 'hit': Audio.ballHit(); this.pushFx('hit', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size); break;
+        case 'bossDeflect': {
+          Audio.escape();
+          this.pushFx('hit', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size);
+          if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 6; store.pushToast({ kind: 'warn', title: `The ball glanced off ${ev.entity.species.name}!`, body: 'Bosses can only be defeated by your companions\' moves.', speciesId: ev.entity.species.id, ttl: 4 }); }
+          break;
+        }
         case 'shake': Audio.ballShake(ev.index); break;
         case 'miss': Audio.miss(); break;
         case 'escaped': {

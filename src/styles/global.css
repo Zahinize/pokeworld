@@ -251,8 +251,10 @@ a { color: var(--aqua); }
 .reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
 .reserve-chip:hover { border-color: var(--line-strong); }
 .reserve-chip.down { opacity: .35; }
-.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(240px + var(--safe-bottom)); width: 180px; }
-.hud.touch .move-btn { min-height: 34px; }
+.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(240px + var(--safe-bottom)); width: 196px; }
+.hud.touch .move-btn { min-height: 44px; font-size: 12px; border-radius: 12px; }
+.hud.touch .party-card { padding: 10px 12px; }
+.hud.touch .reserve-chip { width: 42px; height: 42px; }
 
 /* Player vitals */
 .player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }

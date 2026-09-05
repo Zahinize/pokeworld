@@ -200,6 +200,19 @@ for (const levelId of [1, 2]) {
     if (wave0.bosses.length > 1) for (let i = 1; i < wave0.bosses.length; i++) bossEnts[i].pairBossId = bossEnts[0].id;
     const tune = bossEnts.map((b) => `${b.species.id}:${b.maxHp}hp`).join(' ');
     ok(`L${levelId}: bosses spawned (${tune})`);
+    // Bosses deflect Poké Balls — even a Master Ball
+    {
+      const { BallSystem } = await import('@/engine/sim/balls');
+      const balls = new BallSystem();
+      const b0 = bossEnts[0];
+      balls.throw('masterball', b0.x - b0.species.size * 0.4, b0.y, b0.z, 1, 0, 0); // point-blank: tests the deflect rule, not aim
+      let deflected = false, captured = false;
+      for (let i = 0; i < 120; i++) {
+        balls.update(1 / 60, eco); eco.update(1 / 60, p, 0); eco.drainEvents();
+        for (const ev of balls.drainEvents()) { if (ev.type === 'bossDeflect') deflected = true; if (ev.type === 'hit' && ev.entity.isBoss) captured = true; }
+      }
+      if (deflected && !captured && b0.state !== 'captureAttempt') ok(`L${levelId}: boss deflected a Master Ball`); else fail(`L${levelId}: boss ball interaction wrong (deflected=${deflected}, captured=${captured}, state=${b0.state})`);
+    }
     let charges = 0, playerHits = 0, defeated = 0, maxPairSep = 0;
     let rounds = 0;
     while (defeated < bossEnts.length && rounds++ < 240) {

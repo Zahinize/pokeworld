@@ -30,6 +30,7 @@ export interface Ball {
 
 export type BallEvent =
   | { type: 'hit'; ball: Ball; entity: Entity }
+  | { type: 'bossDeflect'; ball: Ball; entity: Entity }
   | { type: 'shake'; ball: Ball; index: number }
   | { type: 'caught'; ball: Ball; entity: Entity; p: number }
   | { type: 'escaped'; ball: Ball; entity: Entity; p: number }
@@ -116,6 +117,12 @@ export class BallSystem {
   }
 
   private onHit(b: Ball, e: Entity, eco: Ecosystem) {
+    if (e.isBoss) {
+      // Bosses cannot be caught — the ball glances off; only companion moves can bring them down
+      this.events.push({ type: 'bossDeflect', ball: b, entity: e });
+      b.vx *= -0.35; b.vy = Math.abs(b.vy) * 0.3 + 1.2; b.vz *= -0.35;
+      return;
+    }
     this.events.push({ type: 'hit', ball: b, entity: e });
     if (GAME.BALL_IMPACT_DAMAGE > 0) eco.damage(e, GAME.BALL_IMPACT_DAMAGE, 'ball', -2);
     else e.hpBarT = GAME.HEALTH_BAR_TTL;

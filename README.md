@@ -22,12 +22,13 @@ npm run build      # production bundle in dist/
 | Desktop | |
 | --- | --- |
 | `W A S D` / arrows | swim (you swim where you look) |
-| Mouse | look · **left click** throws the selected ball · **right click** cycles balls |
+| Mouse | look · **left click** throws the selected ball · **right click** cycles balls (levels 1–2) |
 | `Shift` | swim faster |
 | `Space` / `Ctrl` (or `X`) | swim up / down |
 | `1–4` | select Poké / Great / Ultra / Master Ball (or right-click to cycle) |
 | `E` | lure (15 s, nearby Pokémon circle you) — one use every 5 minutes |
-| `Q` / `F` · `Z` / `V` | companion moves, slot 1 · slot 2 (levels 3–4) — aimed with the crosshair like a ball |
+| **Right click** | quick attack (levels 3–4): fires the best ready companion move at your crosshair |
+| `5` `6` · `7` `8` | specific companion moves, slot 1 · slot 2 (levels 3–4) — same aiming as a ball |
 | `Tab` | mission details · `C` collection · `P` / `Esc` pause |
 
 Touch: left stick swims, drag the right side to look, 🔴 throws, ▲▼ swim up/down, `»` toggles sprint, tap the tray to switch balls.

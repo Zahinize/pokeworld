@@ -39,11 +39,13 @@ export function CameraRig() {
       if (e.code === 'KeyP') { if (session.playing) { session.pause(); s.setOverlay('pause'); document.exitPointerLock?.(); } }
       if (e.code.startsWith('Digit')) { const n = Number(e.code.slice(5)); if (n >= 1 && n <= 4) session.selectBall(BALL_ORDER[n - 1]); }
       if (session.companionsEnabled) {
-        if (e.code === 'KeyQ') session.castPartnerMove(0, 0);
-        if (e.code === 'KeyF') session.castPartnerMove(0, 1);
-        if (e.code === 'KeyZ') session.castPartnerMove(1, 0);
-        if (e.code === 'KeyV') session.castPartnerMove(1, 1);
-      } else if (e.code === 'KeyQ') session.cycleBall(1);
+        // Number row continues past the balls: 5/6 = companion one, 7/8 = companion two
+        if (e.code === 'Digit5') session.castPartnerMove(0, 0);
+        if (e.code === 'Digit6') session.castPartnerMove(0, 1);
+        if (e.code === 'Digit7') session.castPartnerMove(1, 0);
+        if (e.code === 'Digit8') session.castPartnerMove(1, 1);
+      }
+      if (e.code === 'KeyQ' && !session.companionsEnabled) session.cycleBall(1);
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => { keys.current.delete(e.code); shift.current = e.shiftKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight'; };
@@ -61,7 +63,7 @@ export function CameraRig() {
         return;
       }
       if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
-      if (e.button === 2) session.cycleBall(1);
+      if (e.button === 2) { if (session.companionsEnabled) session.commandAttack(); else session.cycleBall(1); }
     };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {
