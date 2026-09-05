@@ -31,6 +31,9 @@ export const COMBAT = {
   PLAYER_RESPAWN_SAFE_DIST: 30,
   PLAYER_RESPAWN_CALM: 3,
 
+  /** Projectile/beam range multiplier by caster stage — evolved Pokémon strike from further away. */
+  RANGE_STAGE_MULT: [1, 1.35, 1.7] as const,
+
   /** Duels. */
   DUEL_MAX_CONCURRENT: 4,
   DUEL_ORBIT_MIN: 3,

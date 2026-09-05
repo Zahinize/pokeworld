@@ -18,7 +18,7 @@ import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
-import { kitOf } from './sim/moveSystem';
+import { kitOf, effectiveRange } from './sim/moveSystem';
 import { getMove } from '@/data/moves';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
@@ -460,7 +460,7 @@ export class GameSession {
         if (!eco.moves.ready(partner, slot)) continue;
         const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
         // prefer power, then moves already in range (no chase delay)
-        const score = kit[slot].power + (d <= kit[slot].range + partner.species.size * 0.5 ? 25 : 0);
+        const score = kit[slot].power + (d <= effectiveRange(partner, kit[slot]) + partner.species.size * 0.5 ? 25 : 0);
         if (!best || score > best.score) best = { partner, slot, score };
       }
     }
@@ -496,7 +496,7 @@ export class GameSession {
     if (partner.duelWith >= 0 && partner.duelWith !== target.id) return false; // locked in its own fight
     const move = kitOf(partner)[moveSlot];
     const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
-    if (d <= move.range + partner.species.size * 0.5) {
+    if (d <= effectiveRange(partner, move) + partner.species.size * 0.5) {
       eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
     } else {
       partner.orderTarget = target.id; partner.orderMove = moveSlot; partner.nextThink = eco.time;

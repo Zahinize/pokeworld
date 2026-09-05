@@ -7,6 +7,15 @@ import type { Entity, EcoEvent, Vec3 } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
 import { getMove, movesFor, type MoveConfig as MC } from '@/data/moves';
 
+/** Contact styles keep their natural reach; everything that travels scales with the caster's stage. */
+const CONTACT_STYLES = new Set(['melee', 'dash']);
+
+/** Range of a move as cast by `e`: projectiles/beams reach further for stage-1 and stage-2 casters. */
+export function effectiveRange(e: Entity, move: MC): number {
+  if (CONTACT_STYLES.has(move.style)) return move.range;
+  return move.range * COMBAT.RANGE_STAGE_MULT[e.species.stage];
+}
+
 /** Effective kit for an entity (companions carry an all-damage override). */
 export function kitOf(e: Entity): [MC, MC] {
   if (e.kitOverride) return [getMove(e.kitOverride[0]), getMove(e.kitOverride[1])];
@@ -94,7 +103,7 @@ export class MoveSystem {
    */
   pickMove(e: Entity, dist: number, preferUtility = false, damageOnly = false): -1 | 0 | 1 {
     const kit = kitOf(e);
-    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= kit[i].range + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
+    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= effectiveRange(e, kit[i]) + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
     if (!usable.length) return -1;
     const util = usable.find((i) => kit[i].kind === 'utility');
     const dmg = usable.find((i) => kit[i].kind === 'damage');
@@ -129,7 +138,7 @@ export class MoveSystem {
       const d = len3(tp.x - caster.x, tp.y - caster.y, tp.z - caster.z);
       if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
-        if (d <= move.range * 1.5 + caster.species.size) this.applyHit(caster, p.target, move);
+        if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) this.applyHit(caster, p.target, move);
       } else {
         this.launch(caster, p.target, move);
       }

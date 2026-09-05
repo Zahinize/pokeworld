@@ -16,7 +16,7 @@ import { COMBAT, BOSS_TUNING } from '@/data/combatConfig';
 import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor } from '@/data/moves';
-import { kitOf } from '../sim/moveSystem';
+import { kitOf, effectiveRange } from '../sim/moveSystem';
 import { floorY } from './terrain';
 import type { Obstacle } from './terrain';
 import { ZONES, zoneAt } from './zones';
@@ -449,7 +449,7 @@ export class Ecosystem {
         const kit = kitOf(e);
         const move = kit[e.orderMove];
         const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
-        if (d <= move.range + e.species.size * 0.5) {
+        if (d <= effectiveRange(e, move) + e.species.size * 0.5) {
           if (this.moves.cast(e, e.orderMove, { kind: 'entity', id: t.id })) { e.orderTarget = -1; e.orderMove = -1; }
         } else {
           const k = e.species.burst / (d || 1);
@@ -518,7 +518,7 @@ export class Ecosystem {
     const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
     const vsPlayer = tgt === -2; // stat drops mean nothing to a trainer — use damage moves only
     const kit = kitOf(e).filter((m) => !vsPlayer || m.kind === 'damage');
-    const reach = Math.max(...kit.map((m) => m.range));
+    const reach = Math.max(...kit.map((m) => effectiveRange(e, m)));
     if (d > reach * 0.85) {
       // close the distance first — an avenging school visibly surges at its attacker
       const k = e.species.burst * 0.75 / (d || 1);

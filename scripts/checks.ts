@@ -31,6 +31,16 @@ console.log('Stat sanity');
   if (!bad) ok(`all ${SPECIES_LIST.length} species normalize into 30–200 (normStat(20)=${normStat(20)}, normStat(140)=${normStat(140)})`);
 }
 
+console.log('Range scaling');
+{
+  const { effectiveRange } = await import('@/engine/sim/moveSystem');
+  const fake = (stage: 0 | 1 | 2) => ({ species: { stage, size: 1 } } as any);
+  const r = [0, 1, 2].map((st) => effectiveRange(fake(st as 0 | 1 | 2), MOVES.waterPulse));
+  if (r[0] < r[1] && r[1] < r[2]) ok(`projectile range scales by stage: Water Pulse ${r.map((x) => x.toFixed(1)).join(' → ')} m`); else fail(`range not scaling: ${r.join(',')}`);
+  const melee = [0, 2].map((st) => effectiveRange(fake(st as 0 | 2), MOVES.crunch));
+  if (melee[0] === melee[1]) ok(`contact moves keep natural reach (Crunch ${melee[0]} m at any stage)`); else fail('melee reach should not scale');
+}
+
 console.log('Damage formula');
 {
   const rand = () => 0.5; // deterministic midpoint
