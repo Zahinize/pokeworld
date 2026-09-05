@@ -11,7 +11,7 @@ import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, objectiveDone, type MissionState } from './sim/mission';
 import { randomSeed } from './rng';
 import { maxHpOf, preloadSpeciesData } from '@/pokeapi/client';
-import { preloadSprites, rememberSheet, type SpriteSheet } from '@/render/pokemon/sprites';
+import { preloadSprites, rememberSheet, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
 import { useStore } from '@/state/store';
 import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
@@ -277,6 +277,11 @@ export class GameSession {
   setParty(speciesIds: string[]) {
     if (!this.eco) return;
     this.party = speciesIds.slice(0, COMBAT.PARTY_SIZE);
+    // Load front + back sheets for the party in the background; the renderer picks them up when ready
+    for (const id of this.party) {
+      loadSpriteSheet(id, 'front').then((sh) => this.sheets.set(sheetKey(id, 'front'), sh));
+      loadSpriteSheet(id, 'back').then((sh) => this.sheets.set(sheetKey(id, 'back'), sh));
+    }
     this.downedSpecies = [];
     for (const id of this.activePartners) if (id >= 0) this.eco.removePartner(id);
     this.activePartners = [-1, -1];

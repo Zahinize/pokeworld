@@ -205,6 +205,34 @@ a { color: var(--aqua); }
 .restore-banner .eyebrow { color: var(--gold); }
 .restore-banner b { font-family: var(--font-display); font-size: 20px; }
 
+/* Party (companions) */
+.party-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; margin-top: 12px; max-height: 200px; overflow: auto; }
+.party-cell { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px; position: relative; }
+.party-cell .n { font-size: 11.5px; font-weight: 700; }
+.party-cell .slot { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 6px; background: rgba(255,255,255,.12); color: var(--muted); }
+.party-cell .slot.active { background: rgba(53,208,255,.25); color: var(--aqua); }
+.party-bar { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(104px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; width: 216px; }
+.party-card { padding: 8px 10px; border-radius: 14px; }
+.party-card.dueling { border-color: rgba(255,209,102,.55); box-shadow: 0 0 14px rgba(255,209,102,.25); }
+.party-card.empty { display: flex; align-items: center; justify-content: space-between; }
+.party-card .pn { font-size: 12.5px; font-weight: 800; }
+.party-card .duel-tag { margin-left: 6px; }
+.party-card .php { height: 5px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; margin-top: 3px; }
+.party-card .php i { display: block; height: 100%; border-radius: 999px; transition: width .3s; }
+.party-card .moves { display: flex; gap: 6px; margin-top: 6px; }
+.move-btn { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 5px 8px; border-radius: 9px; background: rgba(53,208,255,.14); border: 1px solid rgba(53,208,255,.3); color: var(--text); font-size: 11px; font-weight: 700; }
+.move-btn:hover { background: rgba(53,208,255,.24); }
+.move-btn.cooling { background: rgba(255,255,255,.05); border-color: var(--line); color: var(--dim); }
+.move-btn .mn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.move-btn .cd { font-variant-numeric: tabular-nums; color: var(--gold); }
+.move-btn .kbd { font-size: 9.5px; padding: 1px 4px; }
+.reserves { display: flex; gap: 4px; }
+.reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
+.reserve-chip:hover { border-color: var(--line-strong); }
+.reserve-chip.down { opacity: .35; }
+.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(240px + var(--safe-bottom)); width: 180px; }
+.hud.touch .move-btn { min-height: 34px; }
+
 /* Player vitals */
 .player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }
 .player-hp .ic { font-size: 16px; }

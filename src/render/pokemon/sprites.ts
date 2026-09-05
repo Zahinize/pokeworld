@@ -22,8 +22,14 @@ export interface SpriteSheet {
   fallback: boolean;
 }
 
+export type SpriteVariant = 'front' | 'back';
+
 const cache = new Map<string, Promise<SpriteSheet>>();
 const MAX_FRAMES = 64;
+
+export function sheetKey(speciesId: string, variant: SpriteVariant = 'front') {
+  return variant === 'front' ? speciesId : `${speciesId}:back`;
+}
 
 function makeFallback(speciesId: string): SpriteSheet {
   const c = document.createElement('canvas'); c.width = 128; c.height = 128;
@@ -40,8 +46,9 @@ function makeFallback(speciesId: string): SpriteSheet {
   return { speciesId, texture: tex, cols: 1, rows: 1, frames: 1, frameTime: 1, aspect: 1, fill: 0.5, fallback: true };
 }
 
-async function decode(speciesId: string): Promise<SpriteSheet> {
-  const url = SPECIES[speciesId].sprite;
+async function decode(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
+  const front = SPECIES[speciesId].sprite;
+  const url = variant === 'front' ? front : front.replace('/sprites/pokemon/', '/sprites/pokemon/back/');
   const res = await fetch(url, { cache: 'force-cache' });
   if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
@@ -97,11 +104,16 @@ async function decode(speciesId: string): Promise<SpriteSheet> {
   return { speciesId, texture: tex, cols, rows, frames: frames.length, frameTime: Math.max(0.03, (delaySum / frames.length) / 1000), aspect: W / H, fill: opaque, fallback: false };
 }
 
-export function loadSpriteSheet(speciesId: string): Promise<SpriteSheet> {
-  let p = cache.get(speciesId);
+export function loadSpriteSheet(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
+  const key = sheetKey(speciesId, variant);
+  let p = cache.get(key);
   if (!p) {
-    p = decode(speciesId).catch((err) => { console.warn('[sprites] fallback for', speciesId, err); return makeFallback(speciesId); });
-    cache.set(speciesId, p);
+    p = decode(speciesId, variant).catch((err) => {
+      console.warn('[sprites] fallback for', key, err);
+      // back sprite missing → fall back to the front sheet
+      return variant === 'back' ? loadSpriteSheet(speciesId, 'front') : makeFallback(speciesId);
+    });
+    cache.set(key, p);
   }
   return p;
 }

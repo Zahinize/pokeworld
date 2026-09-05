@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
+import { sheetKey } from './sprites';
 import type { SpriteSheet } from './sprites';
 import type { Entity } from '@/engine/ai/types';
 
@@ -167,9 +168,13 @@ export function PokemonLayer() {
     const time = state.clock.elapsedTime;
     camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
 
-    // Count per species
+    // Count per batch key (partners swim ahead of you showing their backs; they turn for duels)
+    const keyOf = (e: (typeof eco.alive)[number]) => {
+      if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'back'))) return sheetKey(e.species.id, 'back');
+      return e.species.id;
+    };
     const counts = new Map<string, number>();
-    for (const e of eco.alive) counts.set(e.species.id, (counts.get(e.species.id) ?? 0) + 1);
+    for (const e of eco.alive) { const k = keyOf(e); counts.set(k, (counts.get(k) ?? 0) + 1); }
     // Ensure batches exist with capacity
     for (const [sid, n] of counts) {
       let b = batches.current.get(sid);
@@ -187,8 +192,8 @@ export function PokemonLayer() {
 
     let haloN = 0;
     for (const e of eco.alive) {
-      const b = batches.current.get(e.species.id);
-      if (!b) continue;
+      const b = batches.current.get(keyOf(e)) ?? batches.current.get(e.species.id);
+      if (!b || b.mesh.count >= b.capacity) continue;
       const i = b.mesh.count++;
       // facing: flip based on velocity projected on camera right; hysteresis to avoid flicker
       const dot = e.vx * camRight.x + e.vz * camRight.z;

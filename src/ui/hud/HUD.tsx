@@ -100,6 +100,65 @@ function LureButton() {
   );
 }
 
+const MOVE_KEYS: [string, string][] = [['Q', 'F'], ['Z', 'V']];
+
+function PartyBar() {
+  const party = useStore((s) => s.hud.party);
+  const isTouch = useStore((s) => s.isTouch);
+  const [swapFor, setSwapFor] = useState<string | null>(null);
+  if (!session.companionsEnabled || party.list.length === 0) return null;
+  const reserves = party.list.filter((id) => !party.active.some((a) => a?.speciesId === id));
+  return (
+    <div className="party-bar interactive">
+      {party.active.map((a, slot) => a ? (
+        <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
+          <div className="row" style={{ gap: 8 }}>
+            <SpriteImg id={a.speciesId} size={40} />
+            <div className="grow">
+              <div className="pn">{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag">⚔</span>}</div>
+              <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
+            </div>
+          </div>
+          <div className="moves">
+            {a.moves.map((mv, mi) => {
+              const cd = a.cd[mi];
+              return (
+                <button key={mi} className={`move-btn ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0} onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                  <span className="mn">{mv}</span>
+                  {cd > 0 ? <span className="cd">{cd.toFixed(1)}</span> : !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div key={slot} className="party-card glass empty">
+          <div className="muted small">Slot {slot + 1} empty</div>
+          {reserves.length > 0 && <button className="btn ghost" style={{ minHeight: 30, padding: '0 10px', fontSize: 12 }} onClick={() => setSwapFor(`slot${slot}`)}>Send out</button>}
+        </div>
+      ))}
+      {reserves.length > 0 && (
+        <div className="reserves">
+          {reserves.map((id) => {
+            const down = party.downed.includes(id);
+            return (
+              <button key={id} className={`reserve-chip ${down ? 'down' : ''}`} disabled={down} title={down ? `${SPECIES[id].name} is exhausted` : `Send out ${SPECIES[id].name}`}
+                onClick={() => {
+                  const slot = party.active[0] === null ? 0 : party.active[1] === null ? 1 : 0;
+                  session.swapPartner(slot as 0 | 1, id);
+                  setSwapFor(null);
+                }}>
+                <SpriteImg id={id} size={28} unseen={down} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {swapFor && null}
+    </div>
+  );
+}
+
 function PlayerVitals() {
   const hp = useStore((s) => s.hud.playerHp);
   const hitSeq = useStore((s) => s.hud.playerHitSeq);
@@ -247,6 +306,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
       <Row keys={<><K k="Tab" /> · <K k="C" /></>}>mission · collection</Row>
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
+      {session.companionsEnabled && <Row keys={<><K k="Q" /><K k="F" /> · <K k="Z" /><K k="V" /></>}><b>companion moves</b> · aim with the crosshair</Row>}
     </div>
   );
 }
@@ -303,6 +363,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           <LureButton />
         </div>
         <PlayerVitals />
+        <PartyBar />
         <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}

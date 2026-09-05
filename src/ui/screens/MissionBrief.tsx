@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getLevel, missionTotal } from '@/data/levels';
 import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 import type { CurrentRun } from '@/persistence';
+import { SPECIES_LIST, SPECIES } from '@/data/species';
+import { SpriteImg } from '../components/common';
+import { COMBAT } from '@/data/combatConfig';
 
 export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { levelId: number; seed?: number; resume?: CurrentRun | null; onEnter: () => void; onBack: () => void }) {
   const level = getLevel(levelId);
@@ -13,6 +16,19 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const [error, setError] = useState<string | null>(null);
   const isTouch = useStore((s) => s.isTouch);
   const mission = useStore((s) => s.mission);
+  const collection = useStore((s) => s.save.collection);
+  const savedParty = useStore((s) => s.save.party);
+  const setSavedParty = useStore((s) => s.setSavedParty);
+  const caught = useMemo(() => SPECIES_LIST.filter((sp) => (collection[sp.id]?.caught ?? 0) > 0 && !sp.bossOnly).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
+  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((id) => (collection[id]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
+  const toggleParty = (id: string) => {
+    Audio.uiClick();
+    setParty((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= COMBAT.PARTY_SIZE ? prev : [...prev, id]);
+  };
+  const enter = () => {
+    if (level.companions) { setSavedParty(party); session.setParty(party); }
+    onEnter();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -42,6 +58,34 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
               {m.bottom > 0 && <BriefRow icon="🪨" label="Bottom Dweller" count={m.bottom} done={objectives?.find((o) => o.id === 'bottom')} />}
               {m.defensive > 0 && <BriefRow icon="🫧" label="Defensive Fish" count={m.defensive} done={objectives?.find((o) => o.id === 'defensive')} />}
             </div>
+            {level.companions && (
+              <>
+                <div className="hr" style={{ margin: '16px 0' }} />
+                <div className="row between wrap">
+                  <div>
+                    <div className="eyebrow">Your Party</div>
+                    <div className="muted small">Pick up to {COMBAT.PARTY_SIZE} from your collection — the first two swim at your side. Their moves weaken wild Pokémon for easier catches.</div>
+                  </div>
+                  <span className={`badge ${party.length ? 'aqua' : 'red'}`}>{party.length} / {COMBAT.PARTY_SIZE}</span>
+                </div>
+                {caught.length === 0 ? (
+                  <p className="muted small" style={{ marginTop: 10 }}>You haven't caught any Pokémon yet — replay an earlier level to build a team.</p>
+                ) : (
+                  <div className="party-grid">
+                    {caught.map((sp) => {
+                      const idx = party.indexOf(sp.id);
+                      return (
+                        <button key={sp.id} className={`card clickable party-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(sp.id)} aria-pressed={idx >= 0}>
+                          <SpriteImg id={sp.id} size={48} />
+                          <span className="n">{sp.name}</span>
+                          {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
             <p className="muted small" style={{ marginTop: 14 }}>
               The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.
               {resume ? ' Resuming your previous dive.' : ''}
@@ -57,7 +101,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                 </div>
                 <div className="row">
                   <button className="btn ghost" onClick={() => { Audio.uiClick(); onBack(); }}>← Back</button>
-                  <button className="btn primary big" disabled={!ready} onClick={() => { Audio.uiConfirm(); onEnter(); }}>{isTouch ? 'Dive in' : 'Enter Reef'} →</button>
+                  <button className="btn primary big" disabled={!ready || (level.companions && party.length === 0)} onClick={() => { Audio.uiConfirm(); enter(); }}>{isTouch ? 'Dive in' : 'Enter Reef'} →</button>
                 </div>
               </div>
             )}
