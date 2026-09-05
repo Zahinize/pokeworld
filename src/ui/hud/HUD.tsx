@@ -100,6 +100,36 @@ function LureButton() {
   );
 }
 
+function PlayerVitals() {
+  const hp = useStore((s) => s.hud.playerHp);
+  const hitSeq = useStore((s) => s.hud.playerHitSeq);
+  const frac = Math.max(0, Math.min(1, hp / 100));
+  return (
+    <>
+      <div className="player-hp glass" title="Your health">
+        <span className="ic">{frac > 0.6 ? '🤿' : frac > 0.3 ? '😨' : '🆘'}</span>
+        <div className="bar"><i style={{ width: `${frac * 100}%`, background: frac > 0.6 ? 'linear-gradient(90deg,#35d0ff,#7ff0c9)' : frac > 0.3 ? 'linear-gradient(90deg,#ffd166,#ff9f43)' : 'linear-gradient(90deg,#ff7a7a,#f43f5e)' }} /></div>
+        <b className="mono">{Math.round(hp)}</b>
+      </div>
+      {hitSeq > 0 && <div key={hitSeq} className="hit-vignette" />}
+    </>
+  );
+}
+
+function RecoveryOverlay() {
+  const recovering = useStore((s) => s.hud.recovering);
+  if (recovering <= 0) return null;
+  return (
+    <div className="recovery-overlay">
+      <div className="inner">
+        <div className="eyebrow">You're exhausted…</div>
+        <div className="count">{Math.ceil(recovering)}</div>
+        <div className="muted small">Recovering — the current is carrying you to safety</div>
+      </div>
+    </div>
+  );
+}
+
 function Toasts() {
   const toasts = useStore((s) => s.toasts);
   const pop = useStore((s) => s.popToast);
@@ -272,6 +302,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {tray}
           <LureButton />
         </div>
+        <PlayerVitals />
         <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}
@@ -284,6 +315,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           </div>
         </div>
       )}
+      <RecoveryOverlay />
       {overlay === 'pause' && <PauseOverlay onQuit={onQuit} />}
       {overlay === 'collection' && <div className="overlay"><CollectionView embedded onClose={() => { setOverlay('pause'); }} /></div>}
       {overlay === 'settings' && <div className="overlay"><div style={{ width: 'min(100%, 600px)' }}><SettingsView embedded onClose={() => setOverlay('pause')} /></div></div>}

@@ -17,6 +17,7 @@ import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
+import { COMBAT } from '@/data/combatConfig';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt } from './world/zones';
@@ -53,6 +54,12 @@ export class GameSession {
   elapsed = 0;
   ballsUsed = 0;
   lureCooldown = 0;
+  playerHp: number = COMBAT.PLAYER_MAX_HP;
+  /** Seconds left of the downed-recovery countdown (0 = not recovering). */
+  recoveringT = 0;
+  /** Post-respawn calm: incoming damage ignored. */
+  private calmT = 0;
+  private regenGrace = 0;
   prepareProgress = 0;
   private hudAcc = 0;
   private audioAcc = 0;
@@ -102,6 +109,8 @@ export class GameSession {
     this.timeOfDay = this.level.timeOfDay;
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
     this.prepareProgress = 1;
     this.phase = 'ready';
     const store = useStore.getState();
@@ -195,7 +204,7 @@ export class GameSession {
 
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
   throwBall(dirX: number, dirY: number, dirZ: number): boolean {
-    if (!this.playing || !this.eco) return false;
+    if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
     const inv = { ...store.save.inventory };
@@ -221,8 +230,38 @@ export class GameSession {
     return true;
   }
 
+  /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. */
+  applyPlayerDamage(amount: number) {
+    if (this.recoveringT > 0 || this.calmT > 0 || this.phase !== 'playing') return;
+    this.playerHp = Math.max(0, this.playerHp - amount);
+    this.regenGrace = COMBAT.PLAYER_REGEN_GRACE;
+    const store = useStore.getState();
+    store.setHud({ playerHp: this.playerHp, playerHitSeq: store.hud.playerHitSeq + 1 });
+    if (this.playerHp <= 0) this.beginRecovery();
+  }
+
+  private beginRecovery() {
+    this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
+    this.input.forward = this.input.strafe = this.input.up = 0;
+    Audio.ko();
+    useStore.getState().setHud({ recovering: this.recoveringT });
+  }
+
+  private finishRecovery() {
+    const eco = this.eco!;
+    const spot = eco.randomSafePlayerSpot(COMBAT.PLAYER_RESPAWN_SAFE_DIST);
+    this.player.reset(spot.x, spot.y, spot.z, this.player.yaw);
+    this.playerHp = Math.round(COMBAT.PLAYER_MAX_HP * COMBAT.PLAYER_RESPAWN_HP_FRAC);
+    this.calmT = COMBAT.PLAYER_RESPAWN_CALM;
+    this.recoveringT = 0;
+    Audio.restore();
+    const store = useStore.getState();
+    store.setHud({ playerHp: this.playerHp, recovering: 0 });
+    store.pushToast({ kind: 'info', title: 'You recovered', body: 'The current carried you somewhere calmer. Catch your breath.', ttl: 4 });
+  }
+
   activateLure(): boolean {
-    if (!this.playing || !this.eco || this.lureCooldown > 0 || this.eco.lureRemaining > 0) return false;
+    if (!this.playing || !this.eco || this.lureCooldown > 0 || this.eco.lureRemaining > 0 || this.recoveringT > 0) return false;
     this.eco.activateLure();
     this.lureCooldown = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
     Audio.lure();
@@ -238,6 +277,16 @@ export class GameSession {
     const eco = this.eco!;
     dt = Math.min(dt, 0.05);
     this.elapsed += dt;
+    // Player HP: recovery countdown, post-respawn calm, regen
+    if (this.recoveringT > 0) {
+      this.recoveringT -= dt;
+      this.input.forward = this.input.strafe = this.input.up = 0; this.input.sprint = false;
+      if (this.recoveringT <= 0) this.finishRecovery();
+    } else {
+      if (this.calmT > 0) this.calmT -= dt;
+      if (this.regenGrace > 0) this.regenGrace -= dt;
+      else if (this.playerHp < COMBAT.PLAYER_MAX_HP) this.playerHp = Math.min(COMBAT.PLAYER_MAX_HP, this.playerHp + COMBAT.PLAYER_REGEN_PER_SEC * dt);
+    }
     // Day cycle
     this.timeOfDay = (this.timeOfDay + dt / (this.level.dayCycleMinutes * 60)) % 1;
     lightingAt(this.timeOfDay, this.lighting);
@@ -471,6 +520,7 @@ export class GameSession {
     }
     const zone = zoneAt(p.x, p.z);
     store.setHud({
+      playerHp: Math.round(this.playerHp), recovering: Math.max(0, this.recoveringT),
       lureRemaining: eco.lureRemaining, lureCooldown: this.lureCooldown,
       predatorAlert: !!hunting, huntingSpecies: hunting ? hunting.species.id : null,
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,

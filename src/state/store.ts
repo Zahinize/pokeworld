@@ -33,6 +33,9 @@ export interface HudState {
   depth: number;
   atRisk: string[];
   nearestTarget: { speciesId: string; distance: number; dx: number; dz: number } | null;
+  playerHp: number;
+  playerHitSeq: number;
+  recovering: number;
   hint: string | null;
   fps: number;
   ecoSummary: string[];
@@ -89,7 +92,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, hint: null, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, hint: null, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,

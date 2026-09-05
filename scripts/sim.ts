@@ -94,5 +94,29 @@ for (const levelId of [1, 2]) {
   if (predDamage > 0) ok(`avenging school dealt ${predDamage} damage to predators`); else fail('predators took no damage from the avenging school');
 }
 
+// ---- Player damage + safe respawn (step 4) ----
+{
+  const gen = generateEcosystem(getLevel(1), 7);
+  const eco = new Ecosystem(gen, hp);
+  let playerDamage = 0;
+  eco.onPlayerDamage = (amount) => { playerDamage += amount; };
+  const pred = eco.alive.find((e) => e.behavior === 'predator')!;
+  const p = { x: pred.x + 4, y: pred.y, z: pred.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  for (let tries = 0; tries < 30 && playerDamage === 0; tries++) {
+    pred.mcd = [0, 0]; pred.stunT = 0;
+    eco.maybeRetaliate(pred, -2);
+    for (let i = 0; i < 4 * 60; i++) { eco.update(1 / 60, p, 0); }
+    eco.drainEvents();
+    p.x = pred.x + 4; p.y = pred.y; p.z = pred.z;
+  }
+  if (playerDamage > 0) ok(`predator retaliation damaged the player (${playerDamage} total)`); else fail('predator never damaged the player');
+  const spot = eco.randomSafePlayerSpot(30);
+  let dMin = Infinity;
+  for (const e of eco.alive) if (e.behavior === 'predator') dMin = Math.min(dMin, Math.hypot(e.x - spot.x, e.y - spot.y, e.z - spot.z));
+  const inBounds = Math.hypot(spot.x, spot.z) < 150 && spot.y < -4 && spot.y > -70;
+  if (inBounds) ok(`safe respawn in bounds at depth ${(-spot.y).toFixed(0)}m, nearest predator ${dMin === Infinity ? '∞' : dMin.toFixed(0)}m`); else fail(`respawn out of bounds: ${JSON.stringify(spot)}`);
+  if (dMin === Infinity || dMin >= 20) ok('respawn keeps distance from predators'); else fail(`respawn too close to a predator (${dMin.toFixed(1)}m)`);
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

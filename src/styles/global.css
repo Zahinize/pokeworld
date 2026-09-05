@@ -205,6 +205,19 @@ a { color: var(--aqua); }
 .restore-banner .eyebrow { color: var(--gold); }
 .restore-banner b { font-family: var(--font-display); font-size: 20px; }
 
+/* Player vitals */
+.player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }
+.player-hp .ic { font-size: 16px; }
+.player-hp .bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid var(--line); }
+.player-hp .bar i { display: block; height: 100%; border-radius: 999px; transition: width .3s ease; box-shadow: 0 0 10px rgba(53,208,255,.5); }
+.player-hp b { font-size: 12.5px; min-width: 26px; text-align: right; }
+.hud.touch .player-hp { bottom: auto; top: calc(64px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: 150px; padding: 6px 10px; }
+.hit-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 25; background: radial-gradient(ellipse at center, transparent 55%, rgba(244,63,94,.5) 100%); animation: hitFlash .55s ease-out forwards; }
+@keyframes hitFlash { 0% { opacity: 0 } 15% { opacity: 1 } 100% { opacity: 0 } }
+.recovery-overlay { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(4, 22, 42, .55), rgba(2, 8, 18, .85)); animation: fadeUp .4s ease both; pointer-events: auto; }
+.recovery-overlay .inner { text-align: center; }
+.recovery-overlay .count { font-family: var(--font-display); font-weight: 900; font-size: 84px; color: var(--aqua); text-shadow: 0 0 40px rgba(53,208,255,.5); animation: pulse 1s ease-in-out infinite; }
+
 /* Toasts */
 .toasts { display: flex; flex-direction: column; gap: 8px; width: min(320px, calc(100vw - 28px)); align-items: stretch; }
 .toasts:empty { display: none; }

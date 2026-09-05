@@ -31,7 +31,7 @@ export interface SimContext {
   /** Cast a move (slot 0/1) at a target. Returns false when not ready/in range. */
   cast(e: Entity, slot: 0 | 1, target: MoveTarget): boolean;
   /** Best ready move slot for a target at `dist`, or -1. */
-  pickMove(e: Entity, dist: number, preferUtility?: boolean): -1 | 0 | 1;
+  pickMove(e: Entity, dist: number, preferUtility?: boolean, damageOnly?: boolean): -1 | 0 | 1;
   moveReady(e: Entity, slot: 0 | 1): boolean;
 }
 

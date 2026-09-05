@@ -75,9 +75,9 @@ export class MoveSystem {
    * Pick the best ready move against a target at `dist`: damage preferred; utilities used to open
    * or when defending. Returns the slot or -1.
    */
-  pickMove(e: Entity, dist: number, preferUtility = false): -1 | 0 | 1 {
+  pickMove(e: Entity, dist: number, preferUtility = false, damageOnly = false): -1 | 0 | 1 {
     const kit = movesFor(e.species.id);
-    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= kit[i].range + e.species.size * 0.5 + 0.5);
+    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= kit[i].range + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
     if (!usable.length) return -1;
     const util = usable.find((i) => kit[i].kind === 'utility');
     const dmg = usable.find((i) => kit[i].kind === 'damage');

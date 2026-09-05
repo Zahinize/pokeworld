@@ -63,7 +63,7 @@ export class Ecosystem {
       predatorGraceOver: false, current: this.current,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
       cast: (e, slot, target) => this.moves.cast(e, slot, target),
-      pickMove: (e, dist, preferUtility) => this.moves.pickMove(e, dist, preferUtility),
+      pickMove: (e, dist, preferUtility, damageOnly) => this.moves.pickMove(e, dist, preferUtility, damageOnly),
       moveReady: (e, slot) => this.moves.ready(e, slot),
     };
     this.moves = new MoveSystem({
@@ -385,8 +385,9 @@ export class Ecosystem {
       return;
     }
     const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
-    const kit = movesFor(e.species.id);
-    const reach = Math.max(kit[0].range, kit[1].range);
+    const vsPlayer = tgt === -2; // stat drops mean nothing to a trainer — use damage moves only
+    const kit = movesFor(e.species.id).filter((m) => !vsPlayer || m.kind === 'damage');
+    const reach = Math.max(...kit.map((m) => m.range));
     if (d > reach * 0.85) {
       // close the distance first — an avenging school visibly surges at its attacker
       const k = e.species.burst * 0.75 / (d || 1);
@@ -397,7 +398,7 @@ export class Ecosystem {
       e.dx = (pos.x - e.x) * 0.15; e.dy = (pos.y - e.y) * 0.1; e.dz = (pos.z - e.z) * 0.15;
       e.maxSpeed = e.species.speed * 0.5;
       if (e.stateT > 0.3) {
-        const slot = this.moves.pickMove(e, d, false);
+        const slot = this.moves.pickMove(e, d, false, vsPlayer);
         if (slot !== -1) {
           this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
           e.stateT = 10; // resolved on next think via the timeout branch
@@ -536,6 +537,23 @@ export class Ecosystem {
   get nextPredatorRespawn(): number | null {
     if (!this.pendingRespawn.length) return null;
     return Math.max(0, Math.min(...this.pendingRespawn.map((r) => r.at)) - this.time);
+  }
+
+  /** Random safe spot for a downed player: mid-depth, in bounds, ≥ minDist from every predator. */
+  randomSafePlayerSpot(minDist: number): Vec3 {
+    let best: Vec3 = { x: 0, y: -14, z: 0 }, bestScore = -1;
+    for (let i = 0; i < 24; i++) {
+      const a = this.rng.next() * Math.PI * 2;
+      const r = Math.sqrt(this.rng.next()) * (GAME.PLAYER_BOUNDS_RADIUS - 20);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const fy = floorY(x, z);
+      const y = Math.min(-6, Math.max(fy + 4, fy + (-(6) - fy) * (0.3 + this.rng.next() * 0.4)));
+      let dPred = Infinity;
+      for (const e of this.alive) if (e.behavior === 'predator') dPred = Math.min(dPred, len3(e.x - x, e.y - y, e.z - z));
+      if (dPred >= minDist) return { x, y, z };
+      if (dPred > bestScore) { bestScore = dPred; best = { x, y, z }; }
+    }
+    return best; // farthest-from-predators fallback
   }
 
   drainEvents(): EcoEvent[] { const ev = this.events.splice(0); return ev; }
