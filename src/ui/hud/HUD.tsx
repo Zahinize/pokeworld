@@ -106,7 +106,6 @@ const MOVE_KEYS: [string, string][] = [['Q', 'F'], ['Z', 'V']];
 function PartyBar() {
   const party = useStore((s) => s.hud.party);
   const isTouch = useStore((s) => s.isTouch);
-  const [swapFor, setSwapFor] = useState<string | null>(null);
   if (!session.companionsEnabled || party.list.length === 0) return null;
   const reserves = party.list.filter((id) => !party.active.some((a) => a?.speciesId === id));
   return (
@@ -134,8 +133,8 @@ function PartyBar() {
         </div>
       ) : (
         <div key={slot} className="party-card glass empty">
-          <div className="muted small">Slot {slot + 1} empty</div>
-          {reserves.length > 0 && <button className="btn ghost" style={{ minHeight: 30, padding: '0 10px', fontSize: 12 }} onClick={() => setSwapFor(`slot${slot}`)}>Send out</button>}
+          <div className="muted small">Slot {slot + 1} empty{reserves.length > 0 && !isTouch ? <span className="dim"> · press <span className="kbd">{MOVE_KEYS[slot][0]}</span></span> : ''}</div>
+          {reserves.length > 0 && <button className="btn ghost" style={{ minHeight: 30, padding: '0 10px', fontSize: 12 }} onClick={() => session.sendNextReserve(slot as 0 | 1)}>Send out</button>}
         </div>
       ))}
       {reserves.length > 0 && (
@@ -147,7 +146,6 @@ function PartyBar() {
                 onClick={() => {
                   const slot = party.active[0] === null ? 0 : party.active[1] === null ? 1 : 0;
                   session.swapPartner(slot as 0 | 1, id);
-                  setSwapFor(null);
                 }}>
                 <SpriteImg id={id} size={28} unseen={down} />
               </button>
@@ -155,7 +153,6 @@ function PartyBar() {
           })}
         </div>
       )}
-      {swapFor && null}
     </div>
   );
 }

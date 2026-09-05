@@ -62,6 +62,8 @@ export class GameSession {
   activePartners: [number, number] = [-1, -1];
   /** Species knocked out this level (out until the level ends). */
   downedSpecies: string[] = [];
+  /** Pending automatic reserve send-outs after a knockout: [slot, sim time]. */
+  private autoSend: [number, number][] = [];
   /** Boss waves: index of the next wave to unleash (-1 = no boss level or all done). */
   private bossWave = -1;
   private bossPhaseActive = false;
@@ -124,7 +126,7 @@ export class GameSession {
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
     this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
-    this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0;
+    this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -356,6 +358,17 @@ export class GameSession {
     this.syncPartyHud();
   }
 
+  /** Send out the next available reserve into `slot`. Returns the species sent, if any. */
+  sendNextReserve(slot: 0 | 1): string | null {
+    if (!this.eco) return null;
+    const activeSpecies = this.activePartners.map((id) => (id >= 0 ? this.eco!.byId.get(id)?.species.id : undefined));
+    const next = this.party.find((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+    if (!next) return null;
+    if (!this.swapPartner(slot, next)) return null;
+    useStore.getState().pushToast({ kind: 'info', title: `Go, ${getSpecies(next).name}!`, speciesId: next, ttl: 3 });
+    return next;
+  }
+
   /** Swap the active companion in `slot` for a reserve species. */
   swapPartner(slot: 0 | 1, speciesId: string): boolean {
     if (!this.eco || !this.party.includes(speciesId) || this.downedSpecies.includes(speciesId)) return false;
@@ -373,7 +386,8 @@ export class GameSession {
   castPartnerMove(slot: 0 | 1, moveSlot: 0 | 1): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const partner = this.eco.byId.get(this.activePartners[slot]);
-    if (!partner || partner.state === 'ko') return false;
+    // Empty slot? The same key sends out the next reserve — no mouse needed while pointer-locked.
+    if (!partner || partner.state === 'ko') { this.sendNextReserve(slot); return false; }
     if (!this.eco.moves.ready(partner, moveSlot)) return false;
     const target = this.aimedEntity(45);
     if (!target) return false;
@@ -459,6 +473,12 @@ export class GameSession {
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
+    for (let i = this.autoSend.length - 1; i >= 0; i--) {
+      const [slot, at] = this.autoSend[i];
+      if (eco.time < at) continue;
+      this.autoSend.splice(i, 1);
+      if (this.phase === 'playing' && this.activePartners[slot as 0 | 1] < 0) this.sendNextReserve(slot as 0 | 1);
+    }
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t > 1.4) this.fx.splice(i, 1); }
     for (let i = this.numbers.length - 1; i >= 0; i--) { this.numbers[i].t += dt; if (this.numbers[i].t > 1.1) this.numbers.splice(i, 1); }
     // Events
@@ -568,9 +588,13 @@ export class GameSession {
           const sp = getSpecies(ev.speciesId);
           this.downedSpecies.push(sp.id);
           const slot = this.activePartners.indexOf(ev.entityId);
-          if (slot >= 0) this.activePartners[slot as 0 | 1] = -1;
+          if (slot >= 0) {
+            this.activePartners[slot as 0 | 1] = -1;
+            this.autoSend.push([slot, (this.eco?.time ?? 0) + 2.5]); // a reserve dives in on its own
+          }
           Audio.ko();
-          store.pushToast({ kind: 'warn', title: `${sp.name} is exhausted!`, body: 'It returned to its ball. Swap in a reserve from the party bar.', speciesId: sp.id, ttl: 5 });
+          const hasReserve = this.party.some((id) => !this.downedSpecies.includes(id) && !this.activePartners.some((pid) => pid >= 0 && eco.byId.get(pid)?.species.id === id));
+          store.pushToast({ kind: 'warn', title: `${sp.name} is exhausted!`, body: hasReserve ? 'A reserve is diving in…' : 'No reserves left — fight carefully.', speciesId: sp.id, ttl: 4 });
           this.syncPartyHud();
           break;
         }
@@ -696,16 +720,27 @@ export class GameSession {
   private updateHud() {
     const eco = this.eco!; const store = useStore.getState(); const p = this.player;
     const hunting = eco.huntingNear(45);
-    // nearest outstanding mission target
+    // nearest outstanding mission target (group targets, stage-catch candidates, or the boss itself)
     let nearest: { speciesId: string; distance: number; dx: number; dz: number } | null = null;
     if (this.mission && !this.mission.complete) {
+      const open = this.mission.objectives.filter((o) => !objectiveDone(o));
+      const stageOpen = open.find((o) => o.kind === 'stageCatch');
+      const bossOpen = open.filter((o) => o.kind === 'boss');
+      // Bosses only matter once the catch phase is over and they're in the water
+      const bossSpecies = this.bossPhaseActive ? new Set(bossOpen.map((o) => o.speciesId)) : null;
+      const eligible = (e: Entity): boolean => {
+        if (e.role === 'partner' || e.state === 'ko' || e.state === 'caught' || e.state === 'removed') return false;
+        if (e.isBoss) return !!bossSpecies && bossSpecies.has(e.species.id);
+        if (bossSpecies) return false; // boss phase: the arrow leads to the boss
+        if (e.objectiveId) {
+          const o = open.find((x) => x.id === e.objectiveId);
+          if (o) return e.role === 'guardian' ? o.guardianRequired && !o.guardianCaught : o.caught < o.required;
+        }
+        return !!stageOpen && e.species.stage >= (stageOpen.minStage ?? 1);
+      };
       let bestD = Infinity;
       for (const e of eco.alive) {
-        if (!e.objectiveId || e.state === 'ko' || e.state === 'caught') continue;
-        const o = this.mission.objectives.find((x) => x.id === e.objectiveId);
-        if (!o) continue;
-        const ok = e.role === 'guardian' ? o.guardianRequired && !o.guardianCaught : o.caught < o.required;
-        if (!ok) continue;
+        if (!eligible(e)) continue;
         const d = len3(e.x - p.x, e.y - p.y, e.z - p.z);
         if (d < bestD) { bestD = d; nearest = { speciesId: e.species.id, distance: d, dx: e.x - p.x, dz: e.z - p.z }; }
       }
