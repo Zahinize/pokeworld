@@ -1,7 +1,8 @@
 # PokeWorld — Moves, Fighting & KO Mechanics
 
 **Design document · v1 · Sea World levels 1–4**
-Status: approved design, pre-implementation. Implementation lands step-by-step on `feature/game-mvp-0.1.0` per the roadmap in §12.
+Status: **implemented** (roadmap steps 1–7 landed on `feature/game-mvp-0.1.0`, Sep 2026). This document remains the
+reference for tuning; live dials are in `src/data/combatConfig.ts`, `src/data/moves.ts` and `src/data/gameConfig.ts`.
 
 ---
 
