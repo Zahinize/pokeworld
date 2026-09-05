@@ -34,6 +34,9 @@ export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused'
 
 export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number }
 
+/** Floating combat number consumed by the renderer. */
+export interface DamageNumber { text: string; color: string; x: number; y: number; z: number; t: number; big: boolean }
+
 export class GameSession {
   phase: SessionPhase = 'idle';
   level: LevelConfig = getLevel(1);
@@ -65,6 +68,12 @@ export class GameSession {
   /** Visual effects queue consumed by the renderer. */
   fx: FxEvent[] = [];
   private pushFx(type: FxEvent['type'], x: number, y: number, z: number, size = 1) { this.fx.push({ type, x, y, z, t: 0, size }); if (this.fx.length > 24) this.fx.shift(); }
+  /** Floating combat numbers (design §6). */
+  numbers: DamageNumber[] = [];
+  pushNumber(text: string, color: string, x: number, y: number, z: number, big = false) {
+    this.numbers.push({ text, color, x, y, z, t: 0, big });
+    if (this.numbers.length > 24) this.numbers.shift();
+  }
 
   onChange(fn: () => void) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   private emit() { for (const l of this.listeners) l(); }
@@ -242,6 +251,7 @@ export class GameSession {
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t > 1.4) this.fx.splice(i, 1); }
+    for (let i = this.numbers.length - 1; i >= 0; i--) { this.numbers[i].t += dt; if (this.numbers[i].t > 1.1) this.numbers.splice(i, 1); }
     // Events
     this.handleEcoEvents();
     this.handleBallEvents();
@@ -266,7 +276,38 @@ export class GameSession {
       switch (ev.type) {
         case 'hit': {
           const e = eco.byId.get(ev.entityId);
+          if (e) this.pushNumber(`-${ev.damage}`, '#ff8091', e.x, e.y + e.species.size * 0.5, e.z, ev.damage >= e.maxHp * 0.3);
           if (ev.by === 'predator' && near(e, 45)) Audio.predatorHit();
+          break;
+        }
+        case 'cast': {
+          const e = eco.byId.get(ev.casterId);
+          if (near(e, 45)) Audio.moveCast(ev.style);
+          break;
+        }
+        case 'moveHit': {
+          const t = eco.byId.get(ev.targetId);
+          if (t) this.pushFx('hit', t.x, t.y, t.z, t.species.size);
+          if (near(t, 45)) Audio.moveHit();
+          break;
+        }
+        case 'playerHit': {
+          Audio.playerHurt();
+          const p2 = this.player; const [fx2, fy2, fz2] = p2.forward();
+          this.pushNumber(`-${ev.damage}`, '#ff5a6e', p2.x + fx2 * 2, p2.y + fy2 * 2 - 0.4, p2.z + fz2 * 2, true);
+          this.pushFx('hit', p2.x + fx2 * 1.5, p2.y + fy2 * 1.5, p2.z + fz2 * 1.5, 1);
+          break;
+        }
+        case 'effect': {
+          const t = eco.byId.get(ev.targetId);
+          if (!t) break;
+          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect.toUpperCase();
+          this.pushNumber(label, ev.effect === 'defUp' || ev.effect === 'speedUp' ? '#7ff0c9' : '#ffd166', t.x, t.y + t.species.size * 0.6, t.z, false);
+          break;
+        }
+        case 'heal': {
+          const t = eco.byId.get(ev.targetId);
+          if (t) this.pushNumber(`+${ev.amount}`, '#4ade80', t.x, t.y + t.species.size * 0.5, t.z, false);
           break;
         }
         case 'ko': {

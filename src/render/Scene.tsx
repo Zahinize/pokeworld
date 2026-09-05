@@ -8,6 +8,7 @@ import { SceneLighting, WaterDome, SeaFloor, Rocks, Corals, Kelp, Particles, Lig
 import { PokemonLayer } from './pokemon/PokemonLayer';
 import { HealthBars } from './fx/HealthBars';
 import { Balls } from './balls/Balls';
+import { MoveProjectiles, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
 
 function GameLoop() {
@@ -73,6 +74,8 @@ export function Scene() {
         <PokemonLayer />
         <HealthBars />
         <Balls />
+        <MoveProjectiles />
+        <DamageNumbers />
       </Suspense>
       <CameraRig />
     </Canvas>

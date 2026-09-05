@@ -17,9 +17,10 @@ attribute float aAlpha;
 attribute float aFlash;
 attribute float aGlow;
 attribute float aSize;
+attribute float aStatus;
 uniform float uTime, uFrameTime, uFrames, uCols, uRows, uAspect;
 varying vec2 vUv;
-varying float vAlpha, vFlash, vGlow, vDepth, vWorldY;
+varying float vAlpha, vFlash, vGlow, vDepth, vWorldY, vStatus;
 void main() {
   float frame = mod(floor((uTime + aPhase) / uFrameTime), uFrames);
   float col = mod(frame, uCols);
@@ -37,7 +38,7 @@ void main() {
   vDepth = -mv.z;
   vWorldY = world.y;
   gl_Position = projectionMatrix * mv;
-  vAlpha = aAlpha; vFlash = aFlash; vGlow = aGlow;
+  vAlpha = aAlpha; vFlash = aFlash; vGlow = aGlow; vStatus = aStatus;
 }`;
 
 const FRAG = /* glsl */ `
@@ -47,11 +48,15 @@ uniform float uFogDensity;
 uniform float uLight;
 uniform float uTime;
 varying vec2 vUv;
-varying float vAlpha, vFlash, vGlow, vDepth, vWorldY;
+varying float vAlpha, vFlash, vGlow, vDepth, vWorldY, vStatus;
 void main() {
   vec4 tex = texture2D(uMap, vUv);
   if (tex.a < 0.45) discard;
   vec3 col = tex.rgb;
+  // status tints: 1=slow (frost), 2=blind (ink veil), 3=stun (white pulse)
+  if (vStatus > 2.5) col = mix(col, vec3(1.0), 0.35 + 0.25 * sin(uTime * 14.0));
+  else if (vStatus > 1.5) col = mix(col, vec3(0.1, 0.12, 0.2), 0.45);
+  else if (vStatus > 0.5) col = mix(col, vec3(0.55, 0.8, 1.0), 0.4);
   // water absorption with depth (reds go first)
   float depth = clamp(-vWorldY / 60.0, 0.0, 1.0);
   col *= mix(vec3(1.0), vec3(0.62, 0.85, 1.0), depth * 0.7);
@@ -101,6 +106,7 @@ interface SpeciesBatch {
   aFlash: THREE.InstancedBufferAttribute;
   aGlow: THREE.InstancedBufferAttribute;
   aSize: THREE.InstancedBufferAttribute;
+  aStatus: THREE.InstancedBufferAttribute;
   sheet: SpriteSheet;
 }
 
@@ -111,9 +117,9 @@ const facingMemo = new Map<number, number>();
 function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   const geo = planeGeo.clone();
   const mk = (n: number, def = 0) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(def), 1); a.setUsage(THREE.DynamicDrawUsage); return a; };
-  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1);
+  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1), aStatus = mk(capacity);
   geo.setAttribute('aPhase', aPhase); geo.setAttribute('aFlip', aFlip); geo.setAttribute('aAlpha', aAlpha);
-  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize);
+  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize); geo.setAttribute('aStatus', aStatus);
   const mat = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: true, side: THREE.DoubleSide,
     uniforms: {
@@ -126,7 +132,7 @@ function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   mesh.count = 0;
-  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, sheet };
+  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, aStatus, sheet };
 }
 
 export function PokemonLayer() {
@@ -204,6 +210,7 @@ export function PokemonLayer() {
       const glow = e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9)) : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
+      b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
       if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);
@@ -217,7 +224,7 @@ export function PokemonLayer() {
     for (const b of batches.current.values()) {
       if (b.mesh.count === 0) continue;
       b.mesh.instanceMatrix.needsUpdate = true;
-      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = true;
+      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = b.aStatus.needsUpdate = true;
       b.mat.uniforms.uTime.value = time;
       b.mat.uniforms.uFogColor.value.copy(light.sky);
       b.mat.uniforms.uFogDensity.value = light.fogDensity;

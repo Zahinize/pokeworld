@@ -9,6 +9,7 @@ export type EntityState =
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
   | 'inflate' | 'support' | 'lured' | 'breach'
+  | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -61,6 +62,23 @@ export interface Entity {
   /** Misc per-behavior timers. */
   t1: number;
   t2: number;
+
+  // ---- combat (moves) ----
+  /** Normalized combat stats, cached at spawn. */
+  cs: import('@/pokeapi/hp').CombatStats;
+  /** Per-move cooldown timers (seconds remaining). */
+  mcd: [number, number];
+  /** Stat stage multipliers with expiry (sim time). */
+  atkStage: number; atkStageUntil: number;
+  defStage: number; defStageUntil: number;
+  /** Status timers (seconds remaining). */
+  stunT: number; slowT: number; blindT: number;
+  /** Heal-over-time: hp/sec remaining seconds. */
+  hotRate: number; hotT: number;
+  /** Anti-chaos retaliation window. */
+  retaliateN: number; retaliateWindowT: number;
+  /** Who to retaliate against (entity id or -2 for player). */
+  retaliateTarget: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -90,6 +108,8 @@ export interface Group {
   initialSize: number;
 }
 
+export type CasterKind = 'wild' | 'predator' | 'guardian' | 'companion' | 'boss';
+
 export type EcoEvent =
   | { type: 'hit'; entityId: number; by: 'ball' | 'predator'; damage: number }
   | { type: 'ko'; entityId: number; speciesId: string; bySpeciesId?: string }
@@ -100,7 +120,12 @@ export type EcoEvent =
   | { type: 'reinforce'; speciesId: string; count: number; objectiveId?: string }
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
-  | { type: 'inflate'; entityId: number };
+  | { type: 'inflate'; entityId: number }
+  | { type: 'cast'; casterId: number; moveId: string; style: string }
+  | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }
+  | { type: 'playerHit'; casterId: number; moveId: string; damage: number }
+  | { type: 'effect'; targetId: number; effect: string; magnitude: number }
+  | { type: 'heal'; targetId: number; amount: number };
 
 export interface PlayerSnapshot {
   x: number; y: number; z: number;

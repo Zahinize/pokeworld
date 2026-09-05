@@ -12,6 +12,10 @@ import { RNG } from '../rng';
 import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
+import { COMBAT } from '@/data/combatConfig';
+import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
+import { combatStatsOf } from '@/pokeapi/client';
+import { movesFor } from '@/data/moves';
 import { floorY } from './terrain';
 import type { Obstacle } from './terrain';
 import { ZONES } from './zones';
@@ -38,6 +42,9 @@ export class Ecosystem {
   private pendingReinforce = new Map<string, number>();
   private pendingRespawn: { at: number; speciesId: string; zone: ZoneId }[] = [];
   private hpOf: (speciesId: string) => number;
+  moves!: MoveSystem;
+  /** Session hook: apply damage to the player (set by GameSession; no-op headless). */
+  onPlayerDamage: (amount: number, casterId: number, moveId: string) => void = () => {};
   private ctx: SimContext;
   private current: Vec3 = { x: 0, y: 0, z: 0 };
   objectives: MissionObjective[];
@@ -55,7 +62,19 @@ export class Ecosystem {
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
       predatorGraceOver: false, current: this.current,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
+      cast: (e, slot, target) => this.moves.cast(e, slot, target),
+      pickMove: (e, dist, preferUtility) => this.moves.pickMove(e, dist, preferUtility),
+      moveReady: (e, slot) => this.moves.ready(e, slot),
     };
+    this.moves = new MoveSystem({
+      time: 0,
+      byId: this.byId,
+      events: this.events,
+      player: this.player,
+      damageAbs: (t, amount, sourceId) => this.damageAbs(t, amount, sourceId),
+      damagePlayer: (amount, casterId, moveId) => { this.events.push({ type: 'playerHit', casterId, moveId, damage: amount }); this.onPlayerDamage(amount, casterId, moveId); },
+      rng: rngFn,
+    });
     // Groups
     gen.groups.forEach((gs, i) => {
       const g: Group = {
@@ -102,6 +121,10 @@ export class Ecosystem {
       home: { ...sp.pos }, target: { x: 0, y: sp.pos.y, z: 0 }, wander: { x: this.rng.next() - 0.5, y: 0, z: this.rng.next() - 0.5 },
       targetId: -1, huntCooldown: 8 + this.rng.next() * 14, curiosityCooldown: 8 + this.rng.next() * 20, threatId: -1, threatT: 99,
       lured: false, lureOrbit: this.rng.next() * Math.PI * 2, facing: 1, zone: sp.zone, t1: behavior === 'bottom' ? 10 + this.rng.next() * 30 : 0, t2: 120 + this.rng.next() * 200,
+      cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
+      atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
+      stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
+      retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -121,6 +144,19 @@ export class Ecosystem {
   damage(t: Entity, fraction: number, by: 'predator' | 'ball', sourceId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
     const amount = Math.max(1, Math.round(t.maxHp * fraction));
+    this.applyDamage(t, amount, by, sourceId);
+  }
+
+  /** Absolute damage from a move (MoveSystem). */
+  damageAbs(t: Entity, amount: number, sourceId: number) {
+    if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
+    this.applyDamage(t, amount, 'predator', sourceId);
+    // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
+    const src = this.byId.get(sourceId);
+    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
+  }
+
+  private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
     t.hp = Math.max(0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
@@ -129,10 +165,31 @@ export class Ecosystem {
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
   }
 
+  /** Retaliation roll (anti-chaos window enforced). `attackerId` may be -2 for the player. */
+  maybeRetaliate(t: Entity, attackerId: number) {
+    if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
+    if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
+    if (t.retaliateN >= COMBAT.RETALIATE_MAX_IN_WINDOW) return;
+    const s = t.species;
+    const vsPlayer = attackerId === -2;
+    let p = vsPlayer
+      ? COMBAT.RETALIATE_VS_PLAYER_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W
+      : COMBAT.RETALIATE_VS_PREDATOR_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W - s.fear * COMBAT.RETALIATE_FEAR_W;
+    if (vsPlayer && t.behavior === 'predator') p = COMBAT.PREDATOR_VS_PLAYER_CHANCE;
+    p = Math.min(0.9, Math.max(0.1, p));
+    if (this.rng.next() > p) return;
+    t.retaliateN++;
+    t.state = 'retaliate'; t.stateT = 0; t.retaliateTarget = attackerId;
+    t.vx *= 0.3; t.vy *= 0.3; t.vz *= 0.3;
+    t.nextThink = this.time; // think immediately
+  }
+
   knockOut(t: Entity, bySourceId = -1) {
     t.state = 'ko'; t.stateT = 0; t.animT = 0; t.vx *= 0.2; t.vz *= 0.2; t.vy = 0;
     const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
+    // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes
+    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: t.species.id, zone: t.zone });
   }
 
   /** Begin a capture attempt: the Pokémon freezes in place while the ball shakes. */
@@ -140,9 +197,11 @@ export class Ecosystem {
     e.state = 'captureAttempt'; e.stateT = 0; e.vx = e.vy = e.vz = 0; e.dx = e.dy = e.dz = 0;
   }
 
-  /** Capture failed: the Pokémon breaks out and bolts. */
+  /** Capture failed: the Pokémon breaks out and bolts — and may turn its moves on the trainer. */
   breakOut(e: Entity) {
     if (e.state !== 'captureAttempt') return;
+    this.maybeRetaliate(e, -2);
+    if ((e.state as EntityState) === 'retaliate') return; // stands its ground for a beat, then the AI resumes
     e.state = 'flee'; e.stateT = 0; e.threatId = -2; e.threatT = 0;
     if (e.groupId >= 0) { const g = this.groups[e.groupId]; g.alarm = Math.max(g.alarm, 0.6); g.threatId = -2; }
     // give it an immediate kick away from the player
@@ -198,6 +257,7 @@ export class Ecosystem {
   update(dt: number, player: PlayerSnapshot, nightness: number) {
     dt = Math.min(dt, 0.05);
     this.time += dt;
+    this.moves.setTime(this.time);
     Object.assign(this.player, player);
     this.nightness = nightness;
     const ctx = this.ctx;
@@ -230,6 +290,15 @@ export class Ecosystem {
       // Timers
       if (e.hpBarT > 0) e.hpBarT -= dt;
       if (e.flashT > 0) e.flashT -= dt;
+      if (e.mcd[0] > 0) e.mcd[0] -= dt;
+      if (e.mcd[1] > 0) e.mcd[1] -= dt;
+      if (e.stunT > 0) e.stunT -= dt;
+      if (e.slowT > 0) e.slowT -= dt;
+      if (e.blindT > 0) e.blindT -= dt;
+      if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
+      if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
+      if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;
+      if (e.hotT > 0) { e.hotT -= dt; e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt); }
       if (e.hp < e.maxHp && e.state !== 'ko') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
 
       if (e.state === 'ko') {
@@ -239,6 +308,7 @@ export class Ecosystem {
       }
       if (e.state === 'caught') { e.animT += dt; if (e.animT > 0.5) this.remove(e); continue; }
       if (e.state === 'captureAttempt') { e.vx = e.vy = e.vz = 0; continue; }
+      if (e.stunT > 0) { e.vx *= 0.9; e.vy *= 0.9; e.vz *= 0.9; e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt; continue; }
 
       const d = len3(e.x - px, e.y - py, e.z - pz);
       e.lod = d < GAME.AI_NEAR_DIST ? 0 : d < GAME.AI_MID_DIST ? 1 : 2;
@@ -251,6 +321,8 @@ export class Ecosystem {
       this.integrate(e, dt);
     }
 
+    this.moves.update(dt);
+
     // Housekeeping (~every 5s)
     this.reinforceAcc += dt;
     if (this.reinforceAcc > 5) { this.reinforceAcc = 0; this.checkReinforcements(); }
@@ -259,6 +331,7 @@ export class Ecosystem {
   }
 
   private think(e: Entity, dt: number) {
+    if (e.state === 'retaliate') { this.retaliateThink(e, dt); return; }
     if (e.state === 'flee' && e.groupId < 0 && e.behavior !== 'defensive' && e.behavior !== 'passive') {
       // generic post-breakout flee for solos
       if (e.stateT < 3) { e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = e.species.burst; return; }
@@ -281,12 +354,36 @@ export class Ecosystem {
     }
   }
 
+  /** Face the attacker, fire the best ready move, then resume normal behavior (design §7). */
+  private retaliateThink(e: Entity, dt: number) {
+    const tgt = e.retaliateTarget;
+    const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
+    if (!pos || e.stateT > 1.4) {
+      e.state = e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
+      e.stateT = 0; e.threatId = tgt; e.threatT = 0;
+      if (e.groupId >= 0) { const g = this.groups[e.groupId]; g.alarm = 1; if (g.threatId < 0) g.threatId = tgt; }
+      return;
+    }
+    // hold position, face target, cast once when possible
+    e.dx = (pos.x - e.x) * 0.15; e.dy = (pos.y - e.y) * 0.1; e.dz = (pos.z - e.z) * 0.15;
+    e.maxSpeed = e.species.speed * 0.5;
+    if (e.stateT > 0.35) {
+      const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
+      const slot = this.moves.pickMove(e, d, false);
+      if (slot !== -1) {
+        this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
+        e.stateT = 10; // resolved on next think via the timeout branch
+      }
+    }
+    void dt;
+  }
+
   private integrate(e: Entity, dt: number) {
     const agility = e.behavior === 'giant' ? 0.22 : e.behavior === 'bottom' ? 0.7 : e.state === 'rush' || e.state === 'scatter' || e.state === 'flee' ? 1.6 : 1.0;
     const k = Math.min(1, agility * 3.2 * dt);
     e.vx += (e.dx - e.vx) * k; e.vy += (e.dy - e.vy) * k; e.vz += (e.dz - e.vz) * k;
     const sp = len3(e.vx, e.vy, e.vz);
-    const lim = Math.max(e.maxSpeed, 0.2) * 1.1;
+    const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
     if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
     e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     // Hard constraints
