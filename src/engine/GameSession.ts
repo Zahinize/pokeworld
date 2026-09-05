@@ -218,7 +218,7 @@ export class GameSession {
     this.lureCooldown = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
     Audio.lure();
     this.pushFx('lure', this.player.x, this.player.y, this.player.z, 1);
-    useStore.getState().pushToast({ kind: 'info', title: 'Lure activated', body: 'Nearby Pokémon are curious about you…', ttl: 3 });
+    useStore.getState().pushToast({ kind: 'info', title: 'Lure activated', body: 'Nearby Pokémon are curious about you… Next lure in 5 minutes.', ttl: 4 });
     return true;
   }
 

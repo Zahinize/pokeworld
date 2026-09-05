@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
+import { GAME } from '@/data/gameConfig';
 import { SPECIES } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { objectiveDone } from '@/engine/sim/mission';
@@ -87,12 +88,14 @@ function LureButton() {
   const isTouch = useStore((s) => s.isTouch);
   const active = rem > 0;
   const ready = cd <= 0 && !active;
-  const p = active ? (rem / 15) * 100 : cd > 0 ? (1 - cd / 40) * 100 : 0;
+  const total = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
+  const p = active ? (rem / GAME.LURE_DURATION) * 100 : cd > 0 ? (1 - cd / total) * 100 : 0;
+  const mmss = (t: number) => { const s0 = Math.ceil(t); return s0 >= 60 ? `${Math.floor(s0 / 60)}:${(s0 % 60).toString().padStart(2, '0')}` : `${s0}s`; };
   return (
-    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure" style={{ ['--p' as any]: `${p}%` }}>
+    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure (available every 5 minutes)" title="Lure — once every 5 minutes" style={{ ['--p' as any]: `${p}%` }}>
       <span className="ring" />
-      <span className="ic">{active ? '✨' : '🪄'}</span>
-      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? `${Math.ceil(cd)}s` : isTouch ? 'Lure' : 'Lure · E'}</span>
+      <span className="ic">{active ? '✨' : ready ? '🪄' : '⏳'}</span>
+      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? mmss(cd) : isTouch ? 'Lure' : 'Lure · E'}</span>
     </button>
   );
 }
@@ -200,7 +203,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<b>🔴 Red button</b>}>throw the selected ball</Row>
       <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
       <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
-      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon to you</Row>
+      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
       <Row keys={<b>»</b>}>toggle fast swim</Row>
       <Row keys={<b>⏸</b>}>pause · mission in the top-left pill</Row>
     </div>
@@ -211,7 +214,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<K k="Shift" />}><b>swim faster</b></Row>
       <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
       <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
-      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon</Row>
+      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
       <Row keys={<><K k="Tab" /> · <K k="C" /></>}>mission · collection</Row>
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
     </div>
