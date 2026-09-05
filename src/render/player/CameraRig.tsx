@@ -44,6 +44,8 @@ export function CameraRig() {
         if (e.code === 'Digit6') session.castPartnerMove(0, 1);
         if (e.code === 'Digit7') session.castPartnerMove(1, 0);
         if (e.code === 'Digit8') session.castPartnerMove(1, 1);
+        if (e.code === 'Digit9') session.swapSlotWithBest(0);
+        if (e.code === 'Digit0') session.swapSlotWithBest(1);
       }
       if (e.code === 'KeyQ' && !session.companionsEnabled) session.cycleBall(1);
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();

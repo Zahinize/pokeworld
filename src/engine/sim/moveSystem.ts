@@ -64,6 +64,17 @@ export class MoveSystem {
 
   setTime(t: number) { this.host.time = t; }
 
+  /** Live wind-ups for the renderer (charge glow at the caster's mouth). */
+  charges(): { casterId: number; color: string; progress: number }[] {
+    const out: { casterId: number; color: string; progress: number }[] = [];
+    for (const p of this.pending) {
+      const m = getMove(p.moveId);
+      const total = m.chargeTime ?? 0.2;
+      out.push({ casterId: p.casterId, color: m.color, progress: Math.min(1, Math.max(0, 1 - (p.at - this.host.time) / total)) });
+    }
+    return out;
+  }
+
   constructor(host: CombatHost) {
     this.host = host;
     for (let i = 0; i < COMBAT.MAX_PROJECTILES; i++) {

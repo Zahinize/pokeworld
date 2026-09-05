@@ -41,7 +41,7 @@ export const MOVES: Record<string, MoveConfig> = {
   // ---- damage ----
   poisonSting: M({ id: 'poisonSting', name: 'Poison Sting', kind: 'damage', category: 'physical', power: 40, cooldown: 3, range: 9, style: 'darts', color: '#c084fc' }),
   poisonJab: M({ id: 'poisonJab', name: 'Poison Jab', kind: 'damage', category: 'physical', power: 80, cooldown: 5, range: 2.5, style: 'melee', color: '#a855f7' }),
-  auroraBeam: M({ id: 'auroraBeam', name: 'Aurora Beam', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 12, style: 'beam', color: '#a5f3fc' }),
+  auroraBeam: M({ id: 'auroraBeam', name: 'Aurora Beam', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 12, style: 'beam', color: '#ffe08a' }),
   iceShard: M({ id: 'iceShard', name: 'Ice Shard', kind: 'damage', category: 'physical', power: 40, cooldown: 3, range: 10, style: 'darts', color: '#bae6fd' }),
   icicleSpear: M({ id: 'icicleSpear', name: 'Icicle Spear', kind: 'damage', category: 'physical', power: 55, cooldown: 3, range: 10, style: 'darts', color: '#e0f2fe' }),
   bubble: M({ id: 'bubble', name: 'Bubble', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 10, style: 'bubbles', color: '#7dd3fc' }),

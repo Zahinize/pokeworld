@@ -171,6 +171,23 @@ function PartyBar() {
   );
 }
 
+function SwapPrompt() {
+  const prompt = useStore((s) => s.hud.swapPrompt);
+  const isTouch = useStore((s) => s.isTouch);
+  if (!prompt) return null;
+  const key = prompt.slot === 0 ? '9' : '0';
+  return (
+    <button className="swap-prompt glass strong interactive" onClick={() => session.swapSlotWithBest(prompt.slot)}>
+      <SpriteImg id={prompt.from} size={34} />
+      <div className="txt">
+        <b>{SPECIES[prompt.from].name} is weak!</b>
+        <span>{isTouch ? 'Tap here' : <>Press <span className="kbd">{key}</span></>} to swap in {SPECIES[prompt.to].name}</span>
+      </div>
+      <SpriteImg id={prompt.to} size={34} />
+    </button>
+  );
+}
+
 function PlayerVitals() {
   const hp = useStore((s) => s.hud.playerHp);
   const hitSeq = useStore((s) => s.hud.playerHitSeq);
@@ -352,6 +369,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
       {session.companionsEnabled && <Row keys={<b>Right click</b>}><b>quick attack</b> — best ready companion move at your crosshair</Row>}
       {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
+      {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
     </div>
   );
 }
@@ -410,6 +428,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         </div>
         <PlayerVitals />
         <PartyBar />
+        <SwapPrompt />
         <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}

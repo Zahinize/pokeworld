@@ -256,6 +256,13 @@ a { color: var(--aqua); }
 .hud.touch .party-card { padding: 10px 12px; }
 .hud.touch .reserve-chip { width: 42px; height: 42px; }
 
+/* Swap prompt */
+.swap-prompt { position: absolute; left: 50%; bottom: calc(118px + var(--safe-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 12px; padding: 10px 18px; border-radius: 16px; border-color: rgba(255,209,102,.55); box-shadow: 0 0 24px rgba(255,209,102,.3); animation: fadeUp .3s ease both, pulse 1.4s ease-in-out infinite; color: var(--text); }
+.swap-prompt .txt { text-align: left; }
+.swap-prompt .txt b { display: block; font-size: 13.5px; color: var(--gold); }
+.swap-prompt .txt span { font-size: 12px; color: var(--muted); }
+.hud.touch .swap-prompt { bottom: calc(200px + var(--safe-bottom)); }
+
 /* Player vitals */
 .player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }
 .player-hp .ic { font-size: 16px; }

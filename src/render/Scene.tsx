@@ -8,7 +8,7 @@ import { SceneLighting, WaterDome, SeaFloor, Rocks, Corals, Kelp, Particles, Lig
 import { PokemonLayer } from './pokemon/PokemonLayer';
 import { HealthBars } from './fx/HealthBars';
 import { Balls } from './balls/Balls';
-import { MoveProjectiles, DamageNumbers } from './fx/MoveFx';
+import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
 
 function GameLoop() {
@@ -75,6 +75,8 @@ export function Scene() {
         <HealthBars />
         <Balls />
         <MoveProjectiles />
+        <MoveMotes />
+        <MoveLights count={resolveQuality(qualitySetting, isTouch) === 'high' ? 4 : resolveQuality(qualitySetting, isTouch) === 'medium' ? 2 : 0} />
         <DamageNumbers />
       </Suspense>
       <CameraRig />

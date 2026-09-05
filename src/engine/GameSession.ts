@@ -19,6 +19,7 @@ import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
 import { kitOf } from './sim/moveSystem';
+import { getMove } from '@/data/moves';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
@@ -34,7 +35,7 @@ function releasePointer() {
 
 export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete' | 'defeated';
 
-export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number }
+export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number; color?: string }
 
 /** Floating combat number consumed by the renderer. */
 export interface DamageNumber { text: string; color: string; x: number; y: number; z: number; t: number; big: boolean }
@@ -93,7 +94,7 @@ export class GameSession {
   camYaw = 0;
   /** Visual effects queue consumed by the renderer. */
   fx: FxEvent[] = [];
-  private pushFx(type: FxEvent['type'], x: number, y: number, z: number, size = 1) { this.fx.push({ type, x, y, z, t: 0, size }); if (this.fx.length > 24) this.fx.shift(); }
+  private pushFx(type: FxEvent['type'], x: number, y: number, z: number, size = 1, color?: string) { this.fx.push({ type, x, y, z, t: 0, size, color }); if (this.fx.length > 24) this.fx.shift(); }
   /** Floating combat numbers (design §6). */
   numbers: DamageNumber[] = [];
   pushNumber(text: string, color: string, x: number, y: number, z: number, big = false) {
@@ -472,6 +473,22 @@ export class GameSession {
     return this.orderCast(best.partner, best.slot, target);
   }
   private attackFeedbackT = 0;
+  private swapCooldownT = 0;
+
+  /** 9/0 keys and the low-HP banner: swap `slot` for the healthiest reserve. */
+  swapSlotWithBest(slot: 0 | 1): boolean {
+    if (!this.eco || this.swapCooldownT > 0) return false;
+    const activeSpecies = this.activePartners.map((id) => (id >= 0 ? this.eco!.byId.get(id)?.species.id : undefined));
+    const reserves = this.party.filter((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+    if (!reserves.length) return false;
+    // healthiest = full HP (reserves rest in their balls), pick highest-stage first for drama
+    const best = reserves.sort((a, b) => getSpecies(b).stage - getSpecies(a).stage)[0];
+    const out = activeSpecies[slot];
+    if (!this.swapPartner(slot, best)) return false;
+    this.swapCooldownT = 2;
+    useStore.getState().pushToast({ kind: 'info', title: `${getSpecies(best).name}, you're up!`, body: out ? `${getSpecies(out).name} returns to rest.` : undefined, speciesId: best, ttl: 3 });
+    return true;
+  }
 
   private orderCast(partner: Entity, moveSlot: 0 | 1, target: Entity): boolean {
     const eco = this.eco!;
@@ -513,7 +530,19 @@ export class GameSession {
       const kit = kitOf(e);
       return { speciesId: e.species.id, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
     });
-    useStore.getState().setHud({ party: { list: this.party.slice(), downed: this.downedSpecies.slice(), active: active as any } });
+    // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
+    let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;
+    if (this.phase === 'playing' && this.swapCooldownT <= 0) {
+      const activeSpecies = active.map((a) => a?.speciesId);
+      const reserves = this.party.filter((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+      if (reserves.length) {
+        for (const slot of [0, 1] as const) {
+          const a = active[slot];
+          if (a && a.hp / a.maxHp < 0.35) { swapPrompt = { slot, from: a.speciesId, to: reserves.sort((x, y) => getSpecies(y).stage - getSpecies(x).stage)[0] }; break; }
+        }
+      }
+    }
+    useStore.getState().setHud({ party: { list: this.party.slice(), downed: this.downedSpecies.slice(), active: active as any }, swapPrompt });
   }
 
   activateLure(): boolean {
@@ -558,6 +587,7 @@ export class GameSession {
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
+    if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
       const [slot, at] = this.autoSend[i];
@@ -602,7 +632,7 @@ export class GameSession {
         }
         case 'moveHit': {
           const t = eco.byId.get(ev.targetId);
-          if (t) this.pushFx('hit', t.x, t.y, t.z, t.species.size);
+          if (t) this.pushFx('hit', t.x, t.y, t.z, t.species.size, getMove(ev.moveId).color);
           if (near(t, 45)) Audio.moveHit();
           break;
         }
