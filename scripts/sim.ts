@@ -52,5 +52,47 @@ for (const levelId of [1, 2]) {
   ok(`level ${levelId} within budgets`);
 }
 
+// ---- Guardian aggression + group revenge (synthetic scenario) ----
+{
+  const gen = generateEcosystem(getLevel(1), 42);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: 0, y: -200, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false }; // player far away
+  let guardianCasts = 0, revenges = 0, predDamage = 0;
+  const predIds = new Set(eco.alive.filter((e) => e.behavior === 'predator').map((e) => e.id));
+  const step = (sec: number) => {
+    for (let i = 0; i < sec * 60; i++) {
+      eco.update(1 / 60, p, 0);
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'cast') { const c = eco.byId.get(ev.casterId); if (c?.role === 'guardian') guardianCasts++; }
+        if (ev.type === 'revenge') revenges++;
+        if (ev.type === 'hit' && predIds.has(ev.entityId)) predDamage += ev.damage;
+        if (ev.type === 'respawn') { for (const e2 of eco.alive) if (e2.behavior === 'predator') predIds.add(e2.id); }
+      }
+    }
+  };
+  const g = eco.groups.find((x) => x.kind === 'school' && x.guardianId >= 0)!;
+  const guardian = eco.byId.get(g.guardianId)!;
+  // Park a living predator on the school and let it hunt repeatedly
+  const harass = () => {
+    const pred = eco.alive.find((e) => e.behavior === 'predator');
+    const m = eco.byId.get(g.memberIds[0]);
+    if (!pred || !m) return false;
+    predIds.add(pred.id);
+    pred.x = m.x + 4; pred.y = m.y; pred.z = m.z; pred.home.x = m.x; pred.home.z = m.z;
+    pred.huntCooldown = 0; pred.state = 'patrol'; pred.hp = pred.maxHp;
+    return true;
+  };
+  eco.update(1 / 60, p, 0);
+  harass(); step(20); harass(); step(20);
+  if (guardianCasts > 0) ok(`guardian cast ${guardianCasts} moves defending its school`); else fail('guardian never cast while intercepting');
+  // Remove the guardian → group avenges
+  eco.capture(guardian); step(1);
+  if (g.avenging) ok('group entered avenging state after losing its guardian'); else fail('group not avenging after guardian capture');
+  predDamage = 0; revenges = 0;
+  for (let round = 0; round < 6 && revenges === 0; round++) { if (!harass()) step(30); else step(15); }
+  if (revenges > 0) ok(`group revenge triggered ${revenges}×`); else fail('group revenge never triggered');
+  if (predDamage > 0) ok(`avenging school dealt ${predDamage} damage to predators`); else fail('predators took no damage from the avenging school');
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

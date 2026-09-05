@@ -102,6 +102,8 @@ export interface Group {
   /** When set, anchor follows this entity (Mantine/Lapras followers). */
   followId: number;
   objectiveId?: string;
+  /** Guardian lost (caught/KO'd): the whole group strikes back at predators that attack it. */
+  avenging: boolean;
   /** Guardian-specific timers. */
   guardianNextPass: number;
   /** Member count at spawn — ambient groups replenish toward this by migration. */
@@ -125,7 +127,8 @@ export type EcoEvent =
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }
   | { type: 'playerHit'; casterId: number; moveId: string; damage: number }
   | { type: 'effect'; targetId: number; effect: string; magnitude: number }
-  | { type: 'heal'; targetId: number; amount: number };
+  | { type: 'heal'; targetId: number; amount: number }
+  | { type: 'revenge'; groupId: number; attackerId: number };
 
 export interface PlayerSnapshot {
   x: number; y: number; z: number;

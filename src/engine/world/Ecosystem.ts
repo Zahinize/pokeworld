@@ -80,7 +80,7 @@ export class Ecosystem {
       const g: Group = {
         id: i, kind: gs.kind, speciesId: gs.speciesId, guardianSpeciesId: gs.guardianSpeciesId, guardianId: -1, memberIds: [],
         zone: gs.zone, anchor: { ...gs.anchor }, anchorTarget: { ...gs.anchor }, anchorSpeed: gs.kind === 'school' || gs.kind === 'ambientSchool' ? 0.55 + this.rng.next() * 0.35 : 0.3 + this.rng.next() * 0.2,
-        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20, initialSize: 0,
+        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20, initialSize: 0, avenging: false,
       };
       this.groups.push(g);
     });
@@ -131,7 +131,7 @@ export class Ecosystem {
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
       const g = this.groups[sp.groupIndex];
-      if (sp.role === 'guardian') { g.guardianId = e.id; if (s.primary === 'giant') g.followId = e.id; }
+      if (sp.role === 'guardian') { g.guardianId = e.id; g.avenging = false; if (s.primary === 'giant') g.followId = e.id; }
       else g.memberIds.push(e.id);
     }
     return e;
@@ -154,6 +154,26 @@ export class Ecosystem {
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
     const src = this.byId.get(sourceId);
     if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
+    // Group revenge: a guardian-less group swarms any predator that attacks a member (design §7)
+    if (src && src.behavior === 'predator' && t.groupId >= 0) {
+      const g = this.groups[t.groupId];
+      if (g.avenging) this.groupRevenge(g, t, sourceId);
+    }
+  }
+
+  /** All members near the victim turn and cast at the attacker, staggered (capped for sanity + perf). */
+  private groupRevenge(g: Group, victim: Entity, attackerId: number) {
+    let casters = 0;
+    this.events.push({ type: 'revenge', groupId: g.id, attackerId });
+    for (const id of g.memberIds) {
+      if (casters >= COMBAT.REVENGE_MAX_CASTERS) break;
+      const m = this.byId.get(id);
+      if (!m || m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'retaliate') continue;
+      if (len3(m.x - victim.x, m.y - victim.y, m.z - victim.z) > COMBAT.REVENGE_RADIUS) continue;
+      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId;
+      m.nextThink = this.time + casters * COMBAT.REVENGE_STAGGER;
+      casters++;
+    }
   }
 
   private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
@@ -225,7 +245,7 @@ export class Ecosystem {
     if (i >= 0) this.alive.splice(i, 1);
     if (e.groupId >= 0) {
       const g = this.groups[e.groupId];
-      if (g.guardianId === e.id) g.guardianId = -1;
+      if (g.guardianId === e.id) { g.guardianId = -1; if (g.guardianSpeciesId) g.avenging = true; }
       const j = g.memberIds.indexOf(e.id);
       if (j >= 0) g.memberIds.splice(j, 1);
     }
@@ -358,21 +378,30 @@ export class Ecosystem {
   private retaliateThink(e: Entity, dt: number) {
     const tgt = e.retaliateTarget;
     const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
-    if (!pos || e.stateT > 1.4) {
+    if (!pos || e.stateT > 3.5) {
       e.state = e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
       e.stateT = 0; e.threatId = tgt; e.threatT = 0;
       if (e.groupId >= 0) { const g = this.groups[e.groupId]; g.alarm = 1; if (g.threatId < 0) g.threatId = tgt; }
       return;
     }
-    // hold position, face target, cast once when possible
-    e.dx = (pos.x - e.x) * 0.15; e.dy = (pos.y - e.y) * 0.1; e.dz = (pos.z - e.z) * 0.15;
-    e.maxSpeed = e.species.speed * 0.5;
-    if (e.stateT > 0.35) {
-      const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
-      const slot = this.moves.pickMove(e, d, false);
-      if (slot !== -1) {
-        this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
-        e.stateT = 10; // resolved on next think via the timeout branch
+    const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
+    const kit = movesFor(e.species.id);
+    const reach = Math.max(kit[0].range, kit[1].range);
+    if (d > reach * 0.85) {
+      // close the distance first — an avenging school visibly surges at its attacker
+      const k = e.species.burst * 0.75 / (d || 1);
+      e.dx = (pos.x - e.x) * k; e.dy = (pos.y - e.y) * k * 0.7; e.dz = (pos.z - e.z) * k;
+      e.maxSpeed = e.species.burst * 0.75;
+    } else {
+      // in range: hold, face, cast
+      e.dx = (pos.x - e.x) * 0.15; e.dy = (pos.y - e.y) * 0.1; e.dz = (pos.z - e.z) * 0.15;
+      e.maxSpeed = e.species.speed * 0.5;
+      if (e.stateT > 0.3) {
+        const slot = this.moves.pickMove(e, d, false);
+        if (slot !== -1) {
+          this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
+          e.stateT = 10; // resolved on next think via the timeout branch
+        }
       }
     }
     void dt;

@@ -309,6 +309,14 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
       // Never quite touch the predator
       if (d < 5) fleeFrom(e, tp.x, tp.y, tp.z, 0.8);
       speed = s.burst * 0.8;
+      // Guardians fight for their school: disrupt the hunt with utilities, hit back when targeted
+      if (e.stateT > 0.4 && threat >= 0) {
+        const pred = ctx.byId.get(threat);
+        const dSelf = len3(tp.x - e.x, tp.y - e.y, tp.z - e.z);
+        const preferUtility = !!pred && pred.targetId !== e.id && (pred.slowT <= 0 && pred.stunT <= 0);
+        const slot = ctx.pickMove(e, dSelf, preferUtility);
+        if (slot !== -1) ctx.cast(e, slot, { kind: 'entity', id: threat });
+      }
       break;
     }
     case 'watch': {
