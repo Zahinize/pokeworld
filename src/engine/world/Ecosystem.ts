@@ -193,7 +193,7 @@ export class Ecosystem {
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
-      if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss) this.faint(t); // your team weakens, never destroys — bosses excepted
+      if (src?.role === 'partner' && t.role !== 'partner' && !t.isBoss) { this.autoCapture(t); return; } // a KO by your team is a catch — straight into the roster
       else this.knockOut(t, by === 'predator' ? sourceId : -1);
     }
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
@@ -237,6 +237,18 @@ export class Ecosystem {
   /** Begin a capture attempt: the Pokémon freezes in place while the ball shakes. */
   beginCaptureAttempt(e: Entity) {
     e.state = 'captureAttempt'; e.stateT = 0; e.vx = e.vy = e.vz = 0; e.dx = e.dy = e.dz = 0;
+    // The group's guardian defends its own: catching a guarded Pokémon provokes the guardian
+    if (e.role !== 'guardian' && e.groupId >= 0) {
+      const g = this.groups[e.groupId];
+      const guardian = g.guardianId >= 0 ? this.byId.get(g.guardianId) : undefined;
+      if (guardian && guardian.state !== 'ko' && guardian.state !== 'caught' && guardian.state !== 'captureAttempt'
+          && this.rng.next() < COMBAT.GUARDIAN_DEFEND_CATCH_CHANCE) {
+        guardian.state = 'retaliate'; guardian.stateT = 0; guardian.retaliateTarget = -2;
+        guardian.nextThink = this.time;
+        g.alarm = 1; if (g.threatId < 0) g.threatId = -2;
+        this.events.push({ type: 'guardianDefends', guardianId: guardian.id, speciesId: guardian.species.id });
+      }
+    }
   }
 
   /** Capture failed: the Pokémon breaks out and bolts — and may turn its moves on the trainer. */
@@ -446,14 +458,14 @@ export class Ecosystem {
         }
       }
     }
-    // Formation follow: hover beside/behind the trainer
+    // Formation follow: out in FRONT of the trainer, flanking the crosshair so they're always visible
     const side = e.partnerSlot === 0 ? -1 : 1;
     const cy = Math.cos(this.playerYaw), sy = Math.sin(this.playerYaw);
     const rx = cy, rz = -sy;             // camera right
     const fx = -sy, fz = -cy;            // camera forward
-    const tx = p.x + rx * side * 2.4 - fx * 1.4;
-    const tz = p.z + rz * side * 2.4 - fz * 1.4;
-    const ty = p.y + 0.15 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.18;
+    const tx = p.x + fx * 3.2 + rx * side * 1.9;
+    const tz = p.z + fz * 3.2 + rz * side * 1.9;
+    const ty = p.y - 0.55 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.15;
     const d = len3(tx - e.x, ty - e.y, tz - e.z);
     if (d > 35) { // fell too far behind (sprinting trainer) — return to their side in a swirl of bubbles
       e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0;
@@ -807,12 +819,12 @@ export class Ecosystem {
     }
   }
 
-  /** Wild KO'd by a companion: faint window — sinks, hugely catchable, then recovers. Never removed. */
-  private faint(t: Entity) {
+  /** Wild KO'd by a companion: automatically caught — joins the roster (and the mission, if a target). */
+  private autoCapture(t: Entity) {
     if (t.duelWith >= 0) { const partner = this.byId.get(t.duelWith); if (partner) this.endDuel(partner, 'faint'); }
-    t.state = 'faint'; t.stateT = 0; t.faintT = COMBAT.FAINT_DURATION;
-    t.vx *= 0.2; t.vy = 0; t.vz *= 0.2; t.hp = 1;
-    this.events.push({ type: 'faint', entityId: t.id, speciesId: t.species.id });
+    t.hp = 1;
+    this.capture(t); // handles removal + predator respawn scheduling
+    this.events.push({ type: 'autoCaught', entityId: t.id, speciesId: t.species.id });
   }
 
   /** Random safe spot for a downed player: mid-depth, in bounds, ≥ minDist from every predator. */

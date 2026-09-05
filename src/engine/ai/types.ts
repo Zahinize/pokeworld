@@ -147,6 +147,8 @@ export type EcoEvent =
   | { type: 'duelStart'; partnerId: number; wildId: number }
   | { type: 'duelEnd'; partnerId: number; wildId: number; reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone' }
   | { type: 'faint'; entityId: number; speciesId: string }
+  | { type: 'autoCaught'; entityId: number; speciesId: string }
+  | { type: 'guardianDefends'; guardianId: number; speciesId: string }
   | { type: 'recovered'; entityId: number; speciesId: string }
   | { type: 'partnerDown'; entityId: number; speciesId: string }
   | { type: 'bossSpawn'; entityId: number; speciesId: string }

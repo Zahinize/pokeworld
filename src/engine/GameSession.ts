@@ -579,10 +579,15 @@ export class GameSession {
           if (w) store.pushToast({ kind: 'event', title: `Locked on ${w.species.name}!`, body: 'Your companion is dueling it — finish it with a well-timed ball.', speciesId: w.species.id, ttl: 3 });
           break;
         }
-        case 'faint': {
+        case 'faint': break;
+        case 'autoCaught': {
+          const e = eco.byId.get(ev.entityId);
+          if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, true); }
+          break;
+        }
+        case 'guardianDefends': {
           const sp = getSpecies(ev.speciesId);
-          Audio.catchSuccess();
-          store.pushToast({ kind: 'catch', title: `${sp.name} fainted!`, body: 'It\'s sinking — throw a ball now for a huge catch bonus!', speciesId: sp.id, ttl: 5 });
+          store.pushToast({ kind: 'warn', title: `${sp.name} defends its group!`, body: 'Guardians strike back when you catch their kin — stay alert.', speciesId: sp.id, ttl: 4 });
           break;
         }
         case 'recovered': break;
@@ -628,7 +633,7 @@ export class GameSession {
     }
   }
 
-  private onCaught(e: Entity) {
+  private onCaught(e: Entity, byCompanion = false) {
     const store = useStore.getState();
     Audio.catchSuccess();
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
@@ -645,7 +650,7 @@ export class GameSession {
       store.setMission(this.mission);
     }
     store.setLastCatch({ speciesId: e.species.id, missionTarget, objectiveLabel: label });
-    store.pushToast({ kind: 'catch', title: `Caught ${e.species.name}!`, body: missionTarget ? label : 'Added to collection · not a mission target', speciesId: e.species.id, missionTarget, ttl: 4 });
+    store.pushToast({ kind: 'catch', title: byCompanion ? `KO! ${e.species.name} joins your collection` : `Caught ${e.species.name}!`, body: missionTarget ? label : 'Added to collection · not a mission target', speciesId: e.species.id, missionTarget, ttl: 4 });
     this.persistRun();
     if (this.mission?.complete && this.phase === 'playing') {
       this.phase = 'completing'; this.completeTimer = 1.6;

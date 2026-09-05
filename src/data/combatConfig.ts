@@ -43,6 +43,9 @@ export const COMBAT = {
   FAINT_CATCH_MULT: 3,
   FAINT_RECOVER_HP_FRAC: 0.2,
 
+  /** Guardian strikes the trainer when a guarded group member is being caught. */
+  GUARDIAN_DEFEND_CATCH_CHANCE: 0.75,
+
   /** Group revenge. */
   REVENGE_RADIUS: 20,
   REVENGE_MAX_CASTERS: 6,

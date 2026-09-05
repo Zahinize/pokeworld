@@ -61,9 +61,10 @@ Any other static host (Netlify, Cloudflare Pages, GitHub Pages, an S3 bucket) wo
   for their schools, and a school that loses its guardian takes revenge as a group.
 - **You have HP.** Provoke the wrong Pokémon and you'll pay for it; at 0 HP you recover for 5 s and wake at a random
   safe spot in the reef. No progress is ever lost.
-- **Party of 6, two at your side** (back sprites and all). Aim with the crosshair and fire their moves like a Poké
-  Ball; the first hit locks a 1v1 duel with automatic exchanges on real cooldowns. A wild your team KOs *faints* for
-  8 seconds — a near-guaranteed catch window — then recovers; your companions can never destroy mission targets.
+- **Party of 6, two swimming ahead of you** (back sprites and all). Aim with the crosshair and fire their moves like
+  a Poké Ball; the first hit locks a 1v1 duel with automatic exchanges on real cooldowns. A wild your team KOs is
+  **caught automatically** — straight into your collection, with mission credit if it's a target. Guardians strike
+  back at trainers who catch their group members, so stay alert.
 - **Bosses** guard the end of levels 3–4 with doubled/tripled stats and telegraphed charge attacks. If a boss wipes
   your whole party, you're defeated (restart or pick another level). Full design: [docs/moves-combat-design.md](docs/moves-combat-design.md).
 

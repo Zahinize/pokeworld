@@ -124,7 +124,7 @@ for (const levelId of [1, 2]) {
   const eco = new Ecosystem(gen, hp);
   const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
   const events: string[] = [];
-  const step = (sec: number) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (['duelStart', 'duelEnd', 'faint', 'recovered', 'partnerDown'].includes(ev.type)) events.push(ev.type); } };
+  const step = (sec: number) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (['duelStart', 'duelEnd', 'faint', 'autoCaught', 'recovered', 'partnerDown'].includes(ev.type)) events.push(ev.type); } };
   eco.update(1 / 60, p, 0);
   const partner = eco.addPartner('sharpedo', 0);
   if (partner.kitOverride && partner.kitOverride.length === 2) ok(`partner spawned with kit ${partner.kitOverride.join('+')}`); else fail('partner has no kit override');
@@ -136,27 +136,33 @@ for (const levelId of [1, 2]) {
   wild.x = p.x + 6; wild.y = p.y; wild.z = p.z - 6;
   partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
   let guard = 0;
-  while (wild.state !== 'faint' && guard++ < 90) {
+  while (!events.includes('autoCaught') && guard++ < 90) {
     step(1);
     if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
-    if (wild.state === 'flee' && wild.duelWith < 0 && !events.includes('faint')) { // fled duel — re-engage
+    if (wild.state === 'flee' && wild.duelWith < 0) { // fled duel — re-engage
       wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
       partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
     }
   }
   if (events.includes('duelStart')) ok('duel locked in after the first hit'); else fail('duel never started');
-  if (wild.state === 'faint') {
-    ok(`wild fainted after ${guard}s of dueling`);
-    const { catchProbability } = await import('@/engine/sim/catching');
-    const pFaint = catchProbability(wild, 'pokeball');
-    wild.state = 'school';
-    const pNormal = catchProbability(wild, 'pokeball');
-    wild.state = 'faint';
-    if (pFaint > pNormal || pFaint >= 0.9) ok(`faint catch bonus active (${(pNormal * 100).toFixed(0)}% → ${(pFaint * 100).toFixed(0)}%)`); else fail(`faint bonus missing (${pFaint} vs ${pNormal})`);
-    let waited = 0;
-    while ((wild.state as string) === 'faint' && waited++ < 20) step(1); // in-flight projectiles can re-faint once
-    if ((wild.state as string) !== 'faint' && (wild.state as string) !== 'ko' && wild.hp > 0) ok(`fainted wild recovered after ${waited}s (state ${wild.state}, hp ${Math.round(wild.hp)})`); else fail(`wild did not recover (state ${wild.state})`);
-  } else fail(`wild never fainted (state ${wild.state}, hp ${Math.round(wild.hp)}/${wild.maxHp})`);
+  if (events.includes('autoCaught')) {
+    ok(`companion KO auto-caught the wild after ${guard}s of dueling`);
+    step(1);
+    if ((wild.state as string) === 'caught' || (wild.state as string) === 'removed') ok('auto-caught wild removed from the reef'); else fail(`auto-caught wild still around (state ${wild.state})`);
+  } else fail(`wild never auto-caught (state ${wild.state}, hp ${Math.round(wild.hp)}/${wild.maxHp})`);
+  // Guardian defends its group against catch attempts
+  {
+    const g2 = eco.groups.find((x) => (x.kind === 'school' || x.kind === 'passive') && x.guardianId >= 0 && x.memberIds.length > 0)!;
+    const member = eco.byId.get(g2.memberIds[0])!;
+    const guardian2 = eco.byId.get(g2.guardianId)!;
+    let defended = false;
+    for (let tries = 0; tries < 12 && !defended; tries++) {
+      eco.beginCaptureAttempt(member);
+      for (let i = 0; i < 30; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (ev.type === 'guardianDefends') defended = true; }
+      member.state = 'school'; // release for the next try
+    }
+    if (defended) ok(`guardian (${guardian2.species.id}) struck back at the trainer during a catch attempt`); else fail('guardian never defended a catch attempt');
+  }
   // Partner can be KO'd → partnerDown event
   eco.damageAbs(partner, 9999, eco.alive.find((e) => e.behavior === 'predator')!.id);
   step(1);

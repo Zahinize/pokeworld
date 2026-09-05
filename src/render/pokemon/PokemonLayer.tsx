@@ -200,7 +200,7 @@ export function PokemonLayer() {
       let f = facingMemo.get(e.id) ?? 1;
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
-      let alpha = 1, scale = e.species.size * e.scaleMul, y = e.y;
+      let alpha = 1, scale = e.species.size * e.scaleMul * (e.role === 'partner' ? 0.62 : 1), y = e.y;
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
