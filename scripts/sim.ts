@@ -163,5 +163,57 @@ for (const levelId of [1, 2]) {
   if (events.includes('partnerDown')) ok('partner KO emits partnerDown'); else fail('partnerDown never emitted');
 }
 
+// ---- Levels 3–4: stage-catch phase + boss waves (step 6) ----
+{
+  const { createMission, applyCatch, applyBossDefeat, catchPhaseDone } = await import('@/engine/sim/mission');
+  for (const levelId of [3, 4]) {
+    const gen = generateEcosystem(getLevel(levelId), 5);
+    const eco = new Ecosystem(gen, hp);
+    let mission = createMission(levelId, 5, gen.objectives);
+    const sc = mission.objectives.find((o) => o.kind === 'stageCatch')!;
+    const bosses = mission.objectives.filter((o) => o.kind === 'boss');
+    if (sc && bosses.length === (levelId === 3 ? 2 : 2)) ok(`L${levelId}: mission = catch ${sc.required} stage-${sc.minStage}+ Pokémon + defeat ${bosses.map((b) => b.speciesId).join(' & ')}`);
+    else fail(`L${levelId}: bad mission shape (${mission.objectives.map((o) => o.id).join(',')})`);
+    const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+    const step = (sec: number, sink?: (ev: any) => void) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) sink?.(ev); } };
+    eco.update(1 / 60, p, 0);
+    // Catch phase: enough eligible wilds must exist (incl. reinforcement)
+    let caught = 0, guard = 0;
+    while (!catchPhaseDone(mission) && guard++ < 40) {
+      const t = eco.alive.find((e) => e.role !== 'partner' && !e.isBoss && e.species.stage >= (sc.minStage ?? 1) && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt');
+      if (t) { eco.capture(t); const out = applyCatch(mission, t); if (out.counted) { mission = out.mission; caught++; } }
+      step(3);
+    }
+    if (catchPhaseDone(mission)) ok(`L${levelId}: catch phase completable (${caught} caught, ${guard} rounds)`); else fail(`L${levelId}: catch phase stuck at ${sc.caught}/${sc.required} after ${guard} rounds`);
+    // Boss wave: spawn all bosses at their sites, party fights them
+    const partner1 = eco.addPartner('kingdra', 0);
+    const partner2 = eco.addPartner('gyarados', 1);
+    const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8));
+    const tune = bossEnts.map((b) => `${b.species.id}:${b.maxHp}hp`).join(' ');
+    ok(`L${levelId}: bosses spawned (${tune})`);
+    let charges = 0, playerHits = 0, defeated = 0;
+    let rounds = 0;
+    while (defeated < bossEnts.length && rounds++ < 240) {
+      for (const partner of [partner1, partner2]) {
+        if ((partner.state as string) === 'ko' || (partner.state as string) === 'removed') { partner.hp = partner.maxHp; partner.state = 'wander'; eco.alive.includes(partner) || eco.alive.push(partner); eco.byId.set(partner.id, partner); }
+        const b = bossEnts.find((x) => x.state !== 'ko' && x.state !== 'removed');
+        if (!b) break;
+        partner.stunT = 0; // keep the test moving; cooldowns stay honest
+        const d = Math.hypot(b.x - partner.x, b.y - partner.y, b.z - partner.z);
+        if (d > 12) { partner.x = b.x + 6; partner.y = b.y; partner.z = b.z; }
+        eco.moves.cast(partner, 0, { kind: 'entity', id: b.id });
+      }
+      step(1, (ev) => {
+        if (ev.type === 'bossCharge') charges++;
+        if (ev.type === 'playerHit') playerHits++;
+        if (ev.type === 'bossDefeated') { defeated++; const out = applyBossDefeat(mission, ev.speciesId); if (out.counted) mission = out.mission; }
+      });
+    }
+    if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s)`);
+    if (charges > 0) ok(`L${levelId}: bosses charged ${charges}× (stay agile!)`); else fail(`L${levelId}: bosses never charged`);
+    if (mission.complete) ok(`L${levelId}: mission complete after boss defeats (${mission.caught}/${mission.total})`); else fail(`L${levelId}: mission incomplete (${mission.caught}/${mission.total})`);
+  }
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

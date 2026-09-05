@@ -9,6 +9,7 @@ import { MainMenu } from './ui/screens/MainMenu';
 import { LevelSelect } from './ui/screens/LevelSelect';
 import { MissionBrief } from './ui/screens/MissionBrief';
 import { LevelComplete } from './ui/screens/LevelComplete';
+import { DefeatScreen } from './ui/screens/DefeatScreen';
 import { CollectionScreen } from './ui/screens/CollectionScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { Scene } from './render/Scene';
@@ -17,7 +18,7 @@ import { TouchControls } from './ui/controls/TouchControls';
 import { requestPointerLock } from './render/player/CameraRig';
 import { Audio } from './audio/AudioManager';
 import type { CurrentRun } from './persistence';
-import { getLevel } from './data/levels';
+import { LEVELS } from './data/levels';
 
 export default function App() {
   const screen = useStore((s) => s.screen);
@@ -91,15 +92,19 @@ export default function App() {
     case 'brief': return <MissionBrief levelId={brief.levelId} seed={brief.seed} resume={brief.resume} onEnter={enterReef} onBack={() => { session.end(); setScreen('menu'); }} />;
     case 'play':
     case 'complete':
+    case 'defeat':
       return (
         <>
           <Scene />
           {screen === 'play' && <HUD onQuit={quitToMenu} />}
           {screen === 'play' && isTouch && !paused && <TouchControls />}
           {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}
+          {screen === 'defeat' && (
+            <DefeatScreen onRestart={() => goBrief(brief.levelId)} onLevels={() => { session.end(); setScreen('levels'); }} />
+          )}
           {screen === 'complete' && (
             <LevelComplete
-              onContinue={() => { const next = brief.levelId + 1; if (getLevel(next).status === 'playable') goBrief(next); else { session.end(); setScreen('levels'); } }}
+              onContinue={() => { const next = brief.levelId + 1; if (LEVELS.some((l) => l.id === next && l.status === 'playable')) goBrief(next); else { session.end(); setScreen('levels'); } }}
               onReplay={() => goBrief(brief.levelId)}
               onMenu={quitToMenu}
             />

@@ -92,7 +92,13 @@ export function CameraRig() {
     const p = session.player;
     const sway = p.sway();
     const reduced = useStore.getState().save.settings.reducedMotion;
-    camera.position.set(p.x, p.y + (reduced ? 0 : sway.dy), p.z);
+    const shake = session.shakeT > 0 && !reduced ? Math.min(1, session.shakeT / 1.5) * 0.22 : 0;
+    const st = state.clock.elapsedTime;
+    camera.position.set(
+      p.x + (shake ? Math.sin(st * 37) * shake : 0),
+      p.y + (reduced ? 0 : sway.dy) + (shake ? Math.cos(st * 41) * shake : 0),
+      p.z + (shake ? Math.sin(st * 29 + 1.7) * shake : 0),
+    );
     euler.current.set(p.pitch, p.yaw, reduced ? 0 : sway.roll);
     camera.quaternion.setFromEuler(euler.current);
     const cam = camera as THREE.PerspectiveCamera;

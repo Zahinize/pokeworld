@@ -3,12 +3,12 @@
  * consumes events, and publishes throttled UI state to the store + sound to the audio manager.
  * React renders what the session computes; it never drives the simulation.
  */
-import { getLevel, type LevelConfig } from '@/data/levels';
+import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data/levels';
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
 import { PlayerController, type InputState } from './player/PlayerController';
-import { createMission, applyCatch, objectiveDone, type MissionState } from './sim/mission';
+import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
 import { randomSeed } from './rng';
 import { maxHpOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, rememberSheet, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
@@ -21,7 +21,7 @@ import { COMBAT } from '@/data/combatConfig';
 import { kitOf } from './sim/moveSystem';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
-import { zoneAt } from './world/zones';
+import { zoneAt, ZONES } from './world/zones';
 import type { Entity } from './ai/types';
 import { len3 } from './ai/steering';
 import type { CurrentRun } from '@/persistence';
@@ -32,7 +32,7 @@ function releasePointer() {
   try { if (typeof document !== 'undefined' && document.pointerLockElement) document.exitPointerLock?.(); } catch { /* ignore */ }
 }
 
-export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete';
+export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete' | 'defeated';
 
 export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number }
 
@@ -62,6 +62,13 @@ export class GameSession {
   activePartners: [number, number] = [-1, -1];
   /** Species knocked out this level (out until the level ends). */
   downedSpecies: string[] = [];
+  /** Boss waves: index of the next wave to unleash (-1 = no boss level or all done). */
+  private bossWave = -1;
+  private bossPhaseActive = false;
+  /** Live boss entity ids. */
+  bossIds: number[] = [];
+  /** Camera shake seconds remaining (Kyogre arrival). */
+  shakeT = 0;
   /** Seconds left of the downed-recovery countdown (0 = not recovering). */
   recoveringT = 0;
   /** Post-respawn calm: incoming damage ignored. */
@@ -117,6 +124,7 @@ export class GameSession {
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
     this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0;
     this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -268,6 +276,65 @@ export class GameSession {
     store.pushToast({ kind: 'info', title: 'You recovered', body: 'The current carried you somewhere calmer. Catch your breath.', ttl: 4 });
   }
 
+  // ------------------------------------------------------------------ Boss phases
+
+  /** The pending boss wave config, if the catch phase is done and a wave hasn't spawned yet. */
+  private get pendingWave(): BossPhase | null {
+    if (this.bossWave < 0 || this.bossPhaseActive) return null;
+    return this.level.bossPhases?.[this.bossWave] ?? null;
+  }
+
+  private updateBossPhase(dt: number) {
+    if (this.shakeT > 0) this.shakeT -= dt;
+    const eco = this.eco!;
+    const wave = this.pendingWave;
+    if (wave && this.mission && catchPhaseDoneUpTo(this.mission, this.bossWave)) {
+      this.unleashWave(wave);
+      return;
+    }
+    if (!this.bossPhaseActive) return;
+    // wave over?
+    const alive = this.bossIds.filter((id) => { const e = eco.byId.get(id); return e && e.state !== 'removed' && e.state !== 'ko' && e.state !== 'caught'; });
+    if (alive.length === 0 && this.bossIds.length > 0) {
+      this.bossPhaseActive = false;
+      this.bossIds = [];
+      eco.bossCurrent = 0;
+      this.bossWave++;
+      useStore.getState().setHud({ bossBar: null });
+    } else {
+      // strongest living boss on the bar
+      let bar: { name: string; hp: number; maxHp: number } | null = null;
+      for (const id of alive) { const e = eco.byId.get(id)!; if (!bar || e.maxHp > bar.maxHp) bar = { name: e.species.name, hp: Math.round(e.hp), maxHp: e.maxHp }; }
+      useStore.getState().setHud({ bossBar: bar });
+      // defeat check: every party member downed while bosses live
+      if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
+    }
+  }
+
+  private unleashWave(wave: BossPhase) {
+    const eco = this.eco!;
+    const store = useStore.getState();
+    const site = ZONES[wave.site];
+    this.bossIds = wave.bosses.map((b, i) => eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 10, site.cz + (i % 2) * 6).id);
+    this.bossPhaseActive = true;
+    // environmental drama
+    if (wave.event !== 'none') { eco.bossCurrent = 1; for (const g of eco.groups) { g.alarm = 1; if (g.threatId < 0) g.threatId = this.bossIds[0]; } }
+    if (wave.event === 'currents+shake') this.shakeT = 5;
+    Audio.legendary();
+    store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 7 });
+    this.emit();
+  }
+
+  private triggerDefeat() {
+    this.phase = 'defeated';
+    releasePointer();
+    Audio.escape(); Audio.ko();
+    const store = useStore.getState();
+    store.setHud({ bossBar: null });
+    store.setScreen('defeat');
+    this.emit();
+  }
+
   // ------------------------------------------------------------------ Companions
 
   /** Whether this level supports companions (levels 3+). */
@@ -382,6 +449,7 @@ export class GameSession {
     lightingAt(this.timeOfDay, this.lighting);
     // Player
     const inp = this.phase === 'playing' ? this.input : { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
+    if (eco.bossCurrent > 0) { const c = eco.bossCurrent; this.player.vx += Math.cos(eco.time * 0.4) * c * 2.4 * dt; this.player.vz += Math.sin(eco.time * 0.33) * c * 2.4 * dt; this.player.vy += Math.sin(eco.time * 0.5) * c * 0.8 * dt; }
     this.player.update(dt, inp, eco.obstacles);
     this.input.lookDX = 0; this.input.lookDY = 0;
     // Simulation
@@ -390,6 +458,7 @@ export class GameSession {
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.balls.update(dt, eco);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
+    if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t > 1.4) this.fx.splice(i, 1); }
     for (let i = this.numbers.length - 1; i >= 0; i--) { this.numbers[i].t += dt; if (this.numbers[i].t > 1.1) this.numbers.splice(i, 1); }
     // Events
@@ -517,6 +586,24 @@ export class GameSession {
           break;
         }
         case 'recovered': break;
+        case 'bossSpawn': break;
+        case 'bossCharge': {
+          const e = eco.byId.get(ev.entityId);
+          if (near(e, 60)) { Audio.alarm(); Audio.breach(); }
+          break;
+        }
+        case 'bossDefeated': {
+          const sp = getSpecies(ev.speciesId);
+          if (this.mission) {
+            const out = applyBossDefeat(this.mission, ev.speciesId);
+            if (out.counted) { this.mission = out.mission; store.setMission(this.mission); }
+          }
+          Audio.levelComplete();
+          store.pushToast({ kind: 'catch', title: `${sp.name} defeated!`, speciesId: sp.id, missionTarget: true, ttl: 5 });
+          this.pushFx('catch', eco.byId.get(ev.entityId)?.x ?? 0, eco.byId.get(ev.entityId)?.y ?? 0, eco.byId.get(ev.entityId)?.z ?? 0, sp.size);
+          if (this.mission?.complete && this.phase === 'playing') { this.phase = 'completing'; this.completeTimer = 2.2; }
+          break;
+        }
         case 'duelEnd': break;
         case 'huntEnd': break;
       }
@@ -571,7 +658,7 @@ export class GameSession {
     this.phase = 'complete';
     releasePointer();
     Audio.levelComplete();
-    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed });
+    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id) });
     store.completeLevel(this.level.id, Math.round(this.elapsed));
     store.setScreen('complete');
     this.emit();
@@ -674,6 +761,15 @@ export class GameSession {
     else if (this.hintStep === 1) { this.hintStep = 2; }
     if (hint !== store.hud.hint) store.setHud({ hint });
   }
+}
+
+/** Non-boss objectives complete AND all earlier waves' bosses defeated. */
+function catchPhaseDoneUpTo(m: MissionState, wave: number): boolean {
+  if (!catchPhaseDone(m)) return false;
+  // bosses of earlier waves are counted through their objectives; the wave index only advances
+  // when the previous wave died, so reaching here with wave N means waves < N are done.
+  void wave;
+  return true;
 }
 
 export const session = new GameSession();

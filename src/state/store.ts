@@ -9,7 +9,7 @@ import { loadGame, saveGame, resetGame, type SaveData, type CollectionEntry, typ
 import type { MissionState } from '@/engine/sim/mission';
 import { SPECIES } from '@/data/species';
 
-export type Screen = 'loading' | 'start' | 'trainer' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings';
+export type Screen = 'loading' | 'start' | 'trainer' | 'defeat' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings';
 
 export interface Toast {
   id: number;
@@ -41,6 +41,7 @@ export interface HudState {
     downed: string[];
     active: ({ speciesId: string; hp: number; maxHp: number; moves: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
   };
+  bossBar: { name: string; hp: number; maxHp: number } | null;
   hint: string | null;
   fps: number;
   ecoSummary: string[];
@@ -58,7 +59,7 @@ interface AppState {
   hud: HudState;
   toasts: Toast[];
   lastCatch: { speciesId: string; missionTarget: boolean; objectiveLabel?: string } | null;
-  completeStats: { levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number } | null;
+  completeStats: { levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number; worldComplete?: boolean } | null;
   overlay: 'none' | 'mission' | 'collection' | 'pause' | 'settings';
 
   // actions
@@ -98,7 +99,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, hint: null, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, hint: null, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,
@@ -150,7 +151,7 @@ export const useStore = create<AppState>((set, get) => ({
   completeLevel(levelId, timeSec) {
     const s = get().save;
     const completed = s.progression.completedLevels.includes(levelId) ? s.progression.completedLevels : [...s.progression.completedLevels, levelId];
-    const unlocked = Math.max(s.progression.unlockedLevel, Math.min(5, levelId + 1));
+    const unlocked = Math.max(s.progression.unlockedLevel, Math.min(4, levelId + 1));
     const best = s.progression.bestTimes[String(levelId)];
     const bestTimes = { ...s.progression.bestTimes, [String(levelId)]: best ? Math.min(best, timeSec) : timeSec };
     const save = { ...s, progression: { unlockedLevel: unlocked, completedLevels: completed, bestTimes }, currentRun: null, stats: { ...s.stats, levelsCompleted: s.stats.levelsCompleted + 1 } };

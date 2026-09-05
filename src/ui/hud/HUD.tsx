@@ -14,19 +14,20 @@ import { CollectionView } from '../screens/CollectionScreen';
 import { SettingsView } from '../screens/SettingsScreen';
 import type { MissionObjective } from '@/engine/ecosystem/generator';
 
-const objectiveIcon: Record<MissionObjective['kind'], string> = { school: '🐟', passive: '🌊', curious: '🔎', bottom: '🪨', defensive: '🫧' };
+const objectiveIcon: Record<MissionObjective['kind'], string> = { school: '🐟', passive: '🌊', curious: '🔎', bottom: '🪨', defensive: '🫧', stageCatch: '⭐', boss: '⚔️' };
 
 function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk: boolean; index: number; siblings: number }) {
   const done = objectiveDone(o);
   const label = siblings > 1 ? `${o.label} ${String.fromCharCode(65 + index)}` : o.label;
+  const chips = o.kind === 'stageCatch' ? o.candidateSpecies.slice(0, 4) : o.speciesId ? [] : o.candidateSpecies;
   return (
-    <div className={`objective ${done ? 'done' : ''} ${risk && !done ? 'risk' : ''}`}>
+    <div className={`objective ${done ? 'done' : ''} ${risk && !done ? 'risk' : ''} ${o.kind === 'boss' ? 'boss' : ''}`}>
       <div className="check">{done ? '✓' : ''}</div>
       <div>
         <div className="label">
           <span>{objectiveIcon[o.kind]} {label}</span>
           {o.speciesId ? <span className="species"><SpriteImg id={o.speciesId} size={26} />{SPECIES[o.speciesId].name}</span>
-            : o.candidateSpecies.map((c) => <span key={c} className="species"><SpriteImg id={c} size={26} />{SPECIES[c].name}</span>)}
+            : <>{chips.map((c) => <span key={c} className="species"><SpriteImg id={c} size={26} />{SPECIES[c].name}</span>)}{o.kind === 'stageCatch' && o.candidateSpecies.length > 4 ? <span className="dim small">+{o.candidateSpecies.length - 4} more</span> : null}</>}
         </div>
         {o.guardianRequired && o.guardianSpeciesId && (
           <div className={`guardian ${o.guardianCaught ? 'done' : ''}`}>{o.guardianCaught ? '✓' : '□'} Guardian · <SpriteImg id={o.guardianSpeciesId} size={18} /> {SPECIES[o.guardianSpeciesId].name}</div>
@@ -251,6 +252,18 @@ function TargetPointer() {
   );
 }
 
+function BossBar() {
+  const boss = useStore((s) => s.hud.bossBar);
+  if (!boss) return null;
+  const frac = Math.max(0, boss.hp / boss.maxHp);
+  return (
+    <div className="boss-bar glass strong">
+      <div className="row between"><span className="bn">⚔️ {boss.name}</span><span className="mono small muted">{boss.hp} / {boss.maxHp}</span></div>
+      <div className="bhp"><i style={{ width: `${frac * 100}%` }} /></div>
+    </div>
+  );
+}
+
 function StatusChips() {
   const hud = useStore((s) => s.hud);
   const isTouch = useStore((s) => s.isTouch);
@@ -356,6 +369,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
         </div>
         <StatusChips />
+        <BossBar />
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">

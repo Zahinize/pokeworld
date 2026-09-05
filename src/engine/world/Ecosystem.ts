@@ -12,7 +12,7 @@ import { RNG } from '../rng';
 import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING } from '@/data/combatConfig';
 import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor } from '@/data/moves';
@@ -130,7 +130,7 @@ export class Ecosystem {
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
-      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1,
+      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -160,10 +160,10 @@ export class Ecosystem {
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
     const src = this.byId.get(sourceId);
     if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
-    // Companions auto-defend: getting hit locks a duel with the attacker
-    if (t.role === 'partner' && src && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
+    // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock)
+    if (t.role === 'partner' && src && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
     // A wild that strikes a companion gets dueled right back
-    if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith < 0 && src.duelWith < 0) this.startDuel(src, t);
+    if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith < 0 && src.duelWith < 0) this.startDuel(src, t);
     // Group revenge: a guardian-less group swarms any predator that attacks a member (design §7)
     if (src && src.behavior === 'predator' && t.groupId >= 0) {
       const g = this.groups[t.groupId];
@@ -193,7 +193,7 @@ export class Ecosystem {
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
-      if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator') this.faint(t); // your team weakens, never destroys
+      if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss) this.faint(t); // your team weakens, never destroys — bosses excepted
       else this.knockOut(t, by === 'predator' ? sourceId : -1);
     }
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
@@ -229,6 +229,7 @@ export class Ecosystem {
     const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
     if (t.role === 'partner') { this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id }); }
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
+    if (t.isBoss) { this.events.push({ type: 'bossDefeated', entityId: t.id, speciesId: t.species.id, how: 'ko' }); return; }
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes
     if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: t.species.id, zone: t.zone });
   }
@@ -280,7 +281,7 @@ export class Ecosystem {
     this.lureUntil = this.time + GAME.LURE_DURATION;
     const p = this.player;
     for (const e of this.alive) {
-      if (e.behavior === 'predator' || e.behavior === 'giant' || e.behavior === 'bottom' || e.role === 'partner') continue;
+      if (e.behavior === 'predator' || e.behavior === 'giant' || e.behavior === 'bottom' || e.role === 'partner' || e.isBoss) continue;
       if (e.state === 'ko' || e.state === 'captureAttempt') continue;
       if (len3(e.x - p.x, e.y - p.y, e.z - p.z) < GAME.LURE_RADIUS) { e.lured = true; e.nextThink = this.time; }
     }
@@ -303,7 +304,8 @@ export class Ecosystem {
     this.nightness = nightness;
     const ctx = this.ctx;
     ctx.time = this.time; ctx.nightness = nightness; ctx.isNight = nightness > 0.55; ctx.predatorGraceOver = this.time > GAME.PREDATOR_GRACE;
-    this.current.x = Math.cos(this.time * 0.025) * 0.3; this.current.z = Math.sin(this.time * 0.031) * 0.3;
+    const cur = 0.3 + this.bossCurrent * 2.2;
+    this.current.x = Math.cos(this.time * 0.025) * cur; this.current.z = Math.sin(this.time * 0.031) * cur;
     if (this.lureUntil >= 0 && this.time >= this.lureUntil) this.endLure();
     const luring = this.lureUntil >= 0;
 
@@ -393,6 +395,7 @@ export class Ecosystem {
       e.state = e.behavior === 'predator' ? 'patrol' : e.behavior === 'curious' ? 'wander' : e.behavior === 'bottom' ? 'retreat' : 'wander';
       e.stateT = 0;
     }
+    if (e.isBoss) { this.bossThink(e, dt); return; }
     if (e.role === 'partner') { this.partnerThink(e, dt); return; }
     if (e.state === 'duel') { this.duelWildThink(e, dt); return; }
     if (e.role === 'guardian' && e.groupId >= 0) {
@@ -452,6 +455,10 @@ export class Ecosystem {
     const tz = p.z + rz * side * 2.4 - fz * 1.4;
     const ty = p.y + 0.15 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.18;
     const d = len3(tx - e.x, ty - e.y, tz - e.z);
+    if (d > 35) { // fell too far behind (sprinting trainer) — return to their side in a swirl of bubbles
+      e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0;
+      return;
+    }
     const speed = d > 20 ? e.species.burst * 1.4 : d > 6 ? e.species.burst : e.species.speed * Math.min(1.6, 0.4 + d * 0.4);
     const k = speed / (d || 1);
     e.dx = (tx - e.x) * k; e.dy = (ty - e.y) * k; e.dz = (tz - e.z) * k;
@@ -568,9 +575,12 @@ export class Ecosystem {
       if (g.initialSize >= 2 && g.memberIds.length < Math.ceil(g.initialSize / 2) && !this.pendingReinforce.has(`group-${g.id}`)) this.pendingReinforce.set(`group-${g.id}`, this.time + 40);
     }
     for (const o of this.objectives) {
+      if (o.kind === 'boss') continue;
       const needMembers = Math.max(0, o.required - o.caught);
       const needGuardian = o.guardianRequired && !o.guardianCaught;
-      const have = this.aliveForObjective(o.id);
+      const have = o.kind === 'stageCatch'
+        ? { members: this.alive.filter((e) => e.role !== 'partner' && !e.isBoss && e.species.stage >= (o.minStage ?? 1) && e.state !== 'ko' && e.state !== 'caught').length, guardian: false }
+        : this.aliveForObjective(o.id);
       const key = o.id;
       if ((needMembers > have.members || (needGuardian && !have.guardian)) && !this.pendingReinforce.has(key)) {
         this.pendingReinforce.set(key, this.time + GAME.REINFORCE_DELAY);
@@ -607,8 +617,10 @@ export class Ecosystem {
         continue;
       }
       const o = this.objectives.find((x) => x.id === id);
-      if (!o) continue;
-      const have = this.aliveForObjective(o.id);
+      if (!o || o.kind === 'boss') continue;
+      const have = o.kind === 'stageCatch'
+        ? { members: this.alive.filter((e) => e.role !== 'partner' && !e.isBoss && e.species.stage >= (o.minStage ?? 1) && e.state !== 'ko' && e.state !== 'caught').length, guardian: false }
+        : this.aliveForObjective(o.id);
       const needMembers = Math.max(0, o.required - o.caught) - have.members;
       const needGuardian = o.guardianRequired && !o.guardianCaught && !have.guardian;
       if (needMembers <= 0 && !needGuardian) continue;
@@ -626,7 +638,7 @@ export class Ecosystem {
           const sid = this.rng.pick(o.candidateSpecies);
           const s = getSpecies(sid);
           const zone = this.rng.pick(s.habitat);
-          this.spawn({ speciesId: sid, role: 'solo', groupIndex: -1, objectiveId: o.id, ambient: false, zone, pos: this.farSpawnPos(zone, sid) });
+          this.spawn({ speciesId: sid, role: 'solo', groupIndex: -1, objectiveId: o.kind === 'stageCatch' ? undefined : o.id, ambient: o.kind === 'stageCatch', zone, pos: this.farSpawnPos(zone, sid) });
           this.events.push({ type: 'reinforce', speciesId: sid, count: 1, objectiveId: o.id });
         }
       }
@@ -648,6 +660,98 @@ export class Ecosystem {
   get nextPredatorRespawn(): number | null {
     if (!this.pendingRespawn.length) return null;
     return Math.max(0, Math.min(...this.pendingRespawn.map((r) => r.at)) - this.time);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Bosses
+  // ---------------------------------------------------------------------------------------------
+
+  /** Extra current force applied to everything while a boss event rages (set by the session). */
+  bossCurrent = 0;
+
+  /** Spawn a boss at a site with its stat multipliers applied. */
+  spawnBoss(speciesId: string, x: number, z: number): Entity {
+    const s = getSpecies(speciesId);
+    const fy = floorY(x, z);
+    const y = Math.max(fy + s.size * 0.7 + 1.5, -(s.depth[0] + s.depth[1]) / 2);
+    const e = this.spawn({ speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z } });
+    const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
+    e.isBoss = true;
+    e.maxHp = Math.round(e.maxHp * t.hp); e.hp = e.maxHp;
+    e.cs = { ...e.cs, atk: e.cs.atk * t.atk, spAtk: e.cs.spAtk * t.atk, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
+    e.home = { x, y, z };
+    e.state = 'wander'; e.stateT = 0;
+    e.t2 = 6 + this.rng.next() * 4; // first charge comes soon
+    this.events.push({ type: 'bossSpawn', entityId: e.id, speciesId });
+    return e;
+  }
+
+  /** Aggressive boss AI: guard the site, brawl with partners/player, telegraphed violent charges. */
+  private bossThink(e: Entity, dt: number) {
+    const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
+    const p = this.player;
+    // choose a focus: nearest living partner, else the player
+    let focus: Vec3 = p; let focusEnt: Entity | null = null; let bestD = len3(p.x - e.x, p.y - e.y, p.z - e.z);
+    for (const pt of this.alive) {
+      if (pt.role !== 'partner' || pt.state === 'ko') continue;
+      const d = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+      if (d < bestD + 4) { bestD = d; focus = pt; focusEnt = pt; }
+    }
+    if (e.state === 'charging') {
+      // telegraph, then lunge along the stored direction
+      if (e.stateT < COMBAT.CHARGE_TELEGRAPH) {
+        e.dx = e.dy = e.dz = 0; e.maxSpeed = 0.4; e.flashT = 0.2;
+      } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3) {
+        const sp = t.chargeSpeed * 1.9;
+        e.dx = e.wander.x * sp; e.dy = e.wander.y * sp; e.dz = e.wander.z * sp;
+        e.maxSpeed = sp;
+        // contact damage
+        const pr = e.species.size * 0.55 + 1.1;
+        if (len3(p.x - e.x, p.y - e.y, p.z - e.z) < pr && this.time > e.t1) {
+          const [lo, hi] = COMBAT.CHARGE_PLAYER_DAMAGE;
+          const dmg = Math.round(lo + this.rng.next() * (hi - lo));
+          this.events.push({ type: 'playerHit', casterId: e.id, moveId: 'charge', damage: dmg });
+          this.onPlayerDamage(dmg, e.id, 'charge');
+          e.t1 = this.time + 1; // one player hit per charge
+        }
+        for (const pt of this.alive) {
+          if (pt.role !== 'partner' || pt.state === 'ko') continue;
+          if (len3(pt.x - e.x, pt.y - e.y, pt.z - e.z) < pr && pt.flashT <= 0) {
+            this.damageAbs(pt, Math.round(pt.maxHp * 0.4 * COMBAT.CHARGE_COMPANION_MULT), e.id);
+          }
+        }
+      } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3 + COMBAT.CHARGE_RECOVERY) {
+        // recovery: slow drift, softened defenses — the punish window
+        e.dx = e.vx * 0.2; e.dy = 0; e.dz = e.vz * 0.2; e.maxSpeed = 1;
+        e.defStage = 0.75; e.defStageUntil = this.time + 0.5;
+      } else { e.state = 'wander'; e.stateT = 0; e.t2 = t.chargeEvery * (0.8 + this.rng.next() * 0.4); }
+      return;
+    }
+    // brawl: keep mid range from the focus, cast whenever ready
+    e.t2 -= dt;
+    const d = len3(focus.x - e.x, focus.y - e.y, focus.z - e.z);
+    if (e.t2 <= 0 && d < 40) {
+      // wind up a charge toward the focus
+      e.state = 'charging'; e.stateT = 0; e.t1 = 0;
+      const dx = focus.x - e.x, dy = focus.y - e.y, dz = focus.z - e.z;
+      const l = len3(dx, dy, dz) || 1;
+      e.wander.x = dx / l; e.wander.y = dy / l; e.wander.z = dz / l;
+      this.events.push({ type: 'bossCharge', entityId: e.id, targetKind: focusEnt ? 'partner' : 'player' });
+      return;
+    }
+    const hold = 7 + e.species.size * 0.6;
+    const k = (d - hold) / (d || 1);
+    const sp = e.species.speed * 1.5;
+    e.dx = (focus.x - e.x) * k * 0.35 + Math.sin(this.time * 0.7 + e.phase) * 0.4;
+    e.dy = (focus.y - e.y) * k * 0.25;
+    e.dz = (focus.z - e.z) * k * 0.35 + Math.cos(this.time * 0.6 + e.phase) * 0.4;
+    e.maxSpeed = sp;
+    // stay near the lair
+    const dh = len3(e.home.x - e.x, 0, e.home.z - e.z);
+    if (dh > 45) { e.dx += (e.home.x - e.x) * 0.05; e.dz += (e.home.z - e.z) * 0.05; }
+    // cast at partners in range, or the player
+    const slot = this.moves.pickMove(e, d, false, !focusEnt);
+    if (slot !== -1 && d < 20) this.moves.cast(e, slot, focusEnt ? { kind: 'entity', id: focusEnt.id } : { kind: 'player' });
   }
 
   // ---------------------------------------------------------------------------------------------

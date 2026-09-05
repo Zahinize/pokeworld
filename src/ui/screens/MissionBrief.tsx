@@ -57,6 +57,14 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
               {m.curious > 0 && <BriefRow icon="🔎" label="Curious Explorer" count={m.curious} done={objectives?.find((o) => o.id === 'curious')} />}
               {m.bottom > 0 && <BriefRow icon="🪨" label="Bottom Dweller" count={m.bottom} done={objectives?.find((o) => o.id === 'bottom')} />}
               {m.defensive > 0 && <BriefRow icon="🫧" label="Defensive Fish" count={m.defensive} done={objectives?.find((o) => o.id === 'defensive')} />}
+              {m.stageCatch && <BriefRow icon="⭐" label={`Stage ${m.stageCatch.minStage}+ Pokémon`} count={objectives?.find((o) => o.id === 'stageCatch')?.required ?? m.stageCatch.max} done={objectives?.find((o) => o.id === 'stageCatch')} />}
+              {(level.bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => (
+                <div key={b} className="objective boss">
+                  <div style={{ fontSize: 18 }}>⚔️</div>
+                  <div><div className="label">Defeat {SPECIES[b].name}</div></div>
+                  <div className="count"><SpriteImg id={b} size={30} /></div>
+                </div>
+              ))}
             </div>
             {level.companions && (
               <>

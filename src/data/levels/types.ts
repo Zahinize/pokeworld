@@ -29,6 +29,19 @@ export interface LevelMission {
   curious: number;
   bottom: number;
   defensive: number;
+  /** Stage-based catch phase (levels 3–4): catch `count` Pokémon of stage ≥ minStage. */
+  stageCatch?: { min: number; max: number; minStage: 1 | 2 };
+}
+
+/** A boss wave: spawned when the previous phase completes. */
+export interface BossPhase {
+  /** Species spawned together in this wave (e.g. Dondozo + Tatsugiri). */
+  bosses: string[];
+  site: ZoneId;
+  label: string;
+  /** Environmental drama on arrival. */
+  event: 'none' | 'currents' | 'currents+shake';
+  arrivalToast: string;
 }
 
 export interface LevelConfig {
@@ -46,10 +59,13 @@ export interface LevelConfig {
   playerStart: { zone: ZoneId; depth: number };
   /** Companion party (levels 3+). */
   companions?: boolean;
+  /** Boss waves after the catch phase (levels 3–4). */
+  bossPhases?: BossPhase[];
   status: 'playable' | 'comingSoon';
 }
 
 export function missionTotal(m: LevelMission): number {
   const g = (groups: GroupMission[]) => groups.reduce((n, x) => n + x.members + (x.guardian ? 1 : 0), 0);
-  return g(m.schoolGroups) + g(m.passiveGroups) + m.curious + m.bottom + m.defensive;
+  const stage = m.stageCatch ? Math.round((m.stageCatch.min + m.stageCatch.max) / 2) : 0;
+  return g(m.schoolGroups) + g(m.passiveGroups) + m.curious + m.bottom + m.defensive + stage;
 }

@@ -92,6 +92,8 @@ export interface Entity {
   orderMove: -1 | 0 | 1;
   /** Active party slot for partners (0/1). */
   partnerSlot: number;
+  /** Boss entity: stat multipliers applied, aggressive boss AI, immune to faint and lure. */
+  isBoss: boolean;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -146,7 +148,10 @@ export type EcoEvent =
   | { type: 'duelEnd'; partnerId: number; wildId: number; reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone' }
   | { type: 'faint'; entityId: number; speciesId: string }
   | { type: 'recovered'; entityId: number; speciesId: string }
-  | { type: 'partnerDown'; entityId: number; speciesId: string };
+  | { type: 'partnerDown'; entityId: number; speciesId: string }
+  | { type: 'bossSpawn'; entityId: number; speciesId: string }
+  | { type: 'bossCharge'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught' };
 
 export interface PlayerSnapshot {
   x: number; y: number; z: number;

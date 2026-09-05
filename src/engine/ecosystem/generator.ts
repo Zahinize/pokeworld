@@ -33,7 +33,7 @@ export interface GroupSpec {
   followsSpawn?: number;
 }
 
-export type ObjectiveKind = 'school' | 'passive' | 'curious' | 'bottom' | 'defensive';
+export type ObjectiveKind = 'school' | 'passive' | 'curious' | 'bottom' | 'defensive' | 'stageCatch' | 'boss';
 
 export interface MissionObjective {
   id: string;
@@ -46,8 +46,10 @@ export interface MissionObjective {
   caught: number;
   guardianRequired: boolean;
   guardianCaught: boolean;
-  /** Species that can satisfy pool objectives (curious/bottom/defensive). */
+  /** Species that can satisfy pool objectives (curious/bottom/defensive/stageCatch). */
   candidateSpecies: string[];
+  /** stageCatch: minimum stage that counts. */
+  minStage?: number;
 }
 
 export interface GeneratedEcosystem {
@@ -319,6 +321,20 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
       const x = cx + Math.cos(a) * ring, z = cz + Math.sin(a) * ring;
       obstacles.push({ x, y: floorY(x, z) + 3, z, r: 4.6, kind: 'cave' });
       obstacles.push({ x: x * 0.5 + cx * 0.5, y: floorY(x, z) + 9.5, z: z * 0.5 + cz * 0.5, r: 4.2, kind: 'cave' });
+    }
+  }
+
+  // ---- Stage-based catch phase + boss waves (levels 3–4) ----
+  if (level.mission.stageCatch) {
+    const sc = level.mission.stageCatch;
+    const required = rng.int(sc.min, sc.max);
+    const eligible = Array.from(new Set(spawns.map((sp) => sp.speciesId))).filter((id) => SPECIES[id].stage >= sc.minStage && !SPECIES[id].bossOnly);
+    // Guarantee a healthy pool: the reinforcement system tops these up if predators thin them out
+    objectives.push({ id: 'stageCatch', kind: 'stageCatch', label: `Catch Stage ${sc.minStage}+ Pokémon`, required, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: eligible.length ? eligible : SPECIES_LIST.filter((x) => x.stage >= sc.minStage && !x.bossOnly).map((x) => x.id), minStage: sc.minStage });
+  }
+  for (const phase of level.bossPhases ?? []) {
+    for (const b of phase.bosses) {
+      objectives.push({ id: `boss-${b}`, kind: 'boss', label: `Defeat ${getSpecies(b).name}`, speciesId: b, required: 1, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: [b] });
     }
   }
 

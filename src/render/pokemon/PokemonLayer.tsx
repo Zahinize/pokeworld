@@ -212,7 +212,9 @@ export function PokemonLayer() {
       b.aFlip.array[i] = f;
       b.aAlpha.array[i] = alpha;
       b.aFlash.array[i] = e.flashT > 0 ? Math.min(1, e.flashT * 2.5) * 0.8 : 0;
-      const glow = e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9)) : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
+      const glow = e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
+        : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
+        : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
