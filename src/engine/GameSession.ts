@@ -713,8 +713,11 @@ export class GameSession {
             const out = applyBossDefeat(this.mission, ev.speciesId);
             if (out.counted) { this.mission = out.mission; store.setMission(this.mission); }
           }
+          // A defeated boss is yours — into the collection, trophy-style, usable as a companion later
+          store.recordCatch(sp.id, this.level.id);
+          store.setLastCatch({ speciesId: sp.id, missionTarget: true, objectiveLabel: 'Boss defeated ⚔️' });
           Audio.levelComplete();
-          store.pushToast({ kind: 'catch', title: `${sp.name} defeated!`, speciesId: sp.id, missionTarget: true, ttl: 5 });
+          store.pushToast({ kind: 'catch', title: `${sp.name} defeated — added to your collection!`, body: 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, missionTarget: true, ttl: 6 });
           this.pushFx('catch', eco.byId.get(ev.entityId)?.x ?? 0, eco.byId.get(ev.entityId)?.y ?? 0, eco.byId.get(ev.entityId)?.z ?? 0, sp.size);
           if (this.mission?.complete && this.phase === 'playing') { this.phase = 'completing'; this.completeTimer = 2.2; }
           break;

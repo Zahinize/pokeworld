@@ -67,8 +67,9 @@ Any other static host (Netlify, Cloudflare Pages, GitHub Pages, an S3 bucket) wo
   **caught automatically** — straight into your collection, with mission credit if it's a target. Guardians strike
   back at trainers who catch their group members, so stay alert.
 - **Bosses** (Dondozo + Tatsugiri, Wailord, Kyogre) exist only in the boss fights that end levels 3–4 — they never
-  swim the reef as ordinary spawns. They fight at their natural stats with telegraphed charge attacks; if one wipes
-  your whole party, you're defeated (restart or pick another level). Full design: [docs/moves-combat-design.md](docs/moves-combat-design.md).
+  swim the reef as ordinary spawns, and Poké Balls glance off them. Defeat one with your companions' moves and it
+  joins your collection as a trophy — usable as a companion in future dives. If a boss wipes your whole party,
+  you're defeated (restart or pick another level). Full design: [docs/moves-combat-design.md](docs/moves-combat-design.md).
 
 ## Verification
 
