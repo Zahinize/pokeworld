@@ -57,7 +57,6 @@ export function CameraRig() {
       if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
       if (e.button === 2) session.cycleBall(1);
     };
-    const onWheel = (e: WheelEvent) => { if (session.playing && document.pointerLockElement === el) session.cycleBall(e.deltaY > 0 ? 1 : -1); };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {
       if (store().isTouch) return;
@@ -65,11 +64,11 @@ export function CameraRig() {
     };
     const onVisibility = () => { if (document.hidden && session.playing) { session.pause(); store().setOverlay('pause'); } };
     window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', onBlur);
-    document.addEventListener('mousemove', onMouseMove); el.addEventListener('mousedown', onMouseDown); el.addEventListener('wheel', onWheel, { passive: true });
+    document.addEventListener('mousemove', onMouseMove); el.addEventListener('mousedown', onMouseDown);
     el.addEventListener('contextmenu', onContext); document.addEventListener('pointerlockchange', onLockChange); document.addEventListener('visibilitychange', onVisibility);
     return () => {
       window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur);
-      document.removeEventListener('mousemove', onMouseMove); el.removeEventListener('mousedown', onMouseDown); el.removeEventListener('wheel', onWheel);
+      document.removeEventListener('mousemove', onMouseMove); el.removeEventListener('mousedown', onMouseDown);
       el.removeEventListener('contextmenu', onContext); document.removeEventListener('pointerlockchange', onLockChange); document.removeEventListener('visibilitychange', onVisibility);
       canvasElement = null;
     };

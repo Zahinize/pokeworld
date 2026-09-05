@@ -190,23 +190,30 @@ function RestoreBanner() {
 
 export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
   const K = ({ k }: { k: string }) => <span className="kbd">{k}</span>;
+  const Row = ({ keys, children }: { keys: React.ReactNode; children: React.ReactNode }) => (
+    <div className="ctl"><span className="ctl-keys">{keys}</span><span className="ctl-desc">{children}</span></div>
+  );
   return isTouch ? (
     <div className="controls-grid">
-      <span><b>Left stick</b> swim</span><span><b>Drag right side</b> look around</span>
-      <span><b>🔴 Red button</b> throw the selected ball</span><span><b>▲ ▼</b> swim up / down</span>
-      <span><b>Ball tray</b> switch balls</span><span><b>🪄 Lure</b> draw nearby Pokémon to you</span>
-      <span><b>»</b> toggle fast swim</span><span><b>⏸</b> pause · mission details in the top-left pill</span>
+      <Row keys={<b>Left stick</b>}>swim</Row>
+      <Row keys={<b>Drag right side</b>}>look around</Row>
+      <Row keys={<b>🔴 Red button</b>}>throw the selected ball</Row>
+      <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
+      <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
+      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon to you</Row>
+      <Row keys={<b>»</b>}>toggle fast swim</Row>
+      <Row keys={<b>⏸</b>}>pause · mission in the top-left pill</Row>
     </div>
   ) : (
     <div className="controls-grid">
-      <span><K k="W" /><K k="A" /><K k="S" /><K k="D" /> <b>swim</b> (you swim where you look)</span>
-      <span><b>Mouse</b> look · <b>Left click</b> throw ball</span>
-      <span><K k="Shift" /> <b>swim faster</b></span>
-      <span><K k="Space" /> up · <K k="Ctrl" /> / <K k="X" /> down</span>
-      <span><K k="1" />–<K k="4" /> or <b>scroll</b> to switch balls</span>
-      <span><K k="E" /> <b>lure</b> nearby Pokémon</span>
-      <span><K k="Tab" /> mission · <K k="C" /> collection</span>
-      <span><K k="Esc" /> / <K k="P" /> pause</span>
+      <Row keys={<><K k="W" /><K k="A" /><K k="S" /><K k="D" /></>}><b>swim</b> · you swim where you look</Row>
+      <Row keys={<><b>Mouse</b> · <b>Left click</b></>}>look · throw ball</Row>
+      <Row keys={<K k="Shift" />}><b>swim faster</b></Row>
+      <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
+      <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
+      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon</Row>
+      <Row keys={<><K k="Tab" /> · <K k="C" /></>}>mission · collection</Row>
+      <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
     </div>
   );
 }
@@ -228,6 +235,7 @@ function PauseOverlay({ onQuit }: { onQuit: () => void }) {
           </div>
           <button className="btn ghost block" onClick={onQuit}>Quit to menu · progress is saved</button>
         </div>
+
         <div className="hr" style={{ margin: '16px 0 12px' }} />
         <ControlsLegend isTouch={isTouch} />
       </Panel>

@@ -17,10 +17,10 @@ npm run build      # production bundle in dist/
 | Desktop | |
 | --- | --- |
 | `W A S D` / arrows | swim (you swim where you look) |
-| Mouse | look · **left click** throws the selected ball · right click / scroll cycles balls |
+| Mouse | look · **left click** throws the selected ball · **right click** cycles balls |
 | `Shift` | swim faster |
 | `Space` / `Ctrl` (or `X`) | swim up / down |
-| `1–4` | select Poké / Great / Ultra / Master Ball |
+| `1–4` | select Poké / Great / Ultra / Master Ball (or right-click to cycle) |
 | `E` | lure (15 s, nearby Pokémon circle you) |
 | `Tab` | mission details · `C` collection · `P` / `Esc` pause |
 

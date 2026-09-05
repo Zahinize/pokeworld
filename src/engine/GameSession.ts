@@ -465,7 +465,7 @@ export class GameSession {
     const isTouch = store.isTouch;
     let hint: string | null = null;
     if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Tap the throw button to catch the Pokémon in front of you' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
-    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Tap a ball in the tray to switch balls · Better balls catch better' : 'Scroll or press 1–4 to switch balls · E for a lure · Tab for the mission';
+    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Tap a ball in the tray to switch balls · Better balls catch better' : 'Press 1–4 or right-click to switch balls · E for a lure · Tab for the mission';
     else if (this.hintStep === 1) { this.hintStep = 2; }
     if (hint !== store.hud.hint) store.setHud({ hint });
   }
