@@ -169,6 +169,29 @@ for (const levelId of [1, 2]) {
   if (events.includes('partnerDown')) ok('partner KO emits partnerDown'); else fail('partnerDown never emitted');
 }
 
+// ---- Supportive companions: Alomomola heals a hurt teammate; Cloyster shells up ----
+{
+  const gen = generateEcosystem(getLevel(1), 12);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  eco.update(1 / 60, p, 0);
+  const healer = eco.addPartner('alomomola', 0);
+  const tank = eco.addPartner('cloyster', 1);
+  const hurt = () => { tank.hp = tank.maxHp * 0.3; healer.hp = healer.maxHp * 0.9; };
+  hurt();
+  let healed = 0, defUps = 0;
+  for (let i = 0; i < 20 * 60; i++) {
+    eco.update(1 / 60, p, 0);
+    for (const ev of eco.drainEvents()) {
+      if (ev.type === 'heal' && ev.targetId === tank.id) healed += ev.amount;
+      if (ev.type === 'effect' && ev.effect === 'defUp' && ev.targetId === tank.id) defUps++;
+    }
+    if (i === 10 * 60) hurt(); // second wave of damage
+  }
+  if (healed > 0) ok(`Alomomola healed its hurt teammate for ${healed} HP (Heal Pulse)`); else fail('healer never healed the teammate');
+  if (defUps > 0) ok(`Cloyster shelled up ${defUps}× while hurt (Withdraw)`); else fail('tank never used Withdraw');
+}
+
 // ---- Levels 3–4: stage-catch phase + boss waves (step 6) ----
 {
   const { createMission, applyCatch, applyBossDefeat, catchPhaseDone } = await import('@/engine/sim/mission');

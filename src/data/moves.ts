@@ -197,11 +197,19 @@ export function movesFor(speciesId: string): [MoveConfig, MoveConfig] {
   return [getMove(kit[0]), getMove(kit[1])];
 }
 
-/** Companion kit: always two damage moves. */
+/** Supportive utilities (self/ally heal or defense boost) stay in companion kits. */
+export function isSupportive(m: MoveConfig): boolean {
+  return m.kind === 'utility' && !!m.effect && (m.effect.type === 'heal' || m.effect.type === 'defUp');
+}
+
+/**
+ * Companion kit: ≥1 damage move; supportive utilities (Withdraw, Aqua Ring, Heal Pulse…) are kept
+ * so tanks and healers play their role — offensive utilities are swapped for damage.
+ */
 export function companionMovesFor(speciesId: string): [MoveConfig, MoveConfig] {
   const [a, b] = movesFor(speciesId);
   const rep = COMPANION_REPLACEMENTS[speciesId];
-  const swap = (m: MoveConfig) => (m.kind === 'utility' ? getMove(rep) : m);
+  const swap = (m: MoveConfig) => (m.kind === 'utility' && !isSupportive(m) ? getMove(rep) : m);
   return [swap(a), swap(b)];
 }
 
@@ -217,10 +225,11 @@ export function auditMoveKits(): string[] {
     const damage = moves.filter((m) => m.kind === 'damage').length;
     if (damage < 1) errs.push(`${s.id}: needs at least one damage move`);
     if (damage === 0) errs.push(`${s.id}: two utility moves are not allowed`);
-    const hasUtility = moves.some((m) => m.kind === 'utility');
-    if (hasUtility && !COMPANION_REPLACEMENTS[s.id]) errs.push(`${s.id}: utility kit needs a companion replacement`);
+    const hasOffensiveUtility = moves.some((m) => m.kind === 'utility' && !isSupportive(m));
+    if (hasOffensiveUtility && !COMPANION_REPLACEMENTS[s.id]) errs.push(`${s.id}: offensive-utility kit needs a companion replacement`);
     const comp = companionMovesFor(s.id);
-    if (comp.some((m) => m.kind !== 'damage')) errs.push(`${s.id}: companion kit must be all damage`);
+    if (!comp.some((m) => m.kind === 'damage')) errs.push(`${s.id}: companion kit needs at least one damage move`);
+    if (comp.some((m) => m.kind === 'utility' && !isSupportive(m))) errs.push(`${s.id}: companion kit may only carry heal/defense utilities`);
   }
   for (const id of Object.keys(SPECIES_MOVES)) if (!SPECIES_LIST.some((s) => s.id === id)) errs.push(`kit for unknown species: ${id}`);
   return errs;

@@ -19,7 +19,7 @@ import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
 import { kitOf, effectiveRange } from './sim/moveSystem';
-import { getMove } from '@/data/moves';
+import { getMove, isSupportive } from '@/data/moves';
 import { SPECIES, getSpecies } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
@@ -464,6 +464,19 @@ export class GameSession {
     const partner = this.eco.byId.get(this.activePartners[slot]);
     // Empty slot? The same control sends out the next reserve.
     if (!partner || partner.state === 'ko') { this.sendNextReserve(slot); return false; }
+    const move = kitOf(partner)[moveSlot];
+    // Supportive moves need no aim: self-buffs cast instantly; Heal Pulse finds the most-hurt teammate
+    if (isSupportive(move)) {
+      if (!this.eco.moves.ready(partner, moveSlot)) return false;
+      let target = partner;
+      if (!move.selfTarget && move.effect?.type === 'heal') {
+        for (const id of this.activePartners) {
+          const o = id >= 0 ? this.eco.byId.get(id) : undefined;
+          if (o && o !== partner && o.state !== 'ko' && o.hp / o.maxHp < target.hp / target.maxHp) target = o;
+        }
+      }
+      return this.eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
+    }
     const target = this.aimedEntity(45);
     if (!target) return false;
     return this.orderCast(partner, moveSlot, target);

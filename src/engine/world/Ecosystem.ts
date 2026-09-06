@@ -15,7 +15,7 @@ import { GAME } from '@/data/gameConfig';
 import { COMBAT, BOSS_TUNING } from '@/data/combatConfig';
 import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
-import { companionMovesFor } from '@/data/moves';
+import { companionMovesFor, isSupportive } from '@/data/moves';
 import { kitOf, effectiveRange } from '../sim/moveSystem';
 import { floorY } from './terrain';
 import type { Obstacle } from './terrain';
@@ -427,6 +427,29 @@ export class Ecosystem {
     }
   }
 
+  /** Tanks shell up and healers mend the team: cast a supportive utility when it's needed. */
+  private partnerSupportCast(e: Entity): boolean {
+    const kit = kitOf(e);
+    for (const slot of [0, 1] as const) {
+      const m = kit[slot];
+      if (!isSupportive(m) || !this.moves.ready(e, slot)) continue;
+      if (m.selfTarget) {
+        if (e.hp < e.maxHp * 0.65) return this.moves.cast(e, slot, { kind: 'entity', id: e.id });
+      } else if (m.effect?.type === 'heal') {
+        // Heal Pulse: mend the most-hurt teammate in range (or itself)
+        let best: Entity | null = e.hp < e.maxHp * 0.65 ? e : null;
+        for (const o of this.alive) {
+          if (o.role !== 'partner' || o === e || o.state === 'ko') continue;
+          if (o.hp / o.maxHp >= 0.65) continue;
+          if (len3(o.x - e.x, o.y - e.y, o.z - e.z) > effectiveRange(e, m) + 2) continue;
+          if (!best || o.hp / o.maxHp < best.hp / best.maxHp) best = o;
+        }
+        if (best) return this.moves.cast(e, slot, { kind: 'entity', id: best.id });
+      }
+    }
+    return false;
+  }
+
   /** Companion AI: formation follow, commanded casts, duel auto-fighting, auto-defense. */
   private partnerThink(e: Entity, dt: number) {
     const p = this.player;
@@ -437,8 +460,10 @@ export class Ecosystem {
       const d = len3(w.x - e.x, w.y - e.y, w.z - e.z);
       if (d > COMBAT.DUEL_BREAK_DIST) { this.endDuel(e, 'separated'); return; }
       this.orbitOpponent(e, w, dt);
-      const slot = this.moves.pickMove(e, d, false, true);
-      if (slot !== -1) this.moves.cast(e, slot, { kind: 'entity', id: w.id });
+      if (!this.partnerSupportCast(e)) {
+        const slot = this.moves.pickMove(e, d, false, true);
+        if (slot !== -1) this.moves.cast(e, slot, { kind: 'entity', id: w.id });
+      }
       return;
     }
     // Commanded cast: chase the ordered target until the move is in range
@@ -459,6 +484,8 @@ export class Ecosystem {
         }
       }
     }
+    // Keep the team healthy even out of combat
+    if ((e.hp < e.maxHp || this.alive.some((o) => o.role === 'partner' && o !== e && o.hp < o.maxHp * 0.65)) && this.rng.next() < 0.3) this.partnerSupportCast(e);
     // Formation follow: out in FRONT of the trainer, flanking the crosshair so they're always visible
     const side = e.partnerSlot === 0 ? -1 : 1;
     const cy = Math.cos(this.playerYaw), sy = Math.sin(this.playerYaw);

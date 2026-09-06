@@ -16,9 +16,13 @@ console.log('Move kit audit');
 const errs = auditMoveKits();
 if (errs.length) errs.forEach(fail); else ok(`all ${SPECIES_LIST.length} species have valid kits (≥1 damage, never 2 utility)`);
 {
-  const withUtility = SPECIES_LIST.filter((s) => movesFor(s.id).some((m) => m.kind === 'utility')).length;
-  const allCompDamage = SPECIES_LIST.every((s) => companionMovesFor(s.id).every((m) => m.kind === 'damage'));
-  if (allCompDamage) ok(`companion kits all-damage (${withUtility} species use replacements)`); else fail('companion kit contains a utility');
+  const { isSupportive } = await import('@/data/moves');
+  const supportive = SPECIES_LIST.filter((s) => companionMovesFor(s.id).some((m) => m.kind === 'utility')).map((s) => s.id);
+  const valid = SPECIES_LIST.every((s) => {
+    const kit = companionMovesFor(s.id);
+    return kit.some((m) => m.kind === 'damage') && kit.every((m) => m.kind === 'damage' || isSupportive(m));
+  });
+  if (valid) ok(`companion kits valid; supportive utilities kept for: ${supportive.join(', ')}`); else fail('invalid companion kit');
 }
 
 console.log('Stat sanity');
