@@ -468,13 +468,15 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .reserve-chip { width: 26px; height: 26px; border-radius: 8px; }
   .hud.touch .reserve-chip img { width: 18px; height: 18px; }
   /* notifications: smaller still */
-  .hud.touch .toasts { width: min(176px, calc(100vw - 20px)); gap: 4px; }
-  .hud.touch .toast { padding: 5px 7px; gap: 6px; border-radius: 9px; }
-  .hud.touch .toast img { width: 20px; height: 20px; }
-  .hud.touch .toast .t { font-size: 10.5px; }
-  .hud.touch .catch-toast .b { font-size: 9.5px; }
-  .hud.touch .chip { padding: 4px 8px; font-size: 10px; }
-  .hud.touch .restore-banner b { font-size: 13px; }
+  .hud.touch .toasts { width: min(158px, calc(100vw - 20px)); gap: 3px; }
+  .hud.touch .toast { padding: 4px 6px; gap: 5px; border-radius: 8px; }
+  .hud.touch .toast img { width: 18px; height: 18px; }
+  .hud.touch .toast .t { font-size: 9.5px; }
+  .hud.touch .catch-toast .b { font-size: 8.5px; }
+  .hud.touch .chip { padding: 3px 7px; font-size: 9.5px; }
+  .hud.touch .restore-banner { padding: 4px 8px; }
+  .hud.touch .restore-banner .eyebrow { font-size: 8.5px; letter-spacing: .14em; }
+  .hud.touch .restore-banner b { font-size: 11px; }
   /* ball tray + lure: compact, lure vertically centered on the tray */
   .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(8px + var(--safe-bottom)); }
   .hud.touch .ball-tray { padding: 4px 6px; gap: 2px; border-radius: 13px; }
