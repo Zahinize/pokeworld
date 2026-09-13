@@ -267,10 +267,11 @@ a { color: var(--aqua); }
 .hud.touch .swap-prompt { bottom: calc(200px + var(--safe-bottom)); }
 
 /* Trainer tag under companions */
-.partner-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 4px; border-radius: 999px; background: rgba(5, 28, 52, .72); border: 1px solid rgba(53, 208, 255, .45); box-shadow: 0 0 12px rgba(53, 208, 255, .3); white-space: nowrap; transform: translateZ(0); }
-.partner-tag .pt-avatar { width: 20px; height: 20px; border-radius: 50%; overflow: hidden; position: relative; flex: none; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); }
+.partner-tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 5px; border-radius: 999px; background: rgba(5, 28, 52, .78); border: 2px solid rgba(255, 209, 102, .85); box-shadow: 0 0 14px rgba(255, 209, 102, .55), inset 0 0 8px rgba(255, 209, 102, .18); white-space: nowrap; transform: translateZ(0); animation: tagGlow 2.2s ease-in-out infinite; }
+.partner-tag .pt-avatar { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; position: relative; flex: none; border: 1px solid rgba(255, 224, 138, .7); background: rgba(255,255,255,.12); }
 .partner-tag .pt-avatar img { position: absolute; width: auto; max-width: none; }
-.partner-tag .pt-name { font-family: var(--font-display); font-weight: 800; font-size: 12.5px; letter-spacing: .02em; color: #bfefff; }
+.partner-tag .pt-name { font-family: var(--font-display); font-weight: 800; font-size: 16px; letter-spacing: .02em; color: #ffe9b0; }
+@keyframes tagGlow { 0%, 100% { box-shadow: 0 0 10px rgba(255, 209, 102, .4), inset 0 0 8px rgba(255, 209, 102, .15); } 50% { box-shadow: 0 0 20px rgba(255, 209, 102, .75), inset 0 0 10px rgba(255, 209, 102, .25); } }
 
 /* Player vitals */
 .player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }

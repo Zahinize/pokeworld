@@ -234,15 +234,6 @@ export function MoveMotes() {
             (Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.2, 0.14 + Math.random() * 0.16, 0.5 + Math.random() * 0.3, pr.color);
         }
       }
-      // golden sparkles drifting off your companions (their true colors stay untouched)
-      if (Math.random() < dt * 4) {
-        for (const pt of eco.partners) {
-          if (Math.random() > 0.6) continue;
-          const r = pt.species.size * 0.5;
-          spawn(pt.x + (Math.random() - 0.5) * r * 2, pt.y + (Math.random() - 0.5) * r * 1.6, pt.z + (Math.random() - 0.5) * r * 2,
-            (Math.random() - 0.5) * 0.4, 0.35 + Math.random() * 0.4, (Math.random() - 0.5) * 0.4, 0.1 + Math.random() * 0.1, 0.8 + Math.random() * 0.5, '#ffd166');
-        }
-      }
       // impact bursts from session fx (hit/catch carry colors)
       for (const f of session.fx) {
         if (f.t > 0.06 || seenFx.current.has(f)) continue;

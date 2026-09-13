@@ -227,20 +227,17 @@ export function PokemonLayer() {
       const glow = Math.max(shinyGlow, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
         : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
-      const partnerHalo = e.role === 'partner' ? 0.17 + 0.06 * Math.sin(time * 2.2 + e.phase * 4) : 0;
+
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
-      if ((glow > 0.05 || partnerHalo > 0) && haloN < halo.cap) {
+      if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);
-        const isPartnerHalo = partnerHalo > 0 && glow <= 0.05;
-        halo.aSize.array[haloN] = isPartnerHalo ? scale * 2.3 + 0.8 : e.species.size * 3.5 + 1.5;
-        halo.aAlpha.array[haloN] = isPartnerHalo ? partnerHalo : glow * 0.55;
-        // gold for your team, cyan for bioluminescence/bosses
+        halo.aSize.array[haloN] = e.species.size * 3.5 + 1.5;
+        halo.aAlpha.array[haloN] = glow * 0.55;
         const c3 = haloN * 3;
-        if (isPartnerHalo) { halo.aColor.array[c3] = 1.0; halo.aColor.array[c3 + 1] = 0.82; halo.aColor.array[c3 + 2] = 0.4; }
-        else { halo.aColor.array[c3] = 0.45; halo.aColor.array[c3 + 1] = 0.95; halo.aColor.array[c3 + 2] = 1.0; }
+        halo.aColor.array[c3] = 0.45; halo.aColor.array[c3 + 1] = 0.95; halo.aColor.array[c3 + 2] = 1.0;
         haloN++;
       }
     }
