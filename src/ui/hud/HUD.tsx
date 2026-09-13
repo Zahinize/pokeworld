@@ -319,7 +319,7 @@ function StatusChips() {
   return (
     <div className="hud-top-right">
       <div className="row" style={{ gap: 8 }}>
-        <span className="chip mono">{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'} {!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{Math.round(hud.depth)} m</span>
+        <span className="chip mono"><span>{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{Math.round(hud.depth)} m</span></span>
         <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}>⏸</button>
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
@@ -349,7 +349,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
   return isTouch ? (
     <div className="controls-grid">
       <Row keys={<b>Left stick</b>}>swim</Row>
-      <Row keys={<b>Drag right side</b>}>look around</Row>
+      <Row keys={<b>Drag anywhere</b>}>look around</Row>
       <Row keys={<b>🔴 Red button</b>}>throw the selected ball</Row>
       <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
       <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>

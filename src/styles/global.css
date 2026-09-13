@@ -157,7 +157,7 @@ a { color: var(--aqua); }
 .objective .guardian.done { color: var(--green); }
 
 /* ---------- HUD ---------- */
-.hud { position: fixed; inset: 0; pointer-events: none; font-size: 14px; }
+.hud { position: fixed; inset: 0; pointer-events: none; font-size: 14px; z-index: 22; }
 .hud * { pointer-events: none; }
 .hud .interactive, .hud .interactive * { pointer-events: auto; }
 .hud-top-left { position: absolute; top: calc(14px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: min(340px, calc(100vw - 28px)); }
@@ -254,8 +254,9 @@ a { color: var(--aqua); }
 .reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
 .reserve-chip:hover { border-color: var(--line-strong); }
 .reserve-chip.down { opacity: .35; }
-.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(240px + var(--safe-bottom)); width: 196px; }
-.hud.touch .move-btn { min-height: 44px; font-size: 12px; border-radius: 12px; }
+.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(302px + var(--safe-bottom)); width: 196px; }
+.hud.touch .move-btn { min-height: 44px; font-size: 12px; border-radius: 12px; justify-content: center; }
+.hud.touch .move-btn .mn { text-align: center; }
 .hud.touch .party-card { padding: 10px 12px; }
 .hud.touch .reserve-chip { width: 42px; height: 42px; }
 
@@ -394,17 +395,17 @@ a { color: var(--aqua); }
 input[type=range] { accent-color: var(--aqua); width: 150px; }
 
 /* Touch controls */
-.touch { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
-.touch .zone-look { position: absolute; right: 0; top: 0; bottom: 0; width: 58%; pointer-events: auto; touch-action: none; }
-.touch .joy { position: absolute; left: calc(26px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,.06); border: 1px solid var(--line-strong); pointer-events: auto; touch-action: none; }
-.touch .joy .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-.touch .tbtn { position: absolute; pointer-events: auto; touch-action: none; width: 58px; height: 58px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px); display: grid; place-items: center; font-size: 20px; color: var(--text); font-weight: 800; user-select: none; -webkit-user-select: none; }
-.touch .tbtn.on { background: rgba(53,208,255,.3); border-color: var(--aqua); }
-.touch .joy { left: calc(18px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
-.touch .tbtn.throw { width: 78px; height: 78px; right: calc(16px + var(--safe-right)); bottom: calc(130px + var(--safe-bottom)); background: radial-gradient(circle at 50% 40%, #ff8a8a, #f43f5e 60%, #c81e3e); border-color: rgba(255,255,255,.4); font-size: 26px; box-shadow: 0 8px 24px rgba(244,63,94,.45); }
-.touch .tbtn.up { right: calc(106px + var(--safe-right)); bottom: calc(198px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch .tbtn.down { right: calc(106px + var(--safe-right)); bottom: calc(130px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch .tbtn.sprint { left: calc(132px + var(--safe-left)); bottom: calc(232px + var(--safe-bottom)); width: 50px; height: 50px; font-size: 16px; }
+.touch-controls { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
+.touch-controls .zone-look { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+.touch-controls .joy { position: absolute; left: calc(26px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,.06); border: 1px solid var(--line-strong); pointer-events: auto; touch-action: none; }
+.touch-controls .joy .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.touch-controls .tbtn { position: absolute; pointer-events: auto; touch-action: none; width: 58px; height: 58px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px); display: grid; place-items: center; font-size: 20px; color: var(--text); font-weight: 800; user-select: none; -webkit-user-select: none; }
+.touch-controls .tbtn.on { background: rgba(53,208,255,.3); border-color: var(--aqua); }
+.touch-controls .joy { left: calc(18px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
+.touch-controls .tbtn.throw { width: 78px; height: 78px; right: calc(16px + var(--safe-right)); bottom: calc(152px + var(--safe-bottom)); background: radial-gradient(circle at 50% 40%, #ff8a8a, #f43f5e 60%, #c81e3e); border-color: rgba(255,255,255,.4); font-size: 26px; box-shadow: 0 8px 24px rgba(244,63,94,.45); }
+.touch-controls .tbtn.up { right: calc(106px + var(--safe-right)); bottom: calc(198px + var(--safe-bottom)); width: 54px; height: 54px; }
+.touch-controls .tbtn.down { right: calc(106px + var(--safe-right)); bottom: calc(130px + var(--safe-bottom)); width: 54px; height: 54px; }
+.touch-controls .tbtn.sprint { left: calc(132px + var(--safe-left)); bottom: calc(232px + var(--safe-bottom)); width: 50px; height: 50px; font-size: 16px; }
 /* HUD adjustments in touch mode */
 .hud.touch .hud-top-left { width: auto; max-width: 190px; }
 .hud.touch .mission-panel.compact { padding: 8px 12px; }
@@ -449,11 +450,18 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .target-label { top: calc(50% + 74px); }
 }
 @media (max-height: 520px) and (orientation: landscape) {
-  .touch .joy { width: 100px; height: 100px; bottom: calc(22px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
-  .touch .tbtn.throw { bottom: calc(26px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
-  .touch .tbtn.up { bottom: calc(92px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch .tbtn.down { bottom: calc(28px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch .tbtn.sprint { left: calc(128px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
+  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(22px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
+  .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
+  .hud.touch .party-bar { width: 164px; gap: 4px; bottom: calc(152px + var(--safe-bottom)); }
+  .hud.touch .party-card { padding: 5px 7px; border-radius: 11px; }
+  .hud.touch .party-card .pn { font-size: 11px; }
+  .hud.touch .party-card img { width: 30px; height: 30px; }
+  .hud.touch .party-card .moves { gap: 4px; margin-top: 4px; }
+  .hud.touch .move-btn { min-height: 32px; font-size: 10.5px; padding: 3px 5px; border-radius: 9px; }
+  .hud.touch .reserve-chip { width: 30px; height: 30px; }
+  .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
+  .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
+  .touch-controls .tbtn.sprint { left: calc(128px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
   .hud.touch .hud-bottom { bottom: calc(8px + var(--safe-bottom)); }
   .hud-hint.touch-hint { top: calc(56px + var(--safe-top)); }
 }
