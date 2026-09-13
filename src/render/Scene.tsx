@@ -6,6 +6,7 @@ import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { SceneLighting, WaterDome, SeaFloor, Rocks, Corals, Kelp, Particles, LightShafts, Surface, QUALITY } from './env/Environment';
 import { PokemonLayer } from './pokemon/PokemonLayer';
+import { PartnerTags } from './pokemon/PartnerTags';
 import { HealthBars } from './fx/HealthBars';
 import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
@@ -72,6 +73,7 @@ export function Scene() {
         <Particles count={Math.round(q.particles * 0.22)} bubbles />
         <Surface />
         <PokemonLayer />
+        <PartnerTags />
         <HealthBars />
         <Balls />
         <MoveProjectiles />

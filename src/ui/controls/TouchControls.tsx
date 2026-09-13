@@ -41,7 +41,7 @@ export function TouchControls() {
     onPointerUp: () => set(false), onPointerCancel: () => set(false), onPointerLeave: () => set(false),
   });
   return (
-    <div className="touch">
+    <div className="touch-controls">
       <div ref={lookRef} className="zone-look" />
       <div ref={joyRef} className="joy" aria-label="Move"><div ref={knobRef} className="knob" /></div>
       <button className="tbtn throw" aria-label="Throw ball" onPointerDown={(e) => { e.preventDefault(); const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }}>◎</button>

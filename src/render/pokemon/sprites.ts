@@ -22,13 +22,13 @@ export interface SpriteSheet {
   fallback: boolean;
 }
 
-export type SpriteVariant = 'front' | 'back';
+export type SpriteVariant = 'front' | 'back' | 'shiny' | 'shinyback';
 
 const cache = new Map<string, Promise<SpriteSheet>>();
 const MAX_FRAMES = 64;
 
 export function sheetKey(speciesId: string, variant: SpriteVariant = 'front') {
-  return variant === 'front' ? speciesId : `${speciesId}:back`;
+  return variant === 'front' ? speciesId : `${speciesId}:${variant}`;
 }
 
 function makeFallback(speciesId: string): SpriteSheet {
@@ -46,9 +46,13 @@ function makeFallback(speciesId: string): SpriteSheet {
   return { speciesId, texture: tex, cols: 1, rows: 1, frames: 1, frameTime: 1, aspect: 1, fill: 0.5, fallback: true };
 }
 
+const VARIANT_PATH: Record<SpriteVariant, string> = {
+  front: '/sprites/pokemon/', back: '/sprites/pokemon/back/', shiny: '/sprites/pokemon/shiny/', shinyback: '/sprites/pokemon/back/shiny/',
+};
+
 async function decode(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
   const front = SPECIES[speciesId].sprite;
-  const url = variant === 'front' ? front : front.replace('/sprites/pokemon/', '/sprites/pokemon/back/');
+  const url = front.replace('/sprites/pokemon/', VARIANT_PATH[variant]);
   const res = await fetch(url, { cache: 'force-cache' });
   if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
   const buf = await res.arrayBuffer();
@@ -110,8 +114,8 @@ export function loadSpriteSheet(speciesId: string, variant: SpriteVariant = 'fro
   if (!p) {
     p = decode(speciesId, variant).catch((err) => {
       console.warn('[sprites] fallback for', key, err);
-      // back sprite missing → fall back to the front sheet
-      return variant === 'back' ? loadSpriteSheet(speciesId, 'front') : makeFallback(speciesId);
+      // missing variant → fall back toward the plain front sheet
+      return variant !== 'front' ? loadSpriteSheet(speciesId, variant === 'shinyback' ? 'shiny' : 'front') : makeFallback(speciesId);
     });
     cache.set(key, p);
   }

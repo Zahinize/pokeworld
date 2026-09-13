@@ -1,6 +1,6 @@
 import { useStore } from '@/state/store';
 import { getTrainer } from '@/data/trainers';
-import { getLevel } from '@/data/levels';
+import { getLevel, LEVELS } from '@/data/levels';
 import { OceanBackdrop, Panel, TrainerAvatar } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 
@@ -11,7 +11,10 @@ export function MainMenu({ onPlay, onResume }: { onPlay: (levelId: number) => vo
   const trainer = getTrainer(save.trainer?.id);
   const run = save.currentRun;
   const caughtSpecies = Object.values(save.collection).filter((c) => c.caught > 0).length;
-  const nextLevel = Math.min(save.progression.unlockedLevel, 2);
+  // Suggest the next uncompleted playable level; once the world is finished, invite a Level 1 replay
+  const nextUndone = LEVELS.find((l) => l.status === 'playable' && l.id <= save.progression.unlockedLevel && !save.progression.completedLevels.includes(l.id));
+  const nextLevel = nextUndone?.id ?? 1;
+  const worldDone = !nextUndone;
   return (
     <>
       <OceanBackdrop />
@@ -41,7 +44,7 @@ export function MainMenu({ onPlay, onResume }: { onPlay: (levelId: number) => vo
                 </button>
               )}
               <button className={`btn ${run ? 'ghost' : 'primary'} big block`} onClick={() => { Audio.uiConfirm(); onPlay(nextLevel); }}>
-                🌊 Sea World · Level {nextLevel}
+                🌊 Sea World · {worldDone ? 'Replay Level 1' : `Level ${nextLevel}`}
               </button>
               <div className="row" style={{ gap: 10 }}>
                 <button className="btn ghost block" onClick={() => { Audio.uiClick(); setScreen('levels'); }}>🗺 Choose Level</button>

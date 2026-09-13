@@ -5,7 +5,7 @@ import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 import type { CurrentRun } from '@/persistence';
-import { SPECIES_LIST, SPECIES } from '@/data/species';
+import { SPECIES_LIST, SPECIES, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { SpriteImg } from '../components/common';
 import { COMBAT } from '@/data/combatConfig';
 
@@ -19,12 +19,28 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const collection = useStore((s) => s.save.collection);
   const savedParty = useStore((s) => s.save.party);
   const setSavedParty = useStore((s) => s.setSavedParty);
-  // Boss species can only ever be caught in boss fights — if you own one, you earned the right to field it.
-  const caught = useMemo(() => SPECIES_LIST.filter((sp) => (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
-  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((id) => (collection[id]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
-  const toggleParty = (id: string) => {
+  // Regular roster vs Boss Pokémon: bosses (and their shiny forms) are trophies — you may field ONE at a time.
+  const caught = useMemo(() => SPECIES_LIST.filter((sp) => !sp.bossOnly && (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
+  const bossTokens = useMemo(() => {
+    const out: string[] = [];
+    for (const sp of SPECIES_LIST) {
+      if (!sp.bossOnly) continue;
+      if ((collection[sp.id]?.caught ?? 0) > 0) out.push(sp.id);
+      if ((collection[makeToken(sp.id, true)]?.caught ?? 0) > 0) out.push(makeToken(sp.id, true));
+    }
+    return out;
+  }, [collection]);
+  const isBossToken = (t: string) => !!SPECIES[baseSpeciesId(t)]?.bossOnly;
+  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
+  const toggleParty = (t: string) => {
     Audio.uiClick();
-    setParty((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : prev.length >= COMBAT.PARTY_SIZE ? prev : [...prev, id]);
+    setParty((prev) => {
+      if (prev.includes(t)) return prev.filter((x) => x !== t);
+      if (prev.length >= COMBAT.PARTY_SIZE) return prev;
+      // only one Boss Pokémon may be fielded at a time — picking a new one replaces the old
+      if (isBossToken(t)) return [...prev.filter((x) => !isBossToken(x)), t];
+      return [...prev, t];
+    });
   };
   const enter = () => {
     if (level.companions) { setSavedParty(party); session.setParty(party); }
@@ -77,21 +93,44 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                   </div>
                   <span className={`badge ${party.length ? 'aqua' : 'red'}`}>{party.length} / {COMBAT.PARTY_SIZE}</span>
                 </div>
-                {caught.length === 0 ? (
+                {caught.length === 0 && bossTokens.length === 0 ? (
                   <p className="muted small" style={{ marginTop: 10 }}>You haven't caught any Pokémon yet — replay an earlier level to build a team.</p>
                 ) : (
-                  <div className="party-grid">
-                    {caught.map((sp) => {
-                      const idx = party.indexOf(sp.id);
-                      return (
-                        <button key={sp.id} className={`card clickable party-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(sp.id)} aria-pressed={idx >= 0}>
-                          <SpriteImg id={sp.id} size={48} />
-                          <span className="n">{sp.name}</span>
-                          {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <>
+                    <div className="party-grid">
+                      {caught.map((sp) => {
+                        const idx = party.indexOf(sp.id);
+                        return (
+                          <button key={sp.id} className={`card clickable party-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(sp.id)} aria-pressed={idx >= 0}>
+                            <SpriteImg id={sp.id} size={48} />
+                            <span className="n">{sp.name}</span>
+                            {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {bossTokens.length > 0 && (
+                      <>
+                        <div className="row between" style={{ marginTop: 14 }}>
+                          <div className="eyebrow" style={{ color: 'var(--gold)' }}>Boss Pokémon</div>
+                          <span className="badge gold">field one at a time</span>
+                        </div>
+                        <div className="party-grid">
+                          {bossTokens.map((t) => {
+                            const idx = party.indexOf(t);
+                            const shiny = isShinyToken(t);
+                            return (
+                              <button key={t} className={`card clickable party-cell boss-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
+                                <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
+                                <span className="n">{shiny && '✨'}{tokenLabel(t)}</span>
+                                {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </>
                 )}
               </>
             )}

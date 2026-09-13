@@ -1,7 +1,7 @@
 import { useStore } from '@/state/store';
 import { getLevel, LEVELS } from '@/data/levels';
 import { Panel, fmtTime, SpriteImg } from '../components/common';
-import { SPECIES } from '@/data/species';
+import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 
 function RosterReport({ roster }: { roster: { speciesId: string; dealt: number; taken: number; kills: number; assists: number }[] }) {
   if (!roster.length) return null;
@@ -13,8 +13,8 @@ function RosterReport({ roster }: { roster: { speciesId: string; dealt: number; 
       <div className="roster-head"><span /><span>Pokémon</span><b>DMG dealt</b><b>DMG taken</b><b>KOs</b><b>Assists</b></div>
       {sorted.map((r) => (
         <div key={r.speciesId} className="roster-row">
-          <SpriteImg id={r.speciesId} size={34} />
-          <span className="rn">{SPECIES[r.speciesId].name}{mvp === r.speciesId && <em className="mvp">★ MVP</em>}</span>
+          <SpriteImg id={baseSpeciesId(r.speciesId)} shiny={isShinyToken(r.speciesId)} size={34} />
+          <span className="rn">{tokenLabel(r.speciesId)}{mvp === r.speciesId && <em className="mvp">★ MVP</em>}</span>
           <b className="mono dealt">{Math.round(r.dealt)}</b>
           <b className="mono taken">{Math.round(r.taken)}</b>
           <b className="mono">{r.kills}</b>
