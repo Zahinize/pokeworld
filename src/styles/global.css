@@ -268,9 +268,9 @@ a { color: var(--aqua); }
 
 /* Trainer tag under companions */
 .partner-tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 4px; border-radius: 999px; background: rgba(5, 28, 52, .72); border: 1px solid rgba(53, 208, 255, .45); box-shadow: 0 0 12px rgba(53, 208, 255, .3); white-space: nowrap; transform: translateZ(0); }
-.partner-tag .pt-avatar { width: 16px; height: 16px; border-radius: 50%; overflow: hidden; position: relative; flex: none; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); }
+.partner-tag .pt-avatar { width: 20px; height: 20px; border-radius: 50%; overflow: hidden; position: relative; flex: none; border: 1px solid rgba(255,255,255,.35); background: rgba(255,255,255,.12); }
 .partner-tag .pt-avatar img { position: absolute; width: auto; max-width: none; }
-.partner-tag .pt-name { font-family: var(--font-display); font-weight: 800; font-size: 10.5px; letter-spacing: .02em; color: #bfefff; }
+.partner-tag .pt-name { font-family: var(--font-display); font-weight: 800; font-size: 12.5px; letter-spacing: .02em; color: #bfefff; }
 
 /* Player vitals */
 .player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }

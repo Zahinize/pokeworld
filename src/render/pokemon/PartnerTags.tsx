@@ -26,9 +26,9 @@ function Tag({ slot }: { slot: 0 | 1 }) {
   if (!trainer) return null;
   return (
     <group ref={group} visible={false}>
-      <Html center distanceFactor={5} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
+      <Html center distanceFactor={6.5} zIndexRange={[5, 0]} style={{ pointerEvents: 'none' }}>
         <div className="partner-tag">
-          <span className="pt-avatar"><img src={trainer.image} alt="" draggable={false} style={{ height: 16 * trainer.face.scale, left: 16 * trainer.face.x, top: 16 * trainer.face.y }} /></span>
+          <span className="pt-avatar"><img src={trainer.image} alt="" draggable={false} style={{ height: 20 * trainer.face.scale, left: 20 * trainer.face.x, top: 20 * trainer.face.y }} /></span>
           <span className="pt-name">{trainer.name.split(' ')[0]}</span>
         </div>
       </Html>

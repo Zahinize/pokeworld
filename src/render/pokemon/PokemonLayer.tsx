@@ -76,7 +76,8 @@ void main() {
 const HALO_VERT = /* glsl */ `
 attribute float aSize;
 attribute float aAlpha;
-varying vec2 vUv; varying float vAlpha;
+attribute vec3 aColor;
+varying vec2 vUv; varying float vAlpha; varying vec3 vColor;
 void main() {
   vUv = position.xy + 0.5;
   vec4 center = instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
@@ -84,15 +85,15 @@ void main() {
   vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   vec3 world = center.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
-  vAlpha = aAlpha;
+  vAlpha = aAlpha; vColor = aColor;
 }`;
 const HALO_FRAG = /* glsl */ `
-varying vec2 vUv; varying float vAlpha;
+varying vec2 vUv; varying float vAlpha; varying vec3 vColor;
 void main() {
   float d = length(vUv - 0.5) * 2.0;
   float a = smoothstep(1.0, 0.0, d);
   a = a * a * vAlpha;
-  gl_FragColor = vec4(vec3(0.45, 0.95, 1.0) * a, a);
+  gl_FragColor = vec4(vColor * a, a);
 }`;
 
 const CAPACITY_PAD = 14;
@@ -144,11 +145,12 @@ export function PokemonLayer() {
     const cap = 96;
     const aSize = new THREE.InstancedBufferAttribute(new Float32Array(cap).fill(1), 1); aSize.setUsage(THREE.DynamicDrawUsage);
     const aAlpha = new THREE.InstancedBufferAttribute(new Float32Array(cap), 1); aAlpha.setUsage(THREE.DynamicDrawUsage);
-    geo.setAttribute('aSize', aSize); geo.setAttribute('aAlpha', aAlpha);
+    const aColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3); aColor.setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('aSize', aSize); geo.setAttribute('aAlpha', aAlpha); geo.setAttribute('aColor', aColor);
     const mat = new THREE.ShaderMaterial({ vertexShader: HALO_VERT, fragmentShader: HALO_FRAG, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.frustumCulled = false; mesh.count = 0; mesh.renderOrder = 5;
-    return { mesh, aSize, aAlpha, cap };
+    return { mesh, aSize, aAlpha, aColor, cap };
   }, []);
   const { camera } = useThree();
   const camRight = useMemo(() => new THREE.Vector3(), []);
@@ -220,24 +222,30 @@ export function PokemonLayer() {
       b.aFlip.array[i] = f;
       b.aAlpha.array[i] = alpha;
       b.aFlash.array[i] = e.flashT > 0 ? Math.min(1, e.flashT * 2.5) * 0.8 : 0;
-      const partnerGlow = e.role === 'partner' ? 0.15 + 0.06 * Math.sin(time * 2.2 + e.phase * 4) : 0;
+      // partners keep their TRUE colors — their presence is marked by a golden halo, not a tint
       const shinyGlow = e.isShiny ? 0.22 + 0.12 * Math.sin(time * 3.5 + e.phase * 5) : 0;
-      const glow = Math.max(partnerGlow, shinyGlow, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
+      const glow = Math.max(shinyGlow, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
         : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
+      const partnerHalo = e.role === 'partner' ? 0.17 + 0.06 * Math.sin(time * 2.2 + e.phase * 4) : 0;
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
-      if (glow > 0.05 && haloN < halo.cap) {
+      if ((glow > 0.05 || partnerHalo > 0) && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);
-        halo.aSize.array[haloN] = e.species.size * 3.5 + 1.5;
-        halo.aAlpha.array[haloN] = glow * 0.55;
+        const isPartnerHalo = partnerHalo > 0 && glow <= 0.05;
+        halo.aSize.array[haloN] = isPartnerHalo ? scale * 2.3 + 0.8 : e.species.size * 3.5 + 1.5;
+        halo.aAlpha.array[haloN] = isPartnerHalo ? partnerHalo : glow * 0.55;
+        // gold for your team, cyan for bioluminescence/bosses
+        const c3 = haloN * 3;
+        if (isPartnerHalo) { halo.aColor.array[c3] = 1.0; halo.aColor.array[c3 + 1] = 0.82; halo.aColor.array[c3 + 2] = 0.4; }
+        else { halo.aColor.array[c3] = 0.45; halo.aColor.array[c3 + 1] = 0.95; halo.aColor.array[c3 + 2] = 1.0; }
         haloN++;
       }
     }
     halo.mesh.count = haloN;
-    halo.mesh.instanceMatrix.needsUpdate = true; halo.aSize.needsUpdate = true; halo.aAlpha.needsUpdate = true;
+    halo.mesh.instanceMatrix.needsUpdate = true; halo.aSize.needsUpdate = true; halo.aAlpha.needsUpdate = true; halo.aColor.needsUpdate = true;
     for (const b of batches.current.values()) {
       if (b.mesh.count === 0) continue;
       b.mesh.instanceMatrix.needsUpdate = true;
