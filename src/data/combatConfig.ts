@@ -64,7 +64,7 @@ export const COMBAT = {
   ACTIVE_COMPANIONS: 2,
 
   /** Extra render shrink for oversized companions (× the global 0.62 partner scale). */
-  COMPANION_GIANT_SHRINK: { gyarados: 0.56, dondozo: 0.56, kyogre: 0.56, wailord: 0.7 } as Record<string, number>,
+  COMPANION_GIANT_SHRINK: { gyarados: 0.56, dondozo: 0.56, kyogre: 0.56, wailord: 0.56 } as Record<string, number>,
 
   /** Boss charge: telegraph → lunge → recovery. */
   CHARGE_TELEGRAPH: 1.0,
