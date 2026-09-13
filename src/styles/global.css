@@ -218,6 +218,9 @@ a { color: var(--aqua); }
 .boss-intro-sprites { display: flex; justify-content: center; gap: 18px; align-items: flex-end; animation: pop .6s cubic-bezier(.2,.9,.3,1.2) both; }
 .boss-intro-sprites img { filter: drop-shadow(0 0 24px rgba(244,63,94,.55)); }
 
+.shiny-glow { filter: drop-shadow(0 0 18px rgba(255,209,102,.85)) !important; animation: pulse 1.6s ease-in-out infinite; }
+.shiny-banner { font-family: var(--font-display); font-weight: 900; letter-spacing: .3em; color: var(--gold); text-shadow: 0 0 18px rgba(255,209,102,.8); margin-top: 8px; animation: pulse 1.2s ease-in-out infinite; }
+
 /* Boss bar */
 .boss-bar { position: absolute; top: calc(64px + var(--safe-top)); left: 50%; transform: translateX(-50%); width: min(440px, calc(100vw - 120px)); padding: 10px 14px; border-radius: 14px; border-color: rgba(244,63,94,.5); animation: fadeUp .4s ease both; }
 .boss-bar .bn { font-family: var(--font-display); font-weight: 900; font-size: 15px; color: #ffd0d8; }

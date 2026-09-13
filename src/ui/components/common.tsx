@@ -18,10 +18,11 @@ export function OceanBackdrop() {
   );
 }
 
-export function SpriteImg({ id, size = 64, unseen = false, className = '', style }: { id: string; size?: number; unseen?: boolean; className?: string; style?: React.CSSProperties }) {
+export function SpriteImg({ id, size = 64, unseen = false, shiny = false, className = '', style }: { id: string; size?: number; unseen?: boolean; shiny?: boolean; className?: string; style?: React.CSSProperties }) {
   const s = SPECIES[id];
   if (!s) return null;
-  return <img className={`sprite ${unseen ? 'unseen' : ''} ${className}`} src={s.sprite} width={size} height={size} alt={unseen ? 'Unknown Pokémon' : s.name} loading="lazy" draggable={false} style={style} />;
+  const src = shiny ? s.sprite.replace('/sprites/pokemon/', '/sprites/pokemon/shiny/') : s.sprite;
+  return <img className={`sprite ${unseen ? 'unseen' : ''} ${className}`} src={src} width={size} height={size} alt={unseen ? 'Unknown Pokémon' : shiny ? `Shiny ${s.name}` : s.name} loading="lazy" draggable={false} style={style} />;
 }
 
 export function PokeballIcon({ ball, size = 30 }: { ball: BallId; size?: number }) {

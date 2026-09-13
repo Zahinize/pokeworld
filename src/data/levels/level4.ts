@@ -27,6 +27,7 @@ export const LEVEL_4: LevelConfig = {
     stageCatch: { min: 5, max: 5, minStage: 2 },
   },
   companions: true,
+  restockSeconds: 30,
   bossPhases: [
     {
       bosses: ['wailord'],

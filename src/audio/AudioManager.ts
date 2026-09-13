@@ -209,6 +209,38 @@ class AudioManagerImpl {
     }
   }
   moveHit() { this.tone(300, 0.1, 0.16, 'triangle', 160); this.noiseBurst(0.12, 0.14, 1200, 1); }
+
+  // ------------------------------------------------------------------ Pokémon cries (vendored ogg files)
+  private cryCache = new Map<number, Promise<AudioBuffer | null>>();
+
+  private loadCry(dexId: number): Promise<AudioBuffer | null> {
+    let p = this.cryCache.get(dexId);
+    if (!p) {
+      p = (async () => {
+        if (!this.ctx) return null;
+        try {
+          const res = await fetch(`/cries/${dexId}.ogg`);
+          if (!res.ok) return null;
+          return await this.ctx.decodeAudioData(await res.arrayBuffer());
+        } catch { return null; }
+      })();
+      this.cryCache.set(dexId, p);
+    }
+    return p;
+  }
+
+  /** Play a Pokémon's cry at the given volume (1 = encounter, 0.5 = caught, 0.25 = defeated). */
+  playCry(dexId: number, volume = 1, delay = 0) {
+    if (!this.ctx || !this.enabled) return;
+    this.loadCry(dexId).then((buf) => {
+      if (!buf || !this.ctx) return;
+      const t0 = this.ctx.currentTime + delay;
+      const src = this.ctx.createBufferSource(); src.buffer = buf;
+      const g = this.ctx.createGain(); g.gain.value = Math.max(0.01, Math.min(1, volume)) * 0.9;
+      src.connect(g).connect(this.sfxGain!);
+      src.start(t0);
+    });
+  }
   playerHurt() { this.tone(110, 0.3, 0.25, 'triangle', 60); this.noiseBurst(0.2, 0.2, 350, 0.8); }
 }
 

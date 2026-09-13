@@ -130,7 +130,7 @@ export class Ecosystem {
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
-      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, pairBossId: -1,
+      duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -230,7 +230,7 @@ export class Ecosystem {
     const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
     if (t.role === 'partner') { this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id }); }
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
-    if (t.isBoss) { this.events.push({ type: 'bossDefeated', entityId: t.id, speciesId: t.species.id, how: 'ko' }); return; }
+    if (t.isBoss) { this.events.push({ type: 'bossDefeated', entityId: t.id, speciesId: t.species.id, how: 'ko', shiny: t.isShiny }); return; }
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes
     if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: t.species.id, zone: t.zone });
   }
@@ -573,6 +573,13 @@ export class Ecosystem {
     const sp = len3(e.vx, e.vy, e.vz);
     const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
     if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
+    if (this.bossCurrent > 0 && !e.isBoss) {
+      // boss-event surge tosses the whole reef around
+      const k = this.bossCurrent * dt;
+      e.vx += Math.cos(this.time * 0.5 + e.y * 0.13 + e.phase) * 2.2 * k;
+      e.vy += Math.sin(this.time * 0.7 + e.x * 0.05) * 0.9 * k;
+      e.vz += Math.sin(this.time * 0.45 + e.phase * 2.0) * 2.2 * k;
+    }
     e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     // Hard constraints
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
@@ -711,16 +718,18 @@ export class Ecosystem {
   /** Bosses fight only when awakened (the session flips this after the challenge dialog). */
   bossesActive = true;
 
-  /** Spawn a boss at a site with its stat multipliers applied. */
-  spawnBoss(speciesId: string, x: number, z: number): Entity {
+  /** Spawn a boss at a site with its stat multipliers applied. Shiny bosses carry 2× HP & Attack. */
+  spawnBoss(speciesId: string, x: number, z: number, shiny = false): Entity {
     const s = getSpecies(speciesId);
     const fy = floorY(x, z);
     const y = Math.max(fy + s.size * 0.7 + 1.5, -(s.depth[0] + s.depth[1]) / 2);
     const e = this.spawn({ speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z } });
     const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     e.isBoss = true;
-    e.maxHp = Math.round(e.maxHp * t.hp); e.hp = e.maxHp;
-    e.cs = { ...e.cs, atk: e.cs.atk * t.atk, spAtk: e.cs.spAtk * t.atk, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
+    e.isShiny = shiny;
+    const shinyMult = shiny ? 2 : 1;
+    e.maxHp = Math.round(e.maxHp * t.hp * shinyMult); e.hp = e.maxHp;
+    e.cs = { ...e.cs, atk: e.cs.atk * t.atk * shinyMult, spAtk: e.cs.spAtk * t.atk * shinyMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
     e.home = { x, y, z };
     e.state = 'wander'; e.stateT = 0;
     e.t2 = 3 + this.rng.next() * 2; // bosses open aggressively — first charge comes fast
@@ -840,7 +849,7 @@ export class Ecosystem {
   // ---------------------------------------------------------------------------------------------
 
   /** Spawn a companion beside the player. `slot` is the active-formation slot (0 left, 1 right). */
-  addPartner(speciesId: string, slot: number): Entity {
+  addPartner(speciesId: string, slot: number, shiny = false): Entity {
     const p = this.player;
     const side = slot === 0 ? -1 : 1;
     const e = this.spawn({
@@ -851,6 +860,11 @@ export class Ecosystem {
     e.kitOverride = [kit[0].id, kit[1].id];
     e.partnerSlot = slot;
     e.state = 'wander';
+    if (shiny) { // a conquered shiny boss fights for you at its full terrifying strength
+      e.isShiny = true;
+      e.maxHp *= 2; e.hp = e.maxHp;
+      e.cs = { ...e.cs, atk: e.cs.atk * 2, spAtk: e.cs.spAtk * 2 };
+    }
     return e;
   }
 

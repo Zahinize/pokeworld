@@ -168,8 +168,12 @@ export function PokemonLayer() {
     const time = state.clock.elapsedTime;
     camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
 
-    // Count per batch key (partners swim ahead of you showing their backs; they turn for duels)
+    // Count per batch key (partners swim ahead of you showing their backs; they turn for duels; shinies sparkle)
     const keyOf = (e: (typeof eco.alive)[number]) => {
+      if (e.isShiny) {
+        if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
+        if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');
+      }
       if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'back'))) return sheetKey(e.species.id, 'back');
       return e.species.id;
     };
@@ -200,7 +204,11 @@ export function PokemonLayer() {
       let f = facingMemo.get(e.id) ?? 1;
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
-      let alpha = 1, scale = e.species.size * e.scaleMul * (e.role === 'partner' ? 0.62 : 1), y = e.y;
+      // the reef giants shrink further as companions so they don't wall off the screen
+      const giant = e.species.id === 'gyarados' || e.species.id === 'dondozo' || e.species.id === 'kyogre' || e.species.id === 'wailord';
+      const partnerScale = e.role === 'partner' ? (giant ? 0.62 * 0.7 : 0.62) : 1;
+      let alpha = 1, scale = e.species.size * e.scaleMul * partnerScale, y = e.y;
+      if (e.role === 'partner') scale = Math.min(scale, 2.4); // no companion may wall off the view
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
@@ -212,9 +220,10 @@ export function PokemonLayer() {
       b.aFlip.array[i] = f;
       b.aAlpha.array[i] = alpha;
       b.aFlash.array[i] = e.flashT > 0 ? Math.min(1, e.flashT * 2.5) * 0.8 : 0;
-      const glow = e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
+      const shinyGlow = e.isShiny ? 0.22 + 0.12 * Math.sin(time * 3.5 + e.phase * 5) : 0;
+      const glow = Math.max(shinyGlow, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
-        : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
+        : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;

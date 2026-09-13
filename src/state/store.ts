@@ -17,6 +17,7 @@ export interface Toast {
   title: string;
   body?: string;
   speciesId?: string;
+  shiny?: boolean;
   missionTarget?: boolean;
   ttl: number;
 }
@@ -39,10 +40,10 @@ export interface HudState {
   party: {
     list: string[];
     downed: string[];
-    active: ({ speciesId: string; hp: number; maxHp: number; moves: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
+    active: ({ token: string; speciesId: string; shiny: boolean; hp: number; maxHp: number; moves: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
   };
   bossBar: { name: string; hp: number; maxHp: number } | null;
-  bossIntro: { label: string; bosses: string[]; text: string } | null;
+  bossIntro: { label: string; bosses: { speciesId: string; shiny: boolean }[]; text: string; final: boolean } | null;
   swapPrompt: { slot: 0 | 1; from: string; to: string } | null;
   hint: string | null;
   fps: number;
@@ -60,7 +61,7 @@ interface AppState {
   seed: number;
   hud: HudState;
   toasts: Toast[];
-  lastCatch: { speciesId: string; missionTarget: boolean; objectiveLabel?: string } | null;
+  lastCatch: { speciesId: string; shiny?: boolean; missionTarget: boolean; objectiveLabel?: string } | null;
   completeStats: { levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number; worldComplete?: boolean; roster?: { speciesId: string; dealt: number; taken: number; kills: number; assists: number }[] } | null;
   overlay: 'none' | 'mission' | 'collection' | 'pause' | 'settings';
 

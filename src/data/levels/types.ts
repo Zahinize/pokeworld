@@ -59,6 +59,8 @@ export interface LevelConfig {
   playerStart: { zone: ZoneId; depth: number };
   /** Companion party (levels 3+). */
   companions?: boolean;
+  /** Poké Ball restock countdown when the supply runs dry (seconds; default 60). */
+  restockSeconds?: number;
   /** Boss waves after the catch phase (levels 3–4). */
   bossPhases?: BossPhase[];
   status: 'playable' | 'comingSoon';

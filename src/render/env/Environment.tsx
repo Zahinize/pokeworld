@@ -286,15 +286,17 @@ export function Kelp({ count, height = 9, width = 0.7, color = '#3f7a3a', tip = 
     geo.setAttribute('aPhase', aPhase);
     const mat = new THREE.ShaderMaterial({
       side: THREE.DoubleSide, transparent: false,
-      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(color) }, uTip: { value: new THREE.Color(tip) }, uAmb: { value: 0.7 }, uSunI: { value: 1 }, uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.02 }, uHeight: { value: height } },
+      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(color) }, uTip: { value: new THREE.Color(tip) }, uAmb: { value: 0.7 }, uSunI: { value: 1 }, uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.02 }, uHeight: { value: height }, uSurge: { value: 0 } },
       vertexShader: `
-        attribute float aPhase; uniform float uTime, uHeight; varying vec2 vUv; varying float vDepth; varying float vH;
+        attribute float aPhase; uniform float uTime, uHeight, uSurge; varying vec2 vUv; varying float vDepth; varying float vH;
         void main(){
           vUv = uv; float h = position.y / uHeight; vH = h;
           vec3 p = position;
           float sway = sin(uTime * 1.1 + aPhase + h * 2.0) * 0.9 + sin(uTime * 2.3 + aPhase * 1.7) * 0.25;
+          // boss-event surge: the whole plantation whips in the current
+          sway += uSurge * (sin(uTime * 3.4 + aPhase * 2.3 + h * 3.0) * 1.6 + 0.9 * sin(uTime * 1.7 + aPhase));
           p.x += sway * pow(h, 1.6) * uHeight * 0.12;
-          p.z += cos(uTime * 0.9 + aPhase) * pow(h, 1.8) * uHeight * 0.06;
+          p.z += cos(uTime * 0.9 + aPhase) * pow(h, 1.8) * uHeight * 0.06 * (1.0 + uSurge);
           vec4 w = instanceMatrix * vec4(p, 1.0);
           vec4 mv = viewMatrix * w; vDepth = -mv.z;
           gl_Position = projectionMatrix * mv;
@@ -337,6 +339,8 @@ export function Kelp({ count, height = 9, width = 0.7, color = '#3f7a3a', tip = 
     const L = session.lighting;
     mat.uniforms.uTime.value = state.clock.elapsedTime; mat.uniforms.uAmb.value = L.ambient; mat.uniforms.uSunI.value = L.sunIntensity;
     mat.uniforms.uFogColor.value.copy(L.sky); mat.uniforms.uFogDensity.value = L.fogDensity;
+    const surge = session.eco?.bossCurrent ?? 0;
+    mat.uniforms.uSurge.value += (surge - mat.uniforms.uSurge.value) * 0.04; // ease in/out with the event
   });
   return <instancedMesh ref={ref} args={[geo, mat, count]} frustumCulled={false} />;
 }

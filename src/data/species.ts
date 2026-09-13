@@ -340,6 +340,18 @@ export const SPECIES: Record<string, SpeciesConfig> = {
 
 export const SPECIES_LIST: SpeciesConfig[] = Object.values(SPECIES);
 
+/**
+ * Shiny variants live beside their species everywhere (collection, party) as `<id>__shiny` tokens.
+ */
+export const SHINY_SUFFIX = '__shiny';
+export function isShinyToken(token: string): boolean { return token.endsWith(SHINY_SUFFIX); }
+export function baseSpeciesId(token: string): string { return isShinyToken(token) ? token.slice(0, -SHINY_SUFFIX.length) : token; }
+export function makeToken(speciesId: string, shiny: boolean): string { return shiny ? speciesId + SHINY_SUFFIX : speciesId; }
+export function tokenLabel(token: string): string {
+  const sp = SPECIES[baseSpeciesId(token)];
+  return sp ? (isShinyToken(token) ? `Shiny ${sp.name}` : sp.name) : token;
+}
+
 export function getSpecies(id: string): SpeciesConfig {
   const s = SPECIES[id];
   if (!s) throw new Error(`Unknown species: ${id}`);

@@ -94,6 +94,8 @@ export interface Entity {
   partnerSlot: number;
   /** Boss entity: stat multipliers applied, aggressive boss AI, immune to faint and lure. */
   isBoss: boolean;
+  /** Shiny variant: rendered from shiny sheets; bosses/companions carry doubled HP & Attack. */
+  isShiny: boolean;
   /** Commander duo: this boss stays glued to its partner boss (Tatsugiri ↔ Dondozo). */
   pairBossId: number;
 }
@@ -155,7 +157,7 @@ export type EcoEvent =
   | { type: 'partnerDown'; entityId: number; speciesId: string }
   | { type: 'bossSpawn'; entityId: number; speciesId: string }
   | { type: 'bossCharge'; entityId: number; targetKind: 'player' | 'partner' }
-  | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught' };
+  | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught'; shiny: boolean };
 
 export interface PlayerSnapshot {
   x: number; y: number; z: number;

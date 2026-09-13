@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { SPECIES_LIST, SPECIES } from '@/data/species';
+import { SPECIES_LIST, SPECIES, makeToken, baseSpeciesId, isShinyToken } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { ZONES } from '@/engine/world/zones';
 import { useStore } from '@/state/store';
@@ -13,7 +13,8 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
   const list = useMemo(() => [...SPECIES_LIST].sort((a, b) => a.dexId - b.dexId), []);
   const caughtCount = list.filter((s) => (collection[s.id]?.caught ?? 0) > 0).length;
   const seenCount = list.filter((s) => collection[s.id]?.seen).length;
-  const s = sel ? SPECIES[sel] : null;
+  const selShiny = sel ? isShinyToken(sel) : false;
+  const s = sel ? SPECIES[baseSpeciesId(sel)] : null;
   const entry = sel ? collection[sel] : null;
   return (
     <Panel className={embedded ? 'panel wide strong' : ''} style={{ padding: 22, maxHeight: embedded ? 'calc(100vh - 40px)' : undefined, overflow: 'auto', width: embedded ? undefined : '100%' }}>
@@ -28,10 +29,10 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
       {s && (
         <div className="card" style={{ marginBottom: 14, animation: 'fadeUp .3s ease both' }}>
           <div className="dex-detail">
-            <SpriteImg id={s.id} size={140} unseen={!entry?.seen} />
+            <SpriteImg id={s.id} shiny={selShiny} size={140} unseen={!entry?.seen && !selShiny} className={selShiny ? 'shiny-glow' : ''} />
             <div>
               <div className="row between wrap">
-                <h2>{entry?.seen ? s.name : '???'} <span className="dim" style={{ fontSize: 14, fontWeight: 600 }}>#{s.dexId}</span></h2>
+                <h2>{selShiny ? `✨ Shiny ${s.name}` : entry?.seen ? s.name : '???'} <span className="dim" style={{ fontSize: 14, fontWeight: 600 }}>#{s.dexId}</span></h2>
                 <button className="btn ghost" style={{ minHeight: 34, padding: '0 12px' }} onClick={() => setSel(null)}>✕</button>
               </div>
               <div className="row wrap" style={{ margin: '8px 0 12px', gap: 6 }}>
@@ -61,16 +62,27 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
         </div>
       )}
       <div className="collection-grid">
-        {list.map((sp) => {
+        {list.flatMap((sp) => {
           const e = collection[sp.id];
           const seen = !!e?.seen, caught = e?.caught ?? 0;
-          return (
+          const cards = [(
             <button key={sp.id} className={`card clickable dex-card ${sel === sp.id ? 'selected' : ''}`} onClick={() => { Audio.uiClick(); setSel(sp.id); }}>
               <SpriteImg id={sp.id} size={64} unseen={!seen} />
               <div className="n">{seen ? sp.name : '???'}</div>
               <div className="c">{caught > 0 ? `×${caught}` : seen ? 'seen' : `#${sp.dexId}`}</div>
             </button>
+          )];
+          // shiny trophies sit right beside their normal form
+          const shinyKey = makeToken(sp.id, true);
+          const se = collection[shinyKey];
+          if (se && se.caught > 0) cards.push(
+            <button key={shinyKey} className={`card clickable dex-card ${sel === shinyKey ? 'selected' : ''}`} onClick={() => { Audio.uiClick(); setSel(shinyKey); }}>
+              <SpriteImg id={sp.id} shiny size={64} className="shiny-glow" />
+              <div className="n">✨ Shiny {sp.name}</div>
+              <div className="c">×{se.caught}</div>
+            </button>
           );
+          return cards;
         })}
       </div>
     </Panel>

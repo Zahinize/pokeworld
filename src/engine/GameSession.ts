@@ -20,7 +20,7 @@ import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
 import { kitOf, effectiveRange } from './sim/moveSystem';
 import { getMove, isSupportive } from '@/data/moves';
-import { SPECIES, getSpecies } from '@/data/species';
+import { SPECIES, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
 import type { Entity } from './ai/types';
@@ -80,6 +80,9 @@ export class GameSession {
   /** Damage attribution: recent partner damagers per victim, and the last hitter overall. */
   private recentDmg = new Map<number, Map<string, number>>();
   private lastHitter = new Map<number, { speciesId: string; isPartner: boolean }>();
+
+  /** Collection/party token for an entity (shiny variants tracked separately). */
+  private tok(e: Entity): string { return makeToken(e.species.id, e.isShiny); }
 
   private statsOf(speciesId: string) {
     let st = this.battleStats.get(speciesId);
@@ -279,8 +282,9 @@ export class GameSession {
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
     if (total === 0 && !store.save.restoration.endsAt) {
-      store.setRestoration(Date.now() + GAME.RESTORE_DURATION_MS);
-      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: 'Your supply will be restored in 1 minute.', ttl: 5 });
+      const secs = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
+      store.setRestoration(Date.now() + secs * 1000);
+      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: `Your supply will be restored in ${secs >= 60 ? '1 minute' : `${secs} seconds`}.`, ttl: 5 });
     }
     return true;
   }
@@ -352,7 +356,7 @@ export class GameSession {
     } else {
       // strongest living boss on the bar
       let bar: { name: string; hp: number; maxHp: number } | null = null;
-      for (const id of alive) { const e = eco.byId.get(id)!; if (!bar || e.maxHp > bar.maxHp) bar = { name: e.species.name, hp: Math.round(e.hp), maxHp: e.maxHp }; }
+      for (const id of alive) { const e = eco.byId.get(id)!; if (!bar || e.maxHp > bar.maxHp) bar = { name: tokenLabel(this.tok(e)), hp: Math.round(e.hp), maxHp: e.maxHp }; }
       useStore.getState().setHud({ bossBar: bar });
       // defeat check: every party member downed while bosses live
       if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
@@ -365,7 +369,12 @@ export class GameSession {
     for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => { this.sheets.set(b, sh); rememberSheet(sh); });
     const store = useStore.getState();
     const site = ZONES[wave.site];
-    this.bossIds = wave.bosses.map((b, i) => eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4).id);
+    // ~20% of encounters roll shiny: double HP & Attack, and a separate trophy if you win
+    this.bossIds = wave.bosses.map((b, i) => {
+      const shiny = Math.random() < 0.2;
+      if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
+      return eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4, shiny).id;
+    });
     // Commander duos fight as one: later bosses stay glued to the first (Tatsugiri rides Dondozo)
     for (let i = 1; i < this.bossIds.length; i++) { const e = eco.byId.get(this.bossIds[i]); if (e) e.pairBossId = this.bossIds[0]; }
     this.bossPhaseActive = true;
@@ -383,7 +392,10 @@ export class GameSession {
     releasePointer();
     const wave = this.pendingWaveConfig!;
     Audio.legendary();
-    useStore.getState().setHud({ bossIntro: { label: wave.label, bosses: wave.bosses.slice(), text: wave.arrivalToast } });
+    const eco = this.eco!;
+    const bosses = this.bossIds.map((id) => { const e = eco.byId.get(id); return { speciesId: e?.species.id ?? wave.bosses[0], shiny: !!e?.isShiny }; });
+    const final = isFinalLevel(this.level.id) && this.bossWave === (this.level.bossPhases?.length ?? 1) - 1;
+    useStore.getState().setHud({ bossIntro: { label: wave.label, bosses, text: wave.arrivalToast, final } });
     this.emit();
   }
 
@@ -394,8 +406,10 @@ export class GameSession {
     const wave = this.pendingWaveConfig!;
     this.bossEncounter = 'battle';
     eco.bossesActive = true;
-    if (wave.event !== 'none') { eco.bossCurrent = 1; for (const g of eco.groups) { g.alarm = 1; if (g.threatId < 0) g.threatId = this.bossIds[0]; } }
+    if (wave.event !== 'none') { eco.bossCurrent = wave.event === 'currents+shake' ? 2 : 1; for (const g of eco.groups) { g.alarm = 1; if (g.threatId < 0) g.threatId = this.bossIds[0]; } }
     if (wave.event === 'currents+shake') this.shakeT = 5;
+    // the bosses announce themselves — full-volume cries as the battle opens
+    this.bossIds.forEach((id, i) => { const e = eco.byId.get(id); if (e) Audio.playCry(e.species.dexId, 1, i * 0.7); });
     const store = useStore.getState();
     store.setHud({ bossIntro: null });
     store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 6 });
@@ -419,40 +433,41 @@ export class GameSession {
   get companionsEnabled() { return !!this.level.companions; }
 
   /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
-  setParty(speciesIds: string[]) {
+  setParty(tokens: string[]) {
     if (!this.eco) return;
-    this.party = speciesIds.slice(0, COMBAT.PARTY_SIZE);
-    // Load front + back sheets for the party in the background; the renderer picks them up when ready
-    for (const id of this.party) {
-      loadSpriteSheet(id, 'front').then((sh) => this.sheets.set(sheetKey(id, 'front'), sh));
-      loadSpriteSheet(id, 'back').then((sh) => this.sheets.set(sheetKey(id, 'back'), sh));
+    this.party = tokens.slice(0, COMBAT.PARTY_SIZE);
+    // Load the party's sheets in the background; the renderer picks them up when ready
+    for (const t of this.party) {
+      const id = baseSpeciesId(t);
+      const variants = isShinyToken(t) ? (['shiny', 'shinyback'] as const) : (['front', 'back'] as const);
+      for (const v of variants) loadSpriteSheet(id, v).then((sh) => this.sheets.set(sheetKey(id, v), sh));
     }
     this.downedSpecies = [];
     for (const id of this.activePartners) if (id >= 0) this.eco.removePartner(id);
     this.activePartners = [-1, -1];
-    this.party.slice(0, COMBAT.ACTIVE_COMPANIONS).forEach((sp, i) => { this.activePartners[i] = this.eco!.addPartner(sp, i).id; });
+    this.party.slice(0, COMBAT.ACTIVE_COMPANIONS).forEach((t, i) => { this.activePartners[i] = this.eco!.addPartner(baseSpeciesId(t), i, isShinyToken(t)).id; });
     this.syncPartyHud();
   }
 
   /** Send out the next available reserve into `slot`. Returns the species sent, if any. */
   sendNextReserve(slot: 0 | 1): string | null {
     if (!this.eco) return null;
-    const activeSpecies = this.activePartners.map((id) => (id >= 0 ? this.eco!.byId.get(id)?.species.id : undefined));
-    const next = this.party.find((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+    const activeTokens = this.activePartners.map((id) => { const e = id >= 0 ? this.eco!.byId.get(id) : undefined; return e ? this.tok(e) : undefined; });
+    const next = this.party.find((t) => !this.downedSpecies.includes(t) && !activeTokens.includes(t));
     if (!next) return null;
     if (!this.swapPartner(slot, next)) return null;
-    useStore.getState().pushToast({ kind: 'info', title: `Go, ${getSpecies(next).name}!`, speciesId: next, ttl: 3 });
+    useStore.getState().pushToast({ kind: 'info', title: `Go, ${tokenLabel(next)}!`, speciesId: baseSpeciesId(next), shiny: isShinyToken(next), ttl: 3 });
     return next;
   }
 
   /** Swap the active companion in `slot` for a reserve species. */
-  swapPartner(slot: 0 | 1, speciesId: string): boolean {
-    if (!this.eco || !this.party.includes(speciesId) || this.downedSpecies.includes(speciesId)) return false;
+  swapPartner(slot: 0 | 1, token: string): boolean {
+    if (!this.eco || !this.party.includes(token) || this.downedSpecies.includes(token)) return false;
     const otherSlot = slot === 0 ? 1 : 0;
     const other = this.eco.byId.get(this.activePartners[otherSlot]);
-    if (other && other.species.id === speciesId) return false; // already out in the other slot
+    if (other && this.tok(other) === token) return false; // already out in the other slot
     if (this.activePartners[slot] >= 0) this.eco.removePartner(this.activePartners[slot]);
-    this.activePartners[slot] = this.eco.addPartner(speciesId, slot).id;
+    this.activePartners[slot] = this.eco.addPartner(baseSpeciesId(token), slot, isShinyToken(token)).id;
     Audio.uiConfirm();
     this.syncPartyHud();
     return true;
@@ -519,15 +534,15 @@ export class GameSession {
   /** 9/0 keys and the low-HP banner: swap `slot` for the healthiest reserve. */
   swapSlotWithBest(slot: 0 | 1): boolean {
     if (!this.eco || this.swapCooldownT > 0) return false;
-    const activeSpecies = this.activePartners.map((id) => (id >= 0 ? this.eco!.byId.get(id)?.species.id : undefined));
-    const reserves = this.party.filter((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+    const activeTokens = this.activePartners.map((id) => { const e = id >= 0 ? this.eco!.byId.get(id) : undefined; return e ? this.tok(e) : undefined; });
+    const reserves = this.party.filter((t) => !this.downedSpecies.includes(t) && !activeTokens.includes(t));
     if (!reserves.length) return false;
-    // healthiest = full HP (reserves rest in their balls), pick highest-stage first for drama
-    const best = reserves.sort((a, b) => getSpecies(b).stage - getSpecies(a).stage)[0];
-    const out = activeSpecies[slot];
+    // healthiest = full HP (reserves rest in their balls); shinies and higher stages first for drama
+    const best = reserves.sort((a, b) => (Number(isShinyToken(b)) - Number(isShinyToken(a))) || (getSpecies(baseSpeciesId(b)).stage - getSpecies(baseSpeciesId(a)).stage))[0];
+    const out = activeTokens[slot];
     if (!this.swapPartner(slot, best)) return false;
     this.swapCooldownT = 2;
-    useStore.getState().pushToast({ kind: 'info', title: `${getSpecies(best).name}, you're up!`, body: out ? `${getSpecies(out).name} returns to rest.` : undefined, speciesId: best, ttl: 3 });
+    useStore.getState().pushToast({ kind: 'info', title: `${tokenLabel(best)}, you're up!`, body: out ? `${tokenLabel(out)} returns to rest.` : undefined, speciesId: baseSpeciesId(best), shiny: isShinyToken(best), ttl: 3 });
     return true;
   }
 
@@ -569,17 +584,17 @@ export class GameSession {
       const e = id >= 0 ? eco?.byId.get(id) : undefined;
       if (!e || e.state === 'ko' || e.state === 'removed') return null;
       const kit = kitOf(e);
-      return { speciesId: e.species.id, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
+      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
     });
     // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
     let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;
     if (this.phase === 'playing' && this.swapCooldownT <= 0) {
-      const activeSpecies = active.map((a) => a?.speciesId);
-      const reserves = this.party.filter((sp) => !this.downedSpecies.includes(sp) && !activeSpecies.includes(sp));
+      const activeTokens = active.map((a) => a?.token);
+      const reserves = this.party.filter((t) => !this.downedSpecies.includes(t) && !activeTokens.includes(t));
       if (reserves.length) {
         for (const slot of [0, 1] as const) {
           const a = active[slot];
-          if (a && a.hp / a.maxHp < 0.35) { swapPrompt = { slot, from: a.speciesId, to: reserves.sort((x, y) => getSpecies(y).stage - getSpecies(x).stage)[0] }; break; }
+          if (a && a.hp / a.maxHp < 0.35) { swapPrompt = { slot, from: a.token, to: reserves.sort((x, y) => (Number(isShinyToken(y)) - Number(isShinyToken(x))) || (getSpecies(baseSpeciesId(y)).stage - getSpecies(baseSpeciesId(x)).stage))[0] }; break; }
         }
       }
     }
@@ -663,7 +678,7 @@ export class GameSession {
         case 'hit': {
           const e = eco.byId.get(ev.entityId);
           if (e) this.pushNumber(`-${ev.damage}`, '#ff8091', e.x, e.y + e.species.size * 0.5, e.z, ev.damage >= e.maxHp * 0.3);
-          if (e?.role === 'partner') this.statsOf(e.species.id).taken += ev.damage;
+          if (e?.role === 'partner') this.statsOf(this.tok(e)).taken += ev.damage;
           if (ev.by === 'predator' && near(e, 45)) Audio.predatorHit();
           break;
         }
@@ -679,12 +694,12 @@ export class GameSession {
           const caster = eco.byId.get(ev.casterId);
           if (caster) {
             if (caster.role === 'partner') {
-              this.statsOf(caster.species.id).dealt += ev.damage;
+              this.statsOf(this.tok(caster)).dealt += ev.damage;
               let recent = this.recentDmg.get(ev.targetId);
               if (!recent) { recent = new Map(); this.recentDmg.set(ev.targetId, recent); }
-              recent.set(caster.species.id, this.elapsed);
+              recent.set(this.tok(caster), this.elapsed);
             }
-            this.lastHitter.set(ev.targetId, { speciesId: caster.species.id, isPartner: caster.role === 'partner' });
+            this.lastHitter.set(ev.targetId, { speciesId: this.tok(caster), isPartner: caster.role === 'partner' });
           }
           break;
         }
@@ -754,16 +769,17 @@ export class GameSession {
         }
         case 'inflate': { if (near(eco.byId.get(ev.entityId), 30)) Audio.inflate(); break; }
         case 'partnerDown': {
-          const sp = getSpecies(ev.speciesId);
-          this.downedSpecies.push(sp.id);
+          const downed = eco.byId.get(ev.entityId);
+          const token = downed ? this.tok(downed) : ev.speciesId;
+          this.downedSpecies.push(token);
           const slot = this.activePartners.indexOf(ev.entityId);
           if (slot >= 0) {
             this.activePartners[slot as 0 | 1] = -1;
             this.autoSend.push([slot, (this.eco?.time ?? 0) + 2.5]); // a reserve dives in on its own
           }
           Audio.ko();
-          const hasReserve = this.party.some((id) => !this.downedSpecies.includes(id) && !this.activePartners.some((pid) => pid >= 0 && eco.byId.get(pid)?.species.id === id));
-          store.pushToast({ kind: 'warn', title: `${sp.name} is exhausted!`, body: hasReserve ? 'A reserve is diving in…' : 'No reserves left — fight carefully.', speciesId: sp.id, ttl: 4 });
+          const hasReserve = this.party.some((t) => !this.downedSpecies.includes(t) && !this.activePartners.some((pid) => { const pe = pid >= 0 ? eco.byId.get(pid) : undefined; return pe && this.tok(pe) === t; }));
+          store.pushToast({ kind: 'warn', title: `${tokenLabel(token)} is exhausted!`, body: hasReserve ? 'A reserve is diving in…' : 'No reserves left — fight carefully.', speciesId: ev.speciesId, shiny: isShinyToken(token), ttl: 4 });
           this.syncPartyHud();
           break;
         }
@@ -793,16 +809,18 @@ export class GameSession {
         }
         case 'bossDefeated': {
           const sp = getSpecies(ev.speciesId);
+          const token = makeToken(sp.id, ev.shiny);
           this.creditTakedown(ev.entityId);
           if (this.mission) {
             const out = applyBossDefeat(this.mission, ev.speciesId);
             if (out.counted) { this.mission = out.mission; store.setMission(this.mission); }
           }
-          // A defeated boss is yours — into the collection, trophy-style, usable as a companion later
-          store.recordCatch(sp.id, this.level.id);
-          store.setLastCatch({ speciesId: sp.id, missionTarget: true, objectiveLabel: 'Boss defeated ⚔️' });
+          // A defeated boss is yours — into the collection, trophy-style (shinies as their own entry)
+          store.recordCatch(token, this.level.id);
+          store.setLastCatch({ speciesId: sp.id, shiny: ev.shiny, missionTarget: true, objectiveLabel: ev.shiny ? 'SHINY boss defeated ⚔️✨' : 'Boss defeated ⚔️' });
           Audio.levelComplete();
-          store.pushToast({ kind: 'catch', title: `${sp.name} defeated — added to your collection!`, body: 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, missionTarget: true, ttl: 6 });
+          Audio.playCry(sp.dexId, 0.25, 0.4); // a last, low cry as it sinks
+          store.pushToast({ kind: 'catch', title: `${tokenLabel(token)} defeated — added to your collection!`, body: ev.shiny ? 'A SHINY trophy — its full power now fights for you.' : 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, shiny: ev.shiny, missionTarget: true, ttl: 6 });
           this.pushFx('catch', eco.byId.get(ev.entityId)?.x ?? 0, eco.byId.get(ev.entityId)?.y ?? 0, eco.byId.get(ev.entityId)?.z ?? 0, sp.size);
           if (this.mission?.complete && this.phase === 'playing') { this.phase = 'completing'; this.completeTimer = 2.2; }
           break;
@@ -840,6 +858,7 @@ export class GameSession {
   private onCaught(e: Entity, byCompanion = false) {
     const store = useStore.getState();
     Audio.catchSuccess();
+    Audio.playCry(e.species.dexId, 0.5, 0.25); // every catch is greeted by the Pokémon's own cry
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
     store.recordCatch(e.species.id, this.level.id);
     let missionTarget = false, label: string | undefined;
@@ -868,7 +887,7 @@ export class GameSession {
     releasePointer();
     Audio.levelComplete();
     const roster = this.companionsEnabled
-      ? this.party.map((sp) => ({ speciesId: sp, ...( this.battleStats.get(sp) ?? { dealt: 0, taken: 0, kills: 0, assists: 0 }) }))
+      ? this.party.map((t) => ({ speciesId: t, ...( this.battleStats.get(t) ?? { dealt: 0, taken: 0, kills: 0, assists: 0 }) }))
       : undefined;
     store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id), roster });
     store.completeLevel(this.level.id, Math.round(this.elapsed));

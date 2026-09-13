@@ -4,7 +4,7 @@ import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
 import { GAME } from '@/data/gameConfig';
-import { SPECIES } from '@/data/species';
+import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { objectiveDone } from '@/engine/sim/mission';
 import { PokeballIcon, SpriteImg, Panel } from '../components/common';
@@ -121,15 +121,15 @@ function PartyBar() {
   const party = useStore((s) => s.hud.party);
   const isTouch = useStore((s) => s.isTouch);
   if (!session.companionsEnabled || party.list.length === 0) return null;
-  const reserves = party.list.filter((id) => !party.active.some((a) => a?.speciesId === id));
+  const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
       {party.active.map((a, slot) => a ? (
         <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
           <div className="row" style={{ gap: 8 }}>
-            <SpriteImg id={a.speciesId} size={40} />
+            <SpriteImg id={a.speciesId} shiny={a.shiny} size={40} />
             <div className="grow">
-              <div className="pn">{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag">⚔</span>}</div>
+              <div className="pn">{a.shiny && '✨'}{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag">⚔</span>}</div>
               <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
             </div>
           </div>
@@ -153,15 +153,15 @@ function PartyBar() {
       ))}
       {reserves.length > 0 && (
         <div className="reserves">
-          {reserves.map((id) => {
-            const down = party.downed.includes(id);
+          {reserves.map((t) => {
+            const down = party.downed.includes(t);
             return (
-              <button key={id} className={`reserve-chip ${down ? 'down' : ''}`} disabled={down} title={down ? `${SPECIES[id].name} is exhausted` : `Send out ${SPECIES[id].name}`}
+              <button key={t} className={`reserve-chip ${down ? 'down' : ''}`} disabled={down} title={down ? `${tokenLabel(t)} is exhausted` : `Send out ${tokenLabel(t)}`}
                 onClick={() => {
                   const slot = party.active[0] === null ? 0 : party.active[1] === null ? 1 : 0;
-                  session.swapPartner(slot as 0 | 1, id);
+                  session.swapPartner(slot as 0 | 1, t);
                 }}>
-                <SpriteImg id={id} size={28} unseen={down} />
+                <SpriteImg id={baseSpeciesId(t)} shiny={isShinyToken(t)} size={28} unseen={down} />
               </button>
             );
           })}
@@ -178,12 +178,12 @@ function SwapPrompt() {
   const key = prompt.slot === 0 ? '9' : '0';
   return (
     <button className="swap-prompt glass strong interactive" onClick={() => session.swapSlotWithBest(prompt.slot)}>
-      <SpriteImg id={prompt.from} size={34} />
+      <SpriteImg id={baseSpeciesId(prompt.from)} shiny={isShinyToken(prompt.from)} size={34} />
       <div className="txt">
-        <b>{SPECIES[prompt.from].name} is weak!</b>
-        <span>{isTouch ? 'Tap here' : <>Press <span className="kbd">{key}</span></>} to swap in {SPECIES[prompt.to].name}</span>
+        <b>{tokenLabel(prompt.from)} is weak!</b>
+        <span>{isTouch ? 'Tap here' : <>Press <span className="kbd">{key}</span></>} to swap in {tokenLabel(prompt.to)}</span>
       </div>
-      <SpriteImg id={prompt.to} size={34} />
+      <SpriteImg id={baseSpeciesId(prompt.to)} shiny={isShinyToken(prompt.to)} size={34} />
     </button>
   );
 }
@@ -231,7 +231,7 @@ function Toasts() {
     <div className="toasts">
       {toasts.map((t) => (
         <Panel key={t.id} className={`toast ${t.kind}`}>
-          {t.speciesId && <SpriteImg id={t.speciesId} size={40} />}
+          {t.speciesId && <SpriteImg id={t.speciesId} shiny={t.shiny} size={40} />}
           <div><div className="t">{t.title}</div>{t.body && <div className="b">{t.body}</div>}</div>
         </Panel>
       ))}
@@ -247,9 +247,9 @@ function CatchCard() {
   const s = SPECIES[last.speciesId];
   return (
     <Panel className="catch-card strong">
-      <SpriteImg id={last.speciesId} size={96} />
-      <div className="eyebrow">Caught!</div>
-      <div className="name">{s.name}</div>
+      <SpriteImg id={last.speciesId} shiny={last.shiny} size={96} className={last.shiny ? 'shiny-glow' : ''} />
+      <div className="eyebrow">{last.shiny ? '✨ Shiny! ✨' : 'Caught!'}</div>
+      <div className="name">{last.shiny ? `Shiny ${s.name}` : s.name}</div>
       <div className="sub row" style={{ justifyContent: 'center', gap: 8 }}>
         <span className="badge green">Collection ✓</span>
         {last.missionTarget ? <span className="badge gold">Mission target ✓ {last.objectiveLabel}</span> : <span className="badge">Mission target: No</span>}
@@ -283,16 +283,18 @@ function TargetPointer() {
 function BossIntro() {
   const intro = useStore((s) => s.hud.bossIntro);
   if (!intro) return null;
+  const anyShiny = intro.bosses.some((b) => b.shiny);
   return (
     <div className="overlay boss-intro" style={{ zIndex: 45 }}>
-      <Panel className="panel strong center" style={{ padding: 30, borderColor: 'rgba(244,63,94,.45)' }}>
+      <Panel className="panel strong center" style={{ padding: 30, borderColor: anyShiny ? 'rgba(255,209,102,.6)' : 'rgba(244,63,94,.45)' }}>
         <div className="boss-intro-sprites">
-          {intro.bosses.map((b) => <SpriteImg key={b} id={b} size={intro.bosses.length > 1 ? 96 : 128} />)}
+          {intro.bosses.map((b) => <SpriteImg key={b.speciesId} id={b.speciesId} shiny={b.shiny} size={intro.bosses.length > 1 ? 96 : 128} className={b.shiny ? 'shiny-glow' : ''} />)}
         </div>
-        <div className="eyebrow" style={{ color: 'var(--red)', marginTop: 10 }}>Boss Encounter</div>
-        <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => SPECIES[b].name).join(' & ')}</h2>
+        {anyShiny && <div className="shiny-banner">✨ SHINY ✨</div>}
+        <div className="eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)', marginTop: 10 }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
+        <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
         <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
-        <p className="muted small" style={{ margin: '12px 0 18px' }}>They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.</p>
+        <p className="muted small" style={{ margin: '12px 0 18px' }}>{anyShiny ? 'A shiny ruler — twice the power, twice the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
         <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}>⚔️ I'm ready — battle!</button>
       </Panel>
     </div>
