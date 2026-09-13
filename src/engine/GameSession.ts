@@ -282,10 +282,10 @@ export class GameSession {
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
     if (total === 0 && !store.save.restoration.endsAt) {
-      // No toast about the wait — the restock banner's live countdown says it all,
-      // and players discover the longer L3/L4 timer on their own.
       const secs = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
       store.setRestoration(Date.now() + secs * 1000);
+      // No duration in the copy — players discover the longer L3/L4 wait from the countdown itself
+      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: 'Your supply is being restored — watch the countdown.', ttl: 5 });
     }
     return true;
   }
