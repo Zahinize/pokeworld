@@ -27,8 +27,26 @@ export function SettingsView({ onClose, embedded = false }: { onClose: () => voi
       <div className="setting"><div className="l"><b>Trainer</b><span>Your avatar across the game</span></div><Segmented value={trainerId ?? 'ash'} options={TRAINERS.map((t) => ({ value: t.id, label: `${t.avatar} ${t.name}` }))} onChange={(v) => selectTrainer(v)} /></div>
       <div className="setting">
         <div className="l"><b>Reset save</b><span>Erase trainer, progress and collection on this device</span></div>
-        {confirmReset ? <div className="row"><button className="btn danger" style={{ minHeight: 36 }} onClick={() => { resetAll(); }}>Erase everything</button><button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setConfirmReset(false)}>Cancel</button></div> : <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => setConfirmReset(true)}>Reset…</button>}
+        <button className="btn ghost" style={{ minHeight: 36 }} onClick={() => { Audio.uiClick(); setConfirmReset(true); }}>Reset…</button>
       </div>
+      {confirmReset && (
+        <div className="overlay" style={{ zIndex: 60 }} onClick={() => setConfirmReset(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(100%, 460px)' }}>
+          <Panel className="panel strong danger-dialog">
+            <div className="dd-icon">⚠️</div>
+            <h2 className="title" style={{ fontSize: 24, margin: '6px 0 10px' }}>Erase all game data?</h2>
+            <div className="danger-alert">
+              This is dangerous! Your trainer, level progress, full collection — including every shiny trophy — and settings
+              will be permanently deleted from this device. This cannot be undone.
+            </div>
+            <div className="row" style={{ justifyContent: 'center', gap: 10, marginTop: 16 }}>
+              <button className="btn ghost big" autoFocus onClick={() => { Audio.uiClick(); setConfirmReset(false); }}>Keep my data</button>
+              <button className="btn danger big" onClick={() => { Audio.uiConfirm(); resetAll(); }}>Yes, erase everything</button>
+            </div>
+          </Panel>
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }

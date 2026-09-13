@@ -308,6 +308,10 @@ a { color: var(--aqua); }
 
 /* Overlays */
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(2, 10, 22, .55); backdrop-filter: blur(6px); z-index: 40; padding: 16px; animation: fadeUp .25s ease both; overflow: auto; }
+.danger-dialog { text-align: center; border-color: rgba(244, 63, 94, .55); box-shadow: 0 0 0 1px rgba(244, 63, 94, .3), 0 24px 70px rgba(244, 63, 94, .25); animation: pop .35s cubic-bezier(.2,.9,.3,1.2) both; }
+.danger-dialog .dd-icon { font-size: 40px; line-height: 1; }
+.danger-alert { background: rgba(244, 63, 94, .16); border: 1px solid rgba(244, 63, 94, .5); border-left: 4px solid var(--red); border-radius: 12px; padding: 12px 14px; color: #ffd0d8; font-size: 14px; line-height: 1.5; text-align: left; }
+.danger-dialog .btn.ghost { border-color: var(--line-strong); }
 .overlay .panel { width: min(100%, 560px); padding: 24px; }
 .overlay .panel.wide { width: min(100%, 960px); }
 .menu-list { display: flex; flex-direction: column; gap: 10px; }
