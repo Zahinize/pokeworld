@@ -434,12 +434,10 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 .hud.touch .restore-banner .small { display: none; }
 .hud.touch.restocking .hud-hint.touch-hint { display: none; }
 
-@media (max-width: 760px) {
+/* ---------- Phones: narrow (portrait) OR short (landscape) viewports ---------- */
+@media (max-width: 760px), (max-height: 540px) {
   .hud-top-left { width: min(260px, calc(100vw - 110px)); }
   .mission-panel { padding: 10px 12px; }
-  .hud-bottom { gap: 8px; bottom: calc(10px + var(--safe-bottom)); }
-  .ball-btn { min-width: 50px; padding: 4px 5px; }
-  .ball-btn .key { display: none; }
   .hud-hint { display: none; }
   .toasts { width: min(220px, calc(100vw - 24px)); }
   .dex-detail { grid-template-columns: 1fr; } .dex-detail img { margin: 0 auto; }
@@ -448,22 +446,53 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .target-ring { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
   .target-arrow i { top: -56px; }
   .target-label { top: calc(50% + 74px); }
-}
-@media (max-height: 520px) and (orientation: landscape) {
+  .hud-bottom { gap: 8px; bottom: calc(10px + var(--safe-bottom)); }
+  .ball-btn { min-width: 50px; padding: 4px 5px; }
+  .ball-btn .key { display: none; }
+  /* touch controls: phone sizes, throw centered on the arrow column */
   .touch-controls .joy { width: 100px; height: 100px; bottom: calc(22px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
-  .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
-  .hud.touch .party-bar { width: 164px; gap: 4px; bottom: calc(152px + var(--safe-bottom)); }
-  .hud.touch .party-card { padding: 5px 7px; border-radius: 11px; }
-  .hud.touch .party-card .pn { font-size: 11px; }
-  .hud.touch .party-card img { width: 30px; height: 30px; }
-  .hud.touch .party-card .moves { gap: 4px; margin-top: 4px; }
-  .hud.touch .move-btn { min-height: 32px; font-size: 10.5px; padding: 3px 5px; border-radius: 9px; }
-  .hud.touch .reserve-chip { width: 30px; height: 30px; }
-  .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.sprint { left: calc(128px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
-  .hud.touch .hud-bottom { bottom: calc(8px + var(--safe-bottom)); }
-  .hud-hint.touch-hint { top: calc(56px + var(--safe-top)); }
+  /* arrows + throw sit above the centered ball tray; sprint above the joystick */
+  .touch-controls .tbtn.up { bottom: calc(164px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
+  .touch-controls .tbtn.down { bottom: calc(100px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
+  .touch-controls .tbtn.throw { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
+  .touch-controls .tbtn.sprint { left: calc(122px + var(--safe-left)); bottom: calc(132px + var(--safe-bottom)); }
+  /* party box: tiny but fully functional */
+  .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(192px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
+  .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
+  .hud.touch .party-card .pn { font-size: 10.5px; }
+  .hud.touch .party-card img { width: 24px; height: 24px; }
+  .hud.touch .party-card .php { height: 3px; margin-top: 2px; }
+  .hud.touch .party-card .moves { gap: 3px; margin-top: 3px; }
+  .hud.touch .move-btn { min-height: 26px; font-size: 9.5px; padding: 2px 4px; border-radius: 8px; }
+  .hud.touch .reserve-chip { width: 26px; height: 26px; border-radius: 8px; }
+  .hud.touch .reserve-chip img { width: 18px; height: 18px; }
+  /* notifications: smaller still */
+  .hud.touch .toasts { width: min(176px, calc(100vw - 20px)); gap: 4px; }
+  .hud.touch .toast { padding: 5px 7px; gap: 6px; border-radius: 9px; }
+  .hud.touch .toast img { width: 20px; height: 20px; }
+  .hud.touch .toast .t { font-size: 10.5px; }
+  .hud.touch .catch-toast .b { font-size: 9.5px; }
+  .hud.touch .chip { padding: 4px 8px; font-size: 10px; }
+  .hud.touch .restore-banner b { font-size: 13px; }
+  /* ball tray + lure: compact, lure vertically centered on the tray */
+  .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(8px + var(--safe-bottom)); }
+  .hud.touch .ball-tray { padding: 4px 6px; gap: 2px; border-radius: 13px; }
+  .hud.touch .ball-btn { min-width: 38px; padding: 2px 3px; gap: 2px; font-size: 9.5px; }
+  .hud.touch .ball-btn .count { font-size: 12px; }
+  .hud.touch .pokeball-icon { width: 22px !important; height: 22px !important; }
+  .hud.touch .pokeball-icon::after { width: 7px; height: 7px; border-width: 1.5px; }
+  .hud.touch .lure-btn { width: 42px; height: 42px; border-radius: 12px; font-size: 9px; gap: 1px; }
+  .hud.touch .lure-btn .ic { font-size: 14px; }
+  .hud.touch .lure-btn .ring { border-radius: 12px; }
+}
+@media (max-height: 540px) and (orientation: landscape) {
+  .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
+  .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
+  /* wide screen: the centered tray clears the right column, so controls drop back down */
+  .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); }
+  .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); }
+  .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); }
+  .touch-controls .tbtn.sprint { left: calc(126px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ocean-bg::before, .ocean-bg .ray, .ocean-bg .bubble { animation: none; }
