@@ -488,14 +488,16 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 }
 @media (max-height: 540px) and (orientation: landscape) {
   .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
-  /* mission bar + player health side by side along the top edge */
-  .hud.touch .hud-top-left { width: 190px; }
-  .hud.touch .mission-panel.compact { padding: 6px 10px; }
-  .hud.touch .mission-panel .head { margin-bottom: 4px; }
-  .hud.touch .mission-panel .head .lvl { font-size: 10.5px; }
-  .hud.touch .mission-panel .head .tot { font-size: 13px; }
+  /* mission bar: a slim pill matching the player health bar beside it */
+  .hud.touch .hud-top-left { width: 150px; }
+  .hud.touch .mission-panel.compact { padding: 4px 12px 6px; border-radius: 999px; }
+  .hud.touch .mission-panel .head { margin-bottom: 2px; gap: 6px; }
+  .hud.touch .mission-panel .head .lvl { font-size: 9.5px; letter-spacing: .05em; }
+  .hud.touch .mission-panel .head .tot { font-size: 12px; }
+  .hud.touch .mission-panel .head .tot small { font-size: 9px; }
+  .hud.touch .mission-panel .progress { height: 3px; border-width: 0; }
   .hud.touch .mission-panel .expand-hint { display: none; }
-  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(214px + var(--safe-left)); width: 132px; padding: 5px 9px; }
+  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(172px + var(--safe-left)); width: 132px; padding: 5px 9px; }
   .hud.touch .player-hp .ic { font-size: 13px; }
   .hud.touch .player-hp .bar { height: 6px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
