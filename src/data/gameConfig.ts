@@ -11,10 +11,10 @@ export const GAME = {
   RESTORE_DURATION_MS: 60_000,
   /** Predator respawn after capture (ms). */
   PREDATOR_RESPAWN_MS: 120_000,
-  /** Lure duration (s) and radius (m). */
+  /** Lure duration (s) and radius (m). One use every LURE_COOLDOWN seconds — it should feel precious. */
   LURE_DURATION: 15,
   LURE_RADIUS: 28,
-  LURE_COOLDOWN: 25,
+  LURE_COOLDOWN: 300,
 
   /** Health regen per second as fraction of max HP. */
   HP_REGEN_PER_SEC: 0.01,
@@ -57,5 +57,5 @@ export const GAME = {
   REINFORCE_DELAY: 20,
 
   SAVE_KEY: 'pokeworld:save:v1',
-  POKEAPI_CACHE_KEY: 'pokeworld:pokeapi:v1',
+  POKEAPI_CACHE_KEY: 'pokeworld:pokeapi:v2',
 } as const;

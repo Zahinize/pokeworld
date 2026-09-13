@@ -1,6 +1,6 @@
 import type { SpeciesConfig, BehaviorGroup, ZoneId } from '@/data/types';
 
-export type EntityRole = 'member' | 'guardian' | 'solo' | 'companion';
+export type EntityRole = 'member' | 'guardian' | 'solo' | 'companion' | 'partner';
 
 export type EntityState =
   | 'wander' | 'school' | 'drift' | 'flee' | 'scatter'
@@ -9,6 +9,7 @@ export type EntityState =
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
   | 'inflate' | 'support' | 'lured' | 'breach'
+  | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
 export interface Vec3 { x: number; y: number; z: number }
@@ -61,6 +62,40 @@ export interface Entity {
   /** Misc per-behavior timers. */
   t1: number;
   t2: number;
+
+  // ---- combat (moves) ----
+  /** Normalized combat stats, cached at spawn. */
+  cs: import('@/pokeapi/hp').CombatStats;
+  /** Per-move cooldown timers (seconds remaining). */
+  mcd: [number, number];
+  /** Stat stage multipliers with expiry (sim time). */
+  atkStage: number; atkStageUntil: number;
+  defStage: number; defStageUntil: number;
+  /** Status timers (seconds remaining). */
+  stunT: number; slowT: number; blindT: number;
+  /** Heal-over-time: hp/sec remaining seconds. */
+  hotRate: number; hotT: number;
+  /** Anti-chaos retaliation window. */
+  retaliateN: number; retaliateWindowT: number;
+  /** Who to retaliate against (entity id or -2 for player). */
+  retaliateTarget: number;
+
+  // ---- companions & duels ----
+  /** Companion kit override (move ids); companions always run two damage moves. */
+  kitOverride?: [string, string];
+  /** Entity id of the current duel opponent (-1 = none). */
+  duelWith: number;
+  /** Faint countdown (wilds KO'd by companions sink, catchable, then recover). */
+  faintT: number;
+  /** Player-commanded cast: chase orderTarget until the move is in range. */
+  orderTarget: number;
+  orderMove: -1 | 0 | 1;
+  /** Active party slot for partners (0/1). */
+  partnerSlot: number;
+  /** Boss entity: stat multipliers applied, aggressive boss AI, immune to faint and lure. */
+  isBoss: boolean;
+  /** Commander duo: this boss stays glued to its partner boss (Tatsugiri ↔ Dondozo). */
+  pairBossId: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -84,11 +119,15 @@ export interface Group {
   /** When set, anchor follows this entity (Mantine/Lapras followers). */
   followId: number;
   objectiveId?: string;
+  /** Guardian lost (caught/KO'd): the whole group strikes back at predators that attack it. */
+  avenging: boolean;
   /** Guardian-specific timers. */
   guardianNextPass: number;
   /** Member count at spawn — ambient groups replenish toward this by migration. */
   initialSize: number;
 }
+
+export type CasterKind = 'wild' | 'predator' | 'guardian' | 'companion' | 'boss';
 
 export type EcoEvent =
   | { type: 'hit'; entityId: number; by: 'ball' | 'predator'; damage: number }
@@ -100,7 +139,23 @@ export type EcoEvent =
   | { type: 'reinforce'; speciesId: string; count: number; objectiveId?: string }
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
-  | { type: 'inflate'; entityId: number };
+  | { type: 'inflate'; entityId: number }
+  | { type: 'cast'; casterId: number; moveId: string; style: string }
+  | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }
+  | { type: 'playerHit'; casterId: number; moveId: string; damage: number }
+  | { type: 'effect'; targetId: number; effect: string; magnitude: number }
+  | { type: 'heal'; targetId: number; amount: number }
+  | { type: 'revenge'; groupId: number; attackerId: number }
+  | { type: 'duelStart'; partnerId: number; wildId: number }
+  | { type: 'duelEnd'; partnerId: number; wildId: number; reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone' }
+  | { type: 'faint'; entityId: number; speciesId: string }
+  | { type: 'autoCaught'; entityId: number; speciesId: string }
+  | { type: 'guardianDefends'; guardianId: number; speciesId: string }
+  | { type: 'recovered'; entityId: number; speciesId: string }
+  | { type: 'partnerDown'; entityId: number; speciesId: string }
+  | { type: 'bossSpawn'; entityId: number; speciesId: string }
+  | { type: 'bossCharge'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught' };
 
 export interface PlayerSnapshot {
   x: number; y: number; z: number;

@@ -63,8 +63,10 @@ export interface SpeciesConfig {
   /** Base catch rate multiplier (1 = average). */
   catchBase: number;
   bioluminescent?: boolean;
-  /** Fallback base stats if PokeAPI is unreachable (hp, def, spDef). */
-  fallbackStats: { hp: number; def: number; spDef: number };
+  /** Fallback base stats if PokeAPI is unreachable (all six base stats). */
+  fallbackStats: { hp: number; atk: number; def: number; spAtk: number; spDef: number; speed: number };
+  /** Boss-only species never appear in normal ecosystem generation. */
+  bossOnly?: boolean;
   /** Flavour text shown in the field guide. */
   blurb: string;
 }

@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
+import { sheetKey } from './sprites';
 import type { SpriteSheet } from './sprites';
 import type { Entity } from '@/engine/ai/types';
 
@@ -17,9 +18,10 @@ attribute float aAlpha;
 attribute float aFlash;
 attribute float aGlow;
 attribute float aSize;
+attribute float aStatus;
 uniform float uTime, uFrameTime, uFrames, uCols, uRows, uAspect;
 varying vec2 vUv;
-varying float vAlpha, vFlash, vGlow, vDepth, vWorldY;
+varying float vAlpha, vFlash, vGlow, vDepth, vWorldY, vStatus;
 void main() {
   float frame = mod(floor((uTime + aPhase) / uFrameTime), uFrames);
   float col = mod(frame, uCols);
@@ -37,7 +39,7 @@ void main() {
   vDepth = -mv.z;
   vWorldY = world.y;
   gl_Position = projectionMatrix * mv;
-  vAlpha = aAlpha; vFlash = aFlash; vGlow = aGlow;
+  vAlpha = aAlpha; vFlash = aFlash; vGlow = aGlow; vStatus = aStatus;
 }`;
 
 const FRAG = /* glsl */ `
@@ -47,11 +49,15 @@ uniform float uFogDensity;
 uniform float uLight;
 uniform float uTime;
 varying vec2 vUv;
-varying float vAlpha, vFlash, vGlow, vDepth, vWorldY;
+varying float vAlpha, vFlash, vGlow, vDepth, vWorldY, vStatus;
 void main() {
   vec4 tex = texture2D(uMap, vUv);
   if (tex.a < 0.45) discard;
   vec3 col = tex.rgb;
+  // status tints: 1=slow (frost), 2=blind (ink veil), 3=stun (white pulse)
+  if (vStatus > 2.5) col = mix(col, vec3(1.0), 0.35 + 0.25 * sin(uTime * 14.0));
+  else if (vStatus > 1.5) col = mix(col, vec3(0.1, 0.12, 0.2), 0.45);
+  else if (vStatus > 0.5) col = mix(col, vec3(0.55, 0.8, 1.0), 0.4);
   // water absorption with depth (reds go first)
   float depth = clamp(-vWorldY / 60.0, 0.0, 1.0);
   col *= mix(vec3(1.0), vec3(0.62, 0.85, 1.0), depth * 0.7);
@@ -101,6 +107,7 @@ interface SpeciesBatch {
   aFlash: THREE.InstancedBufferAttribute;
   aGlow: THREE.InstancedBufferAttribute;
   aSize: THREE.InstancedBufferAttribute;
+  aStatus: THREE.InstancedBufferAttribute;
   sheet: SpriteSheet;
 }
 
@@ -111,9 +118,9 @@ const facingMemo = new Map<number, number>();
 function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   const geo = planeGeo.clone();
   const mk = (n: number, def = 0) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(def), 1); a.setUsage(THREE.DynamicDrawUsage); return a; };
-  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1);
+  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1), aStatus = mk(capacity);
   geo.setAttribute('aPhase', aPhase); geo.setAttribute('aFlip', aFlip); geo.setAttribute('aAlpha', aAlpha);
-  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize);
+  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize); geo.setAttribute('aStatus', aStatus);
   const mat = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: true, side: THREE.DoubleSide,
     uniforms: {
@@ -126,7 +133,7 @@ function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   mesh.count = 0;
-  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, sheet };
+  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, aStatus, sheet };
 }
 
 export function PokemonLayer() {
@@ -161,9 +168,13 @@ export function PokemonLayer() {
     const time = state.clock.elapsedTime;
     camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
 
-    // Count per species
+    // Count per batch key (partners swim ahead of you showing their backs; they turn for duels)
+    const keyOf = (e: (typeof eco.alive)[number]) => {
+      if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'back'))) return sheetKey(e.species.id, 'back');
+      return e.species.id;
+    };
     const counts = new Map<string, number>();
-    for (const e of eco.alive) counts.set(e.species.id, (counts.get(e.species.id) ?? 0) + 1);
+    for (const e of eco.alive) { const k = keyOf(e); counts.set(k, (counts.get(k) ?? 0) + 1); }
     // Ensure batches exist with capacity
     for (const [sid, n] of counts) {
       let b = batches.current.get(sid);
@@ -181,15 +192,15 @@ export function PokemonLayer() {
 
     let haloN = 0;
     for (const e of eco.alive) {
-      const b = batches.current.get(e.species.id);
-      if (!b) continue;
+      const b = batches.current.get(keyOf(e)) ?? batches.current.get(e.species.id);
+      if (!b || b.mesh.count >= b.capacity) continue;
       const i = b.mesh.count++;
       // facing: flip based on velocity projected on camera right; hysteresis to avoid flicker
       const dot = e.vx * camRight.x + e.vz * camRight.z;
       let f = facingMemo.get(e.id) ?? 1;
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
-      let alpha = 1, scale = e.species.size * e.scaleMul, y = e.y;
+      let alpha = 1, scale = e.species.size * e.scaleMul * (e.role === 'partner' ? 0.62 : 1), y = e.y;
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
@@ -201,9 +212,12 @@ export function PokemonLayer() {
       b.aFlip.array[i] = f;
       b.aAlpha.array[i] = alpha;
       b.aFlash.array[i] = e.flashT > 0 ? Math.min(1, e.flashT * 2.5) * 0.8 : 0;
-      const glow = e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9)) : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
+      const glow = e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
+        : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
+        : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0;
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
+      b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
       if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);
@@ -217,7 +231,7 @@ export function PokemonLayer() {
     for (const b of batches.current.values()) {
       if (b.mesh.count === 0) continue;
       b.mesh.instanceMatrix.needsUpdate = true;
-      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = true;
+      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = b.aStatus.needsUpdate = true;
       b.mat.uniforms.uTime.value = time;
       b.mat.uniforms.uFogColor.value.copy(light.sky);
       b.mat.uniforms.uFogDensity.value = light.fogDensity;

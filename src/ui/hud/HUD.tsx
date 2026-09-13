@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
+import { GAME } from '@/data/gameConfig';
 import { SPECIES } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { objectiveDone } from '@/engine/sim/mission';
@@ -13,19 +14,20 @@ import { CollectionView } from '../screens/CollectionScreen';
 import { SettingsView } from '../screens/SettingsScreen';
 import type { MissionObjective } from '@/engine/ecosystem/generator';
 
-const objectiveIcon: Record<MissionObjective['kind'], string> = { school: '🐟', passive: '🌊', curious: '🔎', bottom: '🪨', defensive: '🫧' };
+const objectiveIcon: Record<MissionObjective['kind'], string> = { school: '🐟', passive: '🌊', curious: '🔎', bottom: '🪨', defensive: '🫧', stageCatch: '⭐', boss: '⚔️' };
 
 function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk: boolean; index: number; siblings: number }) {
   const done = objectiveDone(o);
   const label = siblings > 1 ? `${o.label} ${String.fromCharCode(65 + index)}` : o.label;
+  const chips = o.kind === 'stageCatch' ? o.candidateSpecies.slice(0, 4) : o.speciesId ? [] : o.candidateSpecies;
   return (
-    <div className={`objective ${done ? 'done' : ''} ${risk && !done ? 'risk' : ''}`}>
+    <div className={`objective ${done ? 'done' : ''} ${risk && !done ? 'risk' : ''} ${o.kind === 'boss' ? 'boss' : ''}`}>
       <div className="check">{done ? '✓' : ''}</div>
       <div>
         <div className="label">
           <span>{objectiveIcon[o.kind]} {label}</span>
           {o.speciesId ? <span className="species"><SpriteImg id={o.speciesId} size={26} />{SPECIES[o.speciesId].name}</span>
-            : o.candidateSpecies.map((c) => <span key={c} className="species"><SpriteImg id={c} size={26} />{SPECIES[c].name}</span>)}
+            : <>{chips.map((c) => <span key={c} className="species"><SpriteImg id={c} size={26} />{SPECIES[c].name}</span>)}{o.kind === 'stageCatch' && o.candidateSpecies.length > 4 ? <span className="dim small">+{o.candidateSpecies.length - 4} more</span> : null}</>}
         </div>
         {o.guardianRequired && o.guardianSpeciesId && (
           <div className={`guardian ${o.guardianCaught ? 'done' : ''}`}>{o.guardianCaught ? '✓' : '□'} Guardian · <SpriteImg id={o.guardianSpeciesId} size={18} /> {SPECIES[o.guardianSpeciesId].name}</div>
@@ -39,17 +41,31 @@ function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk:
 export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle: () => void }) {
   const mission = useStore((s) => s.mission);
   const atRisk = useStore((s) => s.hud.atRisk);
+  const collapsed = useStore((s) => s.save.settings.missionCollapsed);
+  const setSettings = useStore((s) => s.setSettings);
   if (!mission) return null;
   const pct = mission.total ? (mission.caught / mission.total) * 100 : 0;
+  if (collapsed) {
+    return (
+      <button className="mission-mini glass interactive" title="Show mission (M)" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: false }); }}>
+        <span>🎯</span>
+        <b className="mono">{mission.caught}<small> / {mission.total}</small></b>
+        <i className="mini-bar"><em style={{ width: `${pct}%` }} /></i>
+      </button>
+    );
+  }
   const schools = mission.objectives.filter((o) => o.kind === 'school').length;
   const passives = mission.objectives.filter((o) => o.kind === 'passive').length;
   let si = 0, pi = 0;
   return (
     <Panel className={`mission-panel interactive ${compact ? 'compact' : ''}`}>
-      <button className="head" style={{ width: '100%', textAlign: 'left' }} onClick={onToggle} aria-expanded={!compact}>
-        <span className="lvl">{compact ? `LEVEL ${session.level.id}` : session.level.title}</span>
-        <span className="tot">{mission.caught} <small>/ {mission.total}</small></span>
-      </button>
+      <div className="head">
+        <button className="grow" style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }} onClick={onToggle} aria-expanded={!compact}>
+          <span className="lvl">{compact ? `LEVEL ${session.level.id}` : session.level.title}</span>
+          <span className="tot">{mission.caught} <small>/ {mission.total}</small></span>
+        </button>
+        <button className="collapse-btn" title="Hide mission panel (M)" aria-label="Hide mission panel" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: true }); }}>▾</button>
+      </div>
       <div className="progress"><i style={{ width: `${pct}%` }} /></div>
       <div className="mission-list" style={{ marginTop: 10 }}>
         {mission.objectives.map((o) => {
@@ -87,13 +103,118 @@ function LureButton() {
   const isTouch = useStore((s) => s.isTouch);
   const active = rem > 0;
   const ready = cd <= 0 && !active;
-  const p = active ? (rem / 15) * 100 : cd > 0 ? (1 - cd / 40) * 100 : 0;
+  const total = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
+  const p = active ? (rem / GAME.LURE_DURATION) * 100 : cd > 0 ? (1 - cd / total) * 100 : 0;
+  const mmss = (t: number) => { const s0 = Math.ceil(t); return s0 >= 60 ? `${Math.floor(s0 / 60)}:${(s0 % 60).toString().padStart(2, '0')}` : `${s0}s`; };
   return (
-    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure" style={{ ['--p' as any]: `${p}%` }}>
+    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure (available every 5 minutes)" title="Lure — once every 5 minutes" style={{ ['--p' as any]: `${p}%` }}>
       <span className="ring" />
-      <span className="ic">{active ? '✨' : '🪄'}</span>
-      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? `${Math.ceil(cd)}s` : isTouch ? 'Lure' : 'Lure · E'}</span>
+      <span className="ic">{active ? '✨' : ready ? '🪄' : '⏳'}</span>
+      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? mmss(cd) : isTouch ? 'Lure' : 'Lure · E'}</span>
     </button>
+  );
+}
+
+const MOVE_KEYS: [string, string][] = [['5', '6'], ['7', '8']];
+
+function PartyBar() {
+  const party = useStore((s) => s.hud.party);
+  const isTouch = useStore((s) => s.isTouch);
+  if (!session.companionsEnabled || party.list.length === 0) return null;
+  const reserves = party.list.filter((id) => !party.active.some((a) => a?.speciesId === id));
+  return (
+    <div className="party-bar interactive">
+      {party.active.map((a, slot) => a ? (
+        <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
+          <div className="row" style={{ gap: 8 }}>
+            <SpriteImg id={a.speciesId} size={40} />
+            <div className="grow">
+              <div className="pn">{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag">⚔</span>}</div>
+              <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
+            </div>
+          </div>
+          <div className="moves">
+            {a.moves.map((mv, mi) => {
+              const cd = a.cd[mi];
+              return (
+                <button key={mi} className={`move-btn ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0} onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                  <span className="mn">{mv}</span>
+                  {cd > 0 ? <span className="cd">{cd.toFixed(1)}</span> : !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div key={slot} className="party-card glass empty">
+          <div className="muted small">Slot {slot + 1} empty{reserves.length > 0 && !isTouch ? <span className="dim"> · press <span className="kbd">{MOVE_KEYS[slot][0]}</span></span> : ''}</div>
+          {reserves.length > 0 && <button className="btn ghost" style={{ minHeight: 30, padding: '0 10px', fontSize: 12 }} onClick={() => session.sendNextReserve(slot as 0 | 1)}>Send out</button>}
+        </div>
+      ))}
+      {reserves.length > 0 && (
+        <div className="reserves">
+          {reserves.map((id) => {
+            const down = party.downed.includes(id);
+            return (
+              <button key={id} className={`reserve-chip ${down ? 'down' : ''}`} disabled={down} title={down ? `${SPECIES[id].name} is exhausted` : `Send out ${SPECIES[id].name}`}
+                onClick={() => {
+                  const slot = party.active[0] === null ? 0 : party.active[1] === null ? 1 : 0;
+                  session.swapPartner(slot as 0 | 1, id);
+                }}>
+                <SpriteImg id={id} size={28} unseen={down} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SwapPrompt() {
+  const prompt = useStore((s) => s.hud.swapPrompt);
+  const isTouch = useStore((s) => s.isTouch);
+  if (!prompt) return null;
+  const key = prompt.slot === 0 ? '9' : '0';
+  return (
+    <button className="swap-prompt glass strong interactive" onClick={() => session.swapSlotWithBest(prompt.slot)}>
+      <SpriteImg id={prompt.from} size={34} />
+      <div className="txt">
+        <b>{SPECIES[prompt.from].name} is weak!</b>
+        <span>{isTouch ? 'Tap here' : <>Press <span className="kbd">{key}</span></>} to swap in {SPECIES[prompt.to].name}</span>
+      </div>
+      <SpriteImg id={prompt.to} size={34} />
+    </button>
+  );
+}
+
+function PlayerVitals() {
+  const hp = useStore((s) => s.hud.playerHp);
+  const hitSeq = useStore((s) => s.hud.playerHitSeq);
+  const frac = Math.max(0, Math.min(1, hp / 100));
+  return (
+    <>
+      <div className="player-hp glass" title="Your health">
+        <span className="ic">{frac > 0.6 ? '🤿' : frac > 0.3 ? '😨' : '🆘'}</span>
+        <div className="bar"><i style={{ width: `${frac * 100}%`, background: frac > 0.6 ? 'linear-gradient(90deg,#35d0ff,#7ff0c9)' : frac > 0.3 ? 'linear-gradient(90deg,#ffd166,#ff9f43)' : 'linear-gradient(90deg,#ff7a7a,#f43f5e)' }} /></div>
+        <b className="mono">{Math.round(hp)}</b>
+      </div>
+      {hitSeq > 0 && <div key={hitSeq} className="hit-vignette" />}
+    </>
+  );
+}
+
+function RecoveryOverlay() {
+  const recovering = useStore((s) => s.hud.recovering);
+  if (recovering <= 0) return null;
+  return (
+    <div className="recovery-overlay">
+      <div className="inner">
+        <div className="eyebrow">You're exhausted…</div>
+        <div className="count">{Math.ceil(recovering)}</div>
+        <div className="muted small">Recovering — the current is carrying you to safety</div>
+      </div>
+    </div>
   );
 }
 
@@ -159,6 +280,37 @@ function TargetPointer() {
   );
 }
 
+function BossIntro() {
+  const intro = useStore((s) => s.hud.bossIntro);
+  if (!intro) return null;
+  return (
+    <div className="overlay boss-intro" style={{ zIndex: 45 }}>
+      <Panel className="panel strong center" style={{ padding: 30, borderColor: 'rgba(244,63,94,.45)' }}>
+        <div className="boss-intro-sprites">
+          {intro.bosses.map((b) => <SpriteImg key={b} id={b} size={intro.bosses.length > 1 ? 96 : 128} />)}
+        </div>
+        <div className="eyebrow" style={{ color: 'var(--red)', marginTop: 10 }}>Boss Encounter</div>
+        <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => SPECIES[b].name).join(' & ')}</h2>
+        <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
+        <p className="muted small" style={{ margin: '12px 0 18px' }}>They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.</p>
+        <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}>⚔️ I'm ready — battle!</button>
+      </Panel>
+    </div>
+  );
+}
+
+function BossBar() {
+  const boss = useStore((s) => s.hud.bossBar);
+  if (!boss) return null;
+  const frac = Math.max(0, boss.hp / boss.maxHp);
+  return (
+    <div className="boss-bar glass strong">
+      <div className="row between"><span className="bn">⚔️ {boss.name}</span><span className="mono small muted">{boss.hp} / {boss.maxHp}</span></div>
+      <div className="bhp"><i style={{ width: `${frac * 100}%` }} /></div>
+    </div>
+  );
+}
+
 function StatusChips() {
   const hud = useStore((s) => s.hud);
   const isTouch = useStore((s) => s.isTouch);
@@ -200,7 +352,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<b>🔴 Red button</b>}>throw the selected ball</Row>
       <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
       <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
-      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon to you</Row>
+      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
       <Row keys={<b>»</b>}>toggle fast swim</Row>
       <Row keys={<b>⏸</b>}>pause · mission in the top-left pill</Row>
     </div>
@@ -211,9 +363,13 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<K k="Shift" />}><b>swim faster</b></Row>
       <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
       <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
-      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon</Row>
-      <Row keys={<><K k="Tab" /> · <K k="C" /></>}>mission · collection</Row>
+      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
+      <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
+      <Row keys={<K k="C" />}>collection</Row>
       <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
+      {session.companionsEnabled && <Row keys={<b>Right click</b>}><b>quick attack</b> — best ready companion move at your crosshair</Row>}
+      {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
+      {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
     </div>
   );
 }
@@ -263,12 +419,16 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
         </div>
         <StatusChips />
+        <BossBar />
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
           {tray}
           <LureButton />
         </div>
+        <PlayerVitals />
+        <PartyBar />
+        <SwapPrompt />
         <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}
@@ -281,6 +441,8 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           </div>
         </div>
       )}
+      <BossIntro />
+      <RecoveryOverlay />
       {overlay === 'pause' && <PauseOverlay onQuit={onQuit} />}
       {overlay === 'collection' && <div className="overlay"><CollectionView embedded onClose={() => { setOverlay('pause'); }} /></div>}
       {overlay === 'settings' && <div className="overlay"><div style={{ width: 'min(100%, 600px)' }}><SettingsView embedded onClose={() => setOverlay('pause')} /></div></div>}

@@ -34,10 +34,20 @@ export function CameraRig() {
       const s = store();
       if (e.code === 'Tab') { e.preventDefault(); if (session.phase === 'playing' || session.phase === 'paused') s.setOverlay(s.overlay === 'mission' ? 'none' : 'mission'); }
       if (e.code === 'KeyE') session.activateLure();
+      if (e.code === 'KeyM' && (session.phase === 'playing' || session.phase === 'paused')) { const st = store(); st.setSettings({ missionCollapsed: !st.save.settings.missionCollapsed }); }
       if (e.code === 'KeyC' && session.playing) { s.setOverlay('collection'); session.pause(); document.exitPointerLock?.(); }
       if (e.code === 'KeyP') { if (session.playing) { session.pause(); s.setOverlay('pause'); document.exitPointerLock?.(); } }
       if (e.code.startsWith('Digit')) { const n = Number(e.code.slice(5)); if (n >= 1 && n <= 4) session.selectBall(BALL_ORDER[n - 1]); }
-      if (e.code === 'KeyQ') session.cycleBall(1);
+      if (session.companionsEnabled) {
+        // Number row continues past the balls: 5/6 = companion one, 7/8 = companion two
+        if (e.code === 'Digit5') session.castPartnerMove(0, 0);
+        if (e.code === 'Digit6') session.castPartnerMove(0, 1);
+        if (e.code === 'Digit7') session.castPartnerMove(1, 0);
+        if (e.code === 'Digit8') session.castPartnerMove(1, 1);
+        if (e.code === 'Digit9') session.swapSlotWithBest(0);
+        if (e.code === 'Digit0') session.swapSlotWithBest(1);
+      }
+      if (e.code === 'KeyQ' && !session.companionsEnabled) session.cycleBall(1);
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => { keys.current.delete(e.code); shift.current = e.shiftKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight'; };
@@ -55,7 +65,7 @@ export function CameraRig() {
         return;
       }
       if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
-      if (e.button === 2) session.cycleBall(1);
+      if (e.button === 2) { if (session.companionsEnabled) session.commandAttack(); else session.cycleBall(1); }
     };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {
@@ -87,7 +97,13 @@ export function CameraRig() {
     const p = session.player;
     const sway = p.sway();
     const reduced = useStore.getState().save.settings.reducedMotion;
-    camera.position.set(p.x, p.y + (reduced ? 0 : sway.dy), p.z);
+    const shake = session.shakeT > 0 && !reduced ? Math.min(1, session.shakeT / 1.5) * 0.22 : 0;
+    const st = state.clock.elapsedTime;
+    camera.position.set(
+      p.x + (shake ? Math.sin(st * 37) * shake : 0),
+      p.y + (reduced ? 0 : sway.dy) + (shake ? Math.cos(st * 41) * shake : 0),
+      p.z + (shake ? Math.sin(st * 29 + 1.7) * shake : 0),
+    );
     euler.current.set(p.pitch, p.yaw, reduced ? 0 : sway.roll);
     camera.quaternion.setFromEuler(euler.current);
     const cam = camera as THREE.PerspectiveCamera;

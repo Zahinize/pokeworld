@@ -18,7 +18,7 @@ export function migrateSave(raw: unknown): SaveData {
     updatedAt: Date.now(),
     trainer: r.trainer && typeof r.trainer.id === 'string' ? { id: r.trainer.id } : null,
     progression: {
-      unlockedLevel: clampInt(r.progression?.unlockedLevel, 1, 5, 1),
+      unlockedLevel: clampInt(r.progression?.unlockedLevel, 1, 4, 1),
       completedLevels: Array.isArray(r.progression?.completedLevels) ? r.progression!.completedLevels.filter((n: unknown) => Number.isInteger(n)) : [],
       bestTimes: isObj(r.progression?.bestTimes) ? r.progression!.bestTimes : {},
     },
@@ -31,6 +31,7 @@ export function migrateSave(raw: unknown): SaveData {
     restoration: { endsAt: typeof r.restoration?.endsAt === 'number' ? r.restoration.endsAt : null },
     collection: isObj(r.collection) ? sanitizeCollection(r.collection) : {},
     currentRun: sanitizeRun(r.currentRun),
+    party: Array.isArray(r.party) ? r.party.filter((x: unknown) => typeof x === 'string').slice(0, 6) : [],
     settings: { ...DEFAULT_SETTINGS, ...(isObj(r.settings) ? r.settings : {}) },
     stats: {
       totalCaught: clampInt(r.stats?.totalCaught, 0, 1e9, 0),

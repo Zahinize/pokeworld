@@ -33,7 +33,7 @@ export interface GroupSpec {
   followsSpawn?: number;
 }
 
-export type ObjectiveKind = 'school' | 'passive' | 'curious' | 'bottom' | 'defensive';
+export type ObjectiveKind = 'school' | 'passive' | 'curious' | 'bottom' | 'defensive' | 'stageCatch' | 'boss';
 
 export interface MissionObjective {
   id: string;
@@ -46,8 +46,10 @@ export interface MissionObjective {
   caught: number;
   guardianRequired: boolean;
   guardianCaught: boolean;
-  /** Species that can satisfy pool objectives (curious/bottom/defensive). */
+  /** Species that can satisfy pool objectives (curious/bottom/defensive/stageCatch). */
   candidateSpecies: string[];
+  /** stageCatch: minimum stage that counts. */
+  minStage?: number;
 }
 
 export interface GeneratedEcosystem {
@@ -64,6 +66,9 @@ export interface GeneratedEcosystem {
 }
 
 const RARITY_W: Record<Rarity, number> = { common: 1, uncommon: 0.6, rare: 0.25, legendary: 0 };
+
+/** Species eligible for normal (non-boss) spawning. */
+const SPAWNABLE = SPECIES_LIST.filter((s) => !s.bossOnly);
 
 function hasGuardian(s: SpeciesConfig) { return !!s.guardedBy && s.guardedBy.length > 0; }
 
@@ -162,7 +167,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   };
 
   // ---- Mission schooling groups (with guardians) ----
-  const schoolPool = SPECIES_LIST.filter((s) => s.primary === 'schooling' && hasGuardian(s));
+  const schoolPool = SPAWNABLE.filter((s) => s.primary === 'schooling' && hasGuardian(s));
   const schoolSpecies = pickDistinct(rng, schoolPool, level.spawn.schools, used, (s) => RARITY_W[s.rarity]);
   schoolSpecies.forEach((member, i) => {
     const guardians = member.guardedBy!.map((g) => getSpecies(g));
@@ -177,7 +182,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   });
 
   // ---- Mission passive groups (with guardians) ----
-  const passivePool = SPECIES_LIST.filter((s) => s.primary === 'passive' && hasGuardian(s));
+  const passivePool = SPAWNABLE.filter((s) => s.primary === 'passive' && hasGuardian(s));
   const passiveSpecies = pickDistinct(rng, passivePool, level.spawn.passiveGroups, used, (s) => RARITY_W[s.rarity]);
   passiveSpecies.forEach((member, i) => {
     const guardian = getSpecies(member.guardedBy![0]);
@@ -198,7 +203,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   };
 
   // ---- Curious explorers ----
-  const curiousPool = SPECIES_LIST.filter((s) => s.primary === 'curious' && !used.has(s.id));
+  const curiousPool = SPAWNABLE.filter((s) => s.primary === 'curious' && !used.has(s.id));
   const curious = pickDistinct(rng, curiousPool, level.spawn.curious, used, (s) => RARITY_W[s.rarity]);
   if (level.mission.curious > 0) objectives.push({ id: 'curious', kind: 'curious', label: 'Curious Explorer', required: level.mission.curious, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: curious.map((c) => c.id) });
   curious.forEach((s) => {
@@ -221,7 +226,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   });
 
   // ---- Predators ----
-  const predPool = SPECIES_LIST.filter((s) => s.primary === 'predator');
+  const predPool = SPAWNABLE.filter((s) => s.primary === 'predator');
   const preds: SpeciesConfig[] = [];
   let gyaradosCount = 0;
   for (let i = 0; i < level.spawn.predators; i++) {
@@ -247,25 +252,25 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   });
 
   // ---- Bottom dwellers ----
-  const bottomPool = SPECIES_LIST.filter((s) => s.primary === 'bottom' && !used.has(s.id));
+  const bottomPool = SPAWNABLE.filter((s) => s.primary === 'bottom' && !used.has(s.id));
   const bottoms = pickDistinct(rng, bottomPool, level.spawn.bottom, used, (s) => RARITY_W[s.rarity]);
   if (level.mission.bottom > 0) objectives.push({ id: 'bottom', kind: 'bottom', label: 'Bottom Dweller', required: level.mission.bottom, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: bottoms.map((b) => b.id) });
   bottoms.forEach((s) => { used.add(s.id); addSolo(s, 'solo', level.mission.bottom > 0 ? 'bottom' : undefined, level.mission.bottom === 0); summary.bottom.push(s.name); });
 
   // ---- Defensive fish ----
-  const defPool = SPECIES_LIST.filter((s) => s.primary === 'defensive' && !used.has(s.id));
+  const defPool = SPAWNABLE.filter((s) => s.primary === 'defensive' && !used.has(s.id));
   const defs = pickDistinct(rng, defPool, level.spawn.defensive, used, (s) => RARITY_W[s.rarity]);
   if (level.mission.defensive > 0) objectives.push({ id: 'defensive', kind: 'defensive', label: 'Defensive Fish', required: level.mission.defensive, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: Array.from(new Set(defs.map((d) => d.id))) });
   defs.forEach((s) => { used.add(s.id); addSolo(s, 'solo', level.mission.defensive > 0 ? 'defensive' : undefined, level.mission.defensive === 0); summary.defensive.push(s.name); });
 
   // ---- Ambient life ----
-  const ambSchoolPool = SPECIES_LIST.filter((s) => s.primary === 'schooling' && !hasGuardian(s) && !used.has(s.id));
+  const ambSchoolPool = SPAWNABLE.filter((s) => s.primary === 'schooling' && !hasGuardian(s) && !used.has(s.id));
   for (let i = 0; i < level.spawn.ambient.schools && ambSchoolPool.length; i++) {
     const s = rng.weighted(ambSchoolPool, (x) => RARITY_W[x.rarity]);
     addGroup('ambientSchool', s, undefined, rng.int(s.groupSize[0], s.groupSize[1]), undefined, true, false);
     summary.ambient.push(`${s.name} school`);
   }
-  const driftPool = SPECIES_LIST.filter((s) => s.primary === 'passive' && !hasGuardian(s) && !s.guards && !used.has(s.id));
+  const driftPool = SPAWNABLE.filter((s) => s.primary === 'passive' && !hasGuardian(s) && !s.guards && !used.has(s.id));
   for (let i = 0; i < level.spawn.ambient.drifters && driftPool.length; i++) {
     const s = rng.weighted(driftPool, (x) => RARITY_W[x.rarity]);
     const n = rng.int(s.groupSize[0], s.groupSize[1]);
@@ -273,7 +278,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     else addSolo(s, 'solo', undefined, true);
     summary.ambient.push(n > 1 ? `${s.name} ×${n}` : s.name);
   }
-  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3], ['wailord', 1]];
+  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3]]; // Wailord is boss-only now
   for (let i = 0; i < level.spawn.ambient.giants; i++) {
     const id = rng.weighted(giantPool, (g) => (used.has(g[0]) ? g[1] * 0.2 : g[1]))[0];
     const s = getSpecies(id);
@@ -281,8 +286,10 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     addSolo(s, 'solo', undefined, true);
     summary.ambient.push(s.name);
   }
-  const hasLegendary = rng.chance(level.spawn.ambient.legendaryChance);
-  if (hasLegendary) { addSolo(getSpecies('kyogre'), 'solo', undefined, true, 'deepWater'); summary.ambient.push('??? (something massive in the deep)'); }
+  // Legendary/boss species (Kyogre, Wailord, Dondozo, Tatsugiri) never spawn as ordinary Pokémon —
+  // meeting them is reserved for boss fights. Scarcity keeps them special.
+  const hasLegendary = false;
+  void level.spawn.ambient.legendaryChance;
 
   // ---- Obstacles (rocks, coral heads, cave) ----
   const obstacles: Obstacle[] = [];
@@ -316,6 +323,20 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
       const x = cx + Math.cos(a) * ring, z = cz + Math.sin(a) * ring;
       obstacles.push({ x, y: floorY(x, z) + 3, z, r: 4.6, kind: 'cave' });
       obstacles.push({ x: x * 0.5 + cx * 0.5, y: floorY(x, z) + 9.5, z: z * 0.5 + cz * 0.5, r: 4.2, kind: 'cave' });
+    }
+  }
+
+  // ---- Stage-based catch phase + boss waves (levels 3–4) ----
+  if (level.mission.stageCatch) {
+    const sc = level.mission.stageCatch;
+    const required = rng.int(sc.min, sc.max);
+    const eligible = Array.from(new Set(spawns.map((sp) => sp.speciesId))).filter((id) => SPECIES[id].stage >= sc.minStage && !SPECIES[id].bossOnly);
+    // Guarantee a healthy pool: the reinforcement system tops these up if predators thin them out
+    objectives.push({ id: 'stageCatch', kind: 'stageCatch', label: `Catch Stage ${sc.minStage}+ Pokémon`, required, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: eligible.length ? eligible : SPECIES_LIST.filter((x) => x.stage >= sc.minStage && !x.bossOnly).map((x) => x.id), minStage: sc.minStage });
+  }
+  for (const phase of level.bossPhases ?? []) {
+    for (const b of phase.bosses) {
+      objectives.push({ id: `boss-${b}`, kind: 'boss', label: `Defeat ${getSpecies(b).name}`, speciesId: b, required: 1, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: [b] });
     }
   }
 

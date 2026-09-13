@@ -30,6 +30,7 @@ export interface Ball {
 
 export type BallEvent =
   | { type: 'hit'; ball: Ball; entity: Entity }
+  | { type: 'bossDeflect'; ball: Ball; entity: Entity }
   | { type: 'shake'; ball: Ball; index: number }
   | { type: 'caught'; ball: Ball; entity: Entity; p: number }
   | { type: 'escaped'; ball: Ball; entity: Entity; p: number }
@@ -66,6 +67,7 @@ export class BallSystem {
           let hit: Entity | null = null, hitD = Infinity;
           eco.hash.query(b.x, b.y, b.z, 6, (e, d2) => {
             if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
+            if (e.role === 'partner') return; // your own companions don't block throws
             const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
             if (d2 < r * r && d2 < hitD) { hitD = d2; hit = e; }
           });
@@ -115,6 +117,12 @@ export class BallSystem {
   }
 
   private onHit(b: Ball, e: Entity, eco: Ecosystem) {
+    if (e.isBoss) {
+      // Bosses cannot be caught — the ball glances off; only companion moves can bring them down
+      this.events.push({ type: 'bossDeflect', ball: b, entity: e });
+      b.vx *= -0.35; b.vy = Math.abs(b.vy) * 0.3 + 1.2; b.vz *= -0.35;
+      return;
+    }
     this.events.push({ type: 'hit', ball: b, entity: e });
     if (GAME.BALL_IMPACT_DAMAGE > 0) eco.damage(e, GAME.BALL_IMPACT_DAMAGE, 'ball', -2);
     else e.hpBarT = GAME.HEALTH_BAR_TTL;

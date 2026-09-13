@@ -39,9 +39,9 @@ export function lightingAt(t: number, out?: LightingState): LightingState {
   o.sky.copy(DAY_SKY).lerp(EVE_SKY, evening * 0.7).lerp(NIGHT_SKY, night * (1 - evening * 0.5));
   o.deep.copy(DAY_DEEP).lerp(EVE_DEEP, evening * 0.8).lerp(NIGHT_DEEP, night);
   o.sun.copy(DAY_SUN).lerp(EVE_SUN, evening).lerp(NIGHT_SUN, night * (1 - evening));
-  o.sunIntensity = 1.6 * day + 0.9 * evening * (1 - day) + 0.28 * night;
-  o.ambient = 0.75 * day + 0.45 * evening + 0.16 * night;
-  o.fogDensity = 0.0165 + night * 0.008 + evening * 0.002;
+  o.sunIntensity = 1.6 * day + 0.9 * evening * (1 - day) + 0.42 * night;
+  o.ambient = 0.75 * day + 0.45 * evening + 0.26 * night;
+  o.fogDensity = 0.0165 + night * 0.006 + evening * 0.002;
   o.causticStrength = day * 1 + evening * 0.45 + night * 0.12;
   o.shaftStrength = day * 1 + evening * 0.7 + night * 0.15;
   o.label = night > 0.7 ? 'Night' : evening > 0.5 ? (t < 0.5 ? 'Dawn' : 'Evening') : 'Day';

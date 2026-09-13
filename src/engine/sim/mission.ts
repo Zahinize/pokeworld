@@ -22,24 +22,46 @@ export interface CatchOutcome {
   mission: MissionState;
 }
 
+function bump(m: MissionState, idx: number, next: MissionObjective, asGuardian = false): CatchOutcome {
+  const objectives = m.objectives.slice();
+  objectives[idx] = next;
+  const caught = m.caught + 1;
+  return { counted: true, objectiveId: next.id, asGuardian, mission: { ...m, objectives, caught, complete: caught >= m.total } };
+}
+
 /** Apply a capture. Returns a new mission state (immutable) and whether it counted. */
 export function applyCatch(m: MissionState, e: Entity): CatchOutcome {
+  // Boss capture counts as defeating it
+  if (e.isBoss) {
+    const bi = m.objectives.findIndex((o) => o.kind === 'boss' && o.speciesId === e.species.id && o.caught < o.required);
+    if (bi >= 0) return bump(m, bi, { ...m.objectives[bi], caught: 1 });
+    return { counted: false, mission: m };
+  }
+  // Stage-based catch phase: any wild of sufficient stage counts
+  const si = m.objectives.findIndex((o) => o.kind === 'stageCatch' && o.caught < o.required && e.species.stage >= (o.minStage ?? 1));
+  if (si >= 0 && !e.objectiveId) return bump(m, si, { ...m.objectives[si], caught: m.objectives[si].caught + 1 });
   if (!e.objectiveId) return { counted: false, mission: m };
   const idx = m.objectives.findIndex((o) => o.id === e.objectiveId);
   if (idx < 0) return { counted: false, mission: m };
   const o = m.objectives[idx];
-  let counted = false, asGuardian = false;
-  const next = { ...o };
   if (e.role === 'guardian') {
-    if (o.guardianRequired && !o.guardianCaught) { next.guardianCaught = true; counted = true; asGuardian = true; }
-  } else if (o.caught < o.required) {
-    next.caught = o.caught + 1; counted = true;
+    if (o.guardianRequired && !o.guardianCaught) return bump(m, idx, { ...o, guardianCaught: true }, true);
+    return { counted: false, mission: m };
   }
-  if (!counted) return { counted: false, mission: m };
-  const objectives = m.objectives.slice();
-  objectives[idx] = next;
-  const caught = m.caught + 1;
-  return { counted, objectiveId: o.id, asGuardian, mission: { ...m, objectives, caught, complete: caught >= m.total } };
+  if (o.caught < o.required) return bump(m, idx, { ...o, caught: o.caught + 1 });
+  return { counted: false, mission: m };
+}
+
+/** A boss was KO'd in battle — counts toward its Defeat objective. */
+export function applyBossDefeat(m: MissionState, speciesId: string): CatchOutcome {
+  const bi = m.objectives.findIndex((o) => o.kind === 'boss' && o.speciesId === speciesId && o.caught < o.required);
+  if (bi < 0) return { counted: false, mission: m };
+  return bump(m, bi, { ...m.objectives[bi], caught: 1 });
+}
+
+/** All non-boss objectives complete → the boss phase may begin. */
+export function catchPhaseDone(m: MissionState): boolean {
+  return m.objectives.filter((o) => o.kind !== 'boss').every(objectiveDone);
 }
 
 export function objectiveDone(o: MissionObjective): boolean {

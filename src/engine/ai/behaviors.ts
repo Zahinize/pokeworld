@@ -9,8 +9,9 @@ import type { Obstacle } from '../world/terrain';
 import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
 import type { SpatialHash } from '../spatialHash';
-import { predatorDamageFraction } from '@/data/damageRules';
 import { GAME } from '@/data/gameConfig';
+
+import type { MoveTarget } from '../sim/moveSystem';
 
 export interface SimContext {
   time: number;
@@ -27,6 +28,11 @@ export interface SimContext {
   predatorGraceOver: boolean;
   current: Vec3;
   damage(target: Entity, fraction: number, by: 'predator' | 'ball', sourceId: number): void;
+  /** Cast a move (slot 0/1) at a target. Returns false when not ready/in range. */
+  cast(e: Entity, slot: 0 | 1, target: MoveTarget): boolean;
+  /** Best ready move slot for a target at `dist`, or -1. */
+  pickMove(e: Entity, dist: number, preferUtility?: boolean, damageOnly?: boolean): -1 | 0 | 1;
+  moveReady(e: Entity, slot: 0 | 1): boolean;
 }
 
 const PLAYER_ID = -2;
@@ -303,6 +309,14 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
       // Never quite touch the predator
       if (d < 5) fleeFrom(e, tp.x, tp.y, tp.z, 0.8);
       speed = s.burst * 0.8;
+      // Guardians fight for their school: disrupt the hunt with utilities, hit back when targeted
+      if (e.stateT > 0.4 && threat >= 0) {
+        const pred = ctx.byId.get(threat);
+        const dSelf = len3(tp.x - e.x, tp.y - e.y, tp.z - e.z);
+        const preferUtility = !!pred && pred.targetId !== e.id && (pred.slowT <= 0 && pred.stunT <= 0);
+        const slot = ctx.pickMove(e, dSelf, preferUtility);
+        if (slot !== -1) ctx.cast(e, slot, { kind: 'entity', id: threat });
+      }
       break;
     }
     case 'watch': {
@@ -352,6 +366,7 @@ const CIRCLERS = new Set(['sharpedo', 'gyarados', 'veluza']);
 
 function preyWeight(p: Entity, prey: Entity): number {
   if (prey.behavior === 'predator' || prey.behavior === 'giant' || prey.behavior === 'bottom') return 0;
+  if (prey.role === 'partner') return prey.hp < prey.maxHp * 0.6 ? 0.25 : 0.12; // companions travel with a scary trainer
   if (prey.state === 'captureAttempt' || prey.state === 'ko' || prey.state === 'caught' || prey.state === 'removed') return 0;
   if (prey.species.size > p.species.size * 0.9) return 0;
   let w = p.species.prey?.includes(prey.species.id) ? 1.0 : prey.species.stage === 0 ? 0.25 : prey.species.stage === 1 ? 0.07 : 0.02;
@@ -461,10 +476,13 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       // lead the target slightly
       seek(e, target!.x + target!.vx * 0.35, target!.y + target!.vy * 0.35, target!.z + target!.vz * 0.35, 2.5);
       speed = s.burst;
-      // Far from the player the AI ticks slowly, so widen the strike window to what a rush covers between thinks
-      const hitR = (s.size * 0.45 + target!.species.size * 0.45 + 0.4) * (e.lod === 2 ? 2.6 : e.lod === 1 ? 1.5 : 1);
-      if (tdist < hitR) {
-        ctx.damage(target!, predatorDamageFraction(s.stage, target!.species.stage), 'predator', e.id);
+      // Far from the player the AI ticks slowly, so treat the target as closer to keep strike cadence
+      const effDist = tdist * (e.lod === 2 ? 0.45 : e.lod === 1 ? 0.7 : 1);
+      // open with a utility (Screech, Scary Face…) sometimes, then hit with a damage move
+      const wantUtility = target!.slowT <= 0 && target!.defStage >= 1 && ctx.rng() < 0.35;
+      const slot = ctx.pickMove(e, effDist, wantUtility);
+      if (slot !== -1) {
+        ctx.cast(e, slot, { kind: 'entity', id: target!.id });
         const cool = s.id === 'gyarados' ? 8 + ctx.rng() * 5 : 4 + ctx.rng() * 4;
         // Pack up: nearby idle predators join in on the wounded target
         if (target!.state !== 'ko' && target!.hp > 0) {
@@ -582,8 +600,9 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
       seek(e, t.x, t.y, t.z, 2.5);
       speed = s.burst;
       const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
-      if (d < s.size * 0.45 + t.species.size * 0.45 + 0.4) {
-        ctx.damage(t, predatorDamageFraction(s.stage, t.species.stage), 'predator', e.id);
+      const slot = ctx.pickMove(e, d, false);
+      if (slot !== -1) {
+        ctx.cast(e, slot, { kind: 'entity', id: t.id });
         ctx.events.push({ type: 'huntEnd', predatorId: e.id });
         e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 45 + ctx.rng() * 30;
       }

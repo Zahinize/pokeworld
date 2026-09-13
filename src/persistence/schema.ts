@@ -31,6 +31,8 @@ export interface Settings {
   quality: 'auto' | 'high' | 'medium' | 'low';
   showHints: boolean;
   reducedMotion: boolean;
+  /** Collapse the in-game mission panel to a mini pill. */
+  missionCollapsed: boolean;
 }
 
 export interface SaveData {
@@ -43,12 +45,14 @@ export interface SaveData {
   restoration: { endsAt: number | null };
   collection: Record<string, CollectionEntry>;
   currentRun: CurrentRun | null;
+  /** Last-used companion party (species ids, ≤6). */
+  party: string[];
   settings: Settings;
   stats: { totalCaught: number; levelsCompleted: number; ballsThrown: number };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'auto', showHints: true, reducedMotion: false,
+  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'auto', showHints: true, reducedMotion: false, missionCollapsed: false,
 };
 
 export function createNewSave(): SaveData {
@@ -62,6 +66,7 @@ export function createNewSave(): SaveData {
     restoration: { endsAt: null },
     collection: {},
     currentRun: null,
+    party: [],
     settings: { ...DEFAULT_SETTINGS },
     stats: { totalCaught: 0, levelsCompleted: 0, ballsThrown: 0 },
   };

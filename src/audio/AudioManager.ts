@@ -191,6 +191,25 @@ class AudioManagerImpl {
     this.noiseBurst(1.5, 0.12, 2500, 1, 0.8);
   }
   restore() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.3, 0.12, 'triangle', undefined, 0, i * 0.08)); }
+
+  /** Move cast sound by animation style — short, watery, anime-flavoured. */
+  moveCast(style: string) {
+    switch (style) {
+      case 'bubbles': this.bubble(0.8); this.bubble(1.1); this.tone(500, 0.12, 0.07, 'sine', 900); break;
+      case 'jet': case 'geyser': this.noiseBurst(0.35, 0.22, 700, 0.7); this.tone(180, 0.25, 0.08, 'sine', 90); break;
+      case 'beam': this.tone(700, 0.35, 0.12, 'sawtooth', 1400); this.noiseBurst(0.3, 0.1, 2500, 2); break;
+      case 'darts': this.tone(1200, 0.06, 0.1, 'square', 800); this.tone(1100, 0.06, 0.08, 'square', 700, 0, 0.07); break;
+      case 'ink': this.tone(220, 0.2, 0.12, 'sine', 110); this.noiseBurst(0.25, 0.12, 400, 0.8); break;
+      case 'ring': case 'motes': this.tone(880, 0.25, 0.08, 'sine', 660); this.tone(1320, 0.2, 0.05, 'sine', undefined, 0, 0.08); break;
+      case 'crescent': this.noiseBurst(0.18, 0.16, 1800, 1.4); break;
+      case 'dash': case 'melee': this.noiseBurst(0.2, 0.2, 900, 0.8); this.tone(140, 0.15, 0.1, 'triangle', 90, 0, 0.08); break;
+      case 'burst': this.noiseBurst(0.4, 0.2, 500, 0.6); break;
+      case 'lightning': this.noiseBurst(0.3, 0.3, 3000, 0.5); this.tone(90, 0.4, 0.15, 'sawtooth', 45); break;
+      default: this.noiseBurst(0.2, 0.15, 800, 1);
+    }
+  }
+  moveHit() { this.tone(300, 0.1, 0.16, 'triangle', 160); this.noiseBurst(0.12, 0.14, 1200, 1); }
+  playerHurt() { this.tone(110, 0.3, 0.25, 'triangle', 60); this.noiseBurst(0.2, 0.2, 350, 0.8); }
 }
 
 export const Audio = new AudioManagerImpl();
