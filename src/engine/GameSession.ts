@@ -284,7 +284,7 @@ export class GameSession {
     if (total === 0 && !store.save.restoration.endsAt) {
       const secs = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
       store.setRestoration(Date.now() + secs * 1000);
-      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: `Your supply will be restored in ${secs >= 60 ? '1 minute' : `${secs} seconds`}.`, ttl: 5 });
+      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: `Your supply will be restored in ${secs === 60 ? '1 minute' : `${secs} seconds`}.`, ttl: 5 });
     }
     return true;
   }

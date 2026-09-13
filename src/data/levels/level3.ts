@@ -27,7 +27,7 @@ export const LEVEL_3: LevelConfig = {
     stageCatch: { min: 5, max: 7, minStage: 1 },
   },
   companions: true,
-  restockSeconds: 30,
+  restockSeconds: 75,
   bossPhases: [
     {
       bosses: ['dondozo', 'tatsugiri'],
