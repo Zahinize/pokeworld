@@ -43,9 +43,11 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
   const atRisk = useStore((s) => s.hud.atRisk);
   const collapsed = useStore((s) => s.save.settings.missionCollapsed);
   const setSettings = useStore((s) => s.setSettings);
+  const isTouch = useStore((s) => s.isTouch);
   if (!mission) return null;
   const pct = mission.total ? (mission.caught / mission.total) * 100 : 0;
-  if (collapsed) {
+  // touch: no collapse-to-pill — the bar itself opens the mission modal
+  if (collapsed && !isTouch) {
     return (
       <button className="mission-mini glass interactive" title="Show mission (M)" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: false }); }}>
         <span>🎯</span>
@@ -64,7 +66,9 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
           <span className="lvl">{compact ? `LEVEL ${session.level.id}` : session.level.title}</span>
           <span className="tot">{mission.caught} <small>/ {mission.total}</small></span>
         </button>
-        <button className="collapse-btn" title="Hide mission panel (M)" aria-label="Hide mission panel" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: true }); }}>▾</button>
+        {isTouch
+          ? !compact && <button className="collapse-btn" aria-label="Close mission" onClick={() => { Audio.uiClick(); onToggle(); }}>✕</button>
+          : <button className="collapse-btn" title="Hide mission panel (M)" aria-label="Hide mission panel" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: true }); }}>▾</button>}
       </div>
       <div className="progress"><i style={{ width: `${pct}%` }} /></div>
       <div className="mission-list" style={{ marginTop: 10 }}>
@@ -437,7 +441,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         <div className="overlay" onClick={() => { setOverlay('none'); if (!isTouch && session.phase === 'paused') { session.resume(); requestPointerLock(); } }}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(100%, 520px)' }}>
             <MissionPanel compact={false} onToggle={() => setOverlay('none')} />
-            <p className="center muted small" style={{ marginTop: 10 }}>Click anywhere to return</p>
+            <p className="center muted small" style={{ marginTop: 10 }}>{isTouch ? 'Tap anywhere outside to close' : 'Click anywhere to return'}</p>
           </div>
         </div>
       )}

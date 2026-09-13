@@ -488,6 +488,17 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 }
 @media (max-height: 540px) and (orientation: landscape) {
   .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
+  /* mission bar + player health side by side along the top edge */
+  .hud.touch .hud-top-left { width: 190px; }
+  .hud.touch .mission-panel.compact { padding: 6px 10px; }
+  .hud.touch .mission-panel .head { margin-bottom: 4px; }
+  .hud.touch .mission-panel .head .lvl { font-size: 10.5px; }
+  .hud.touch .mission-panel .head .tot { font-size: 13px; }
+  .hud.touch .mission-panel .expand-hint { display: none; }
+  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(214px + var(--safe-left)); width: 132px; padding: 5px 9px; }
+  .hud.touch .player-hp .ic { font-size: 13px; }
+  .hud.touch .player-hp .bar { height: 6px; }
+  .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
   .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
   .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); }
