@@ -450,14 +450,15 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .ball-btn { min-width: 50px; padding: 4px 5px; }
   .ball-btn .key { display: none; }
   /* touch controls: phone sizes, throw centered on the arrow column */
-  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(22px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
-  /* arrows + throw sit above the centered ball tray; sprint above the joystick */
+  /* joystick top aligns with the throw circle top (both 195px up); the centered tray keeps the strip below */
+  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
+  /* arrows + throw sit above the centered ball tray; sprint beside the joystick's top edge */
   .touch-controls .tbtn.up { bottom: calc(164px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
   .touch-controls .tbtn.down { bottom: calc(100px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
   .touch-controls .tbtn.throw { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
-  .touch-controls .tbtn.sprint { left: calc(122px + var(--safe-left)); bottom: calc(132px + var(--safe-bottom)); }
-  /* party box: tiny but fully functional */
-  .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(192px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
+  .touch-controls .tbtn.sprint { left: calc(122px + var(--safe-left)); bottom: calc(158px + var(--safe-bottom)); }
+  /* party box: tiny but fully functional, floating clear above the joystick */
+  .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
   .hud.touch .party-card .pn { font-size: 10.5px; }
   .hud.touch .party-card img { width: 24px; height: 24px; }
@@ -488,7 +489,8 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 @media (max-height: 540px) and (orientation: landscape) {
   .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
   .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
-  /* wide screen: the centered tray clears the right column, so controls drop back down */
+  /* wide screen: the centered tray clears both side columns, so controls drop back down */
+  .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); }
   .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); }
   .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); }
   .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); }
