@@ -246,13 +246,11 @@ function CatchCard() {
   if (!last) return null;
   const s = SPECIES[last.speciesId];
   return (
-    <Panel className="catch-card strong">
-      <SpriteImg id={last.speciesId} shiny={last.shiny} size={96} className={last.shiny ? 'shiny-glow' : ''} />
-      <div className="eyebrow">{last.shiny ? '✨ Shiny! ✨' : 'Caught!'}</div>
-      <div className="name">{last.shiny ? `Shiny ${s.name}` : s.name}</div>
-      <div className="sub row" style={{ justifyContent: 'center', gap: 8 }}>
-        <span className="badge green">Collection ✓</span>
-        {last.missionTarget ? <span className="badge gold">Mission target ✓ {last.objectiveLabel}</span> : <span className="badge">Mission target: No</span>}
+    <Panel className={`toast catch-toast ${last.shiny ? 'shiny' : ''}`}>
+      <SpriteImg id={last.speciesId} shiny={last.shiny} size={40} className={last.shiny ? 'shiny-glow' : ''} />
+      <div>
+        <div className="t">{last.shiny ? `✨ Shiny ${s.name} caught!` : `${s.name} caught!`}</div>
+        <div className="b">📖 ✓{last.missionTarget ? ` · 🎯 ${last.objectiveLabel} ✓` : ''}</div>
       </div>
     </Panel>
   );
@@ -324,9 +322,10 @@ function StatusChips() {
         <span className="chip mono">{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'} {!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{Math.round(hud.depth)} m</span>
         <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}>⏸</button>
       </div>
-      {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {SPECIES[hud.huntingSpecies].name} is hunting nearby</span>}
-      {hud.lureRemaining > 0 && <span className="chip lure-active">✨ Lure active · {Math.ceil(hud.lureRemaining)}s</span>}
+      {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
+      {hud.lureRemaining > 0 && <span className="chip lure-active">✨ {isTouch ? '' : 'Lure active · '}{Math.ceil(hud.lureRemaining)}s</span>}
       <RestoreBanner />
+      <CatchCard />
       <Toasts />
     </div>
   );
@@ -431,7 +430,6 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         <PlayerVitals />
         <PartyBar />
         <SwapPrompt />
-        <CatchCard />
         {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
         {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}
       </div>
