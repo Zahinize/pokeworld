@@ -5,7 +5,43 @@ import { ZONES } from '@/engine/world/zones';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel, SpriteImg } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
-import { maxHpOf } from '@/pokeapi/client';
+import { combatStatsOf } from '@/pokeapi/client';
+import { MOVES, SPECIES_MOVES, type MoveConfig, type MoveEffect } from '@/data/moves';
+
+const STAT_MAX = 200; // top of the normalized stat curve (see pokeapi/hp.ts)
+
+function effectText(fx: MoveEffect): string {
+  const pct = `${Math.round(fx.magnitude * 100)}%`;
+  const base = {
+    slow: `slows the target ${pct} for ${fx.duration}s`,
+    blind: `blinds the target for ${fx.duration}s`,
+    stun: `stuns the target for ${fx.duration}s`,
+    defDrop: `lowers the target's Defense ${pct} for ${fx.duration}s`,
+    atkDrop: `lowers the target's Attack ${pct} for ${fx.duration}s`,
+    defUp: `raises Defense ${pct} for ${fx.duration}s`,
+    speedUp: `raises Speed ${pct} for ${fx.duration}s`,
+    heal: fx.duration > 1 ? `restores ${pct} HP over ${fx.duration}s` : `restores ${pct} HP`,
+  }[fx.type];
+  return fx.chance ? `✦ ${Math.round(fx.chance * 100)}% chance: ${base}` : `✦ ${base}`;
+}
+
+function MoveCard({ m }: { m: MoveConfig }) {
+  return (
+    <div className="move-card">
+      <div className="row between" style={{ gap: 8 }}>
+        <b style={{ color: m.color }}>{m.name}</b>
+        <span className="badge">{m.kind === 'utility' ? 'Utility' : m.category === 'physical' ? 'Physical' : 'Special'}</span>
+      </div>
+      <p className="muted small">{m.desc}</p>
+      <div className="move-stats">
+        {m.kind === 'damage' && <span title="Power">💥 {m.power}</span>}
+        <span title="Cooldown">⏱ {m.cooldown}s</span>
+        {m.range > 0 && <span title="Range">🎯 {m.range} m</span>}
+      </div>
+      {m.effect && <div className="move-fx">{effectText(m.effect)}</div>}
+    </div>
+  );
+}
 
 export function CollectionView({ onClose, embedded = false }: { onClose: () => void; embedded?: boolean }) {
   const collection = useStore((s) => s.save.collection);
@@ -52,9 +88,30 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     <dt>Habitat</dt><dd>{s.habitat.map((h) => ZONES[h].label).join(', ')}</dd>
                     <dt>Depth</dt><dd>{s.depth[0]}–{s.depth[1]} m</dd>
                     <dt>Activity</dt><dd>{s.activity === 'both' ? 'Day & night' : s.activity}</dd>
-                    <dt>Max HP</dt><dd>{maxHpOf(s.id)}</dd>
                     {s.prey && <><dt>Prefers</dt><dd>{s.prey.map((p) => SPECIES[p]?.name).filter(Boolean).join(', ')}</dd></>}
                   </dl>
+                  {(entry?.caught ?? 0) > 0 && (() => {
+                    const st = combatStatsOf(s.id);
+                    const rows: [string, number][] = [['HP', st.maxHp], ['Attack', st.atk], ['Defense', st.def], ['Sp. Atk', st.spAtk], ['Sp. Def', st.spDef], ['Speed', st.speed]];
+                    const kit = SPECIES_MOVES[s.id]?.map((id) => MOVES[id]).filter(Boolean) ?? [];
+                    return (
+                      <>
+                        <div className="sect-label">Stats</div>
+                        <div className="stat-bars">
+                          {rows.map(([label, v]) => (
+                            <div key={label} style={{ display: 'contents' }}>
+                              <span className="sb-label">{label}</span>
+                              <span className="sb-track"><span className="sb-fill" style={{ width: `${Math.min(100, (v / STAT_MAX) * 100)}%` }} /></span>
+                              <span className="sb-val">{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                        {selShiny && <div className="muted small" style={{ marginTop: 6 }}>✨ As a shiny boss it fought with doubled HP and Attack.</div>}
+                        <div className="sect-label">Moves</div>
+                        <div className="move-cards">{kit.map((m) => <MoveCard key={m.id} m={m} />)}</div>
+                      </>
+                    );
+                  })()}
                 </>
               ) : <p className="muted">You haven't spotted this Pokémon yet. Explore {s.habitat.map((h) => ZONES[h].label).join(' or ')}.</p>}
             </div>

@@ -363,6 +363,17 @@ a { color: var(--aqua); }
 .kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 13.5px; }
 .kv dt { color: var(--muted); }
 .kv dd { font-weight: 600; }
+.sect-label { font-family: var(--font-display); font-weight: 800; font-size: 12.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); margin: 16px 0 8px; }
+.stat-bars { display: grid; grid-template-columns: 68px 1fr 40px; gap: 7px 10px; align-items: center; max-width: 440px; }
+.stat-bars .sb-label { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.stat-bars .sb-track { display: block; height: 8px; border-radius: 999px; background: rgba(160, 220, 255, .12); overflow: hidden; }
+.stat-bars .sb-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #38bdf8, #5eead4); }
+.stat-bars .sb-val { font-size: 12.5px; font-weight: 800; text-align: right; }
+.move-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; max-width: 560px; }
+.move-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: rgba(160, 220, 255, .05); }
+.move-card p { margin: 4px 0 7px; line-height: 1.4; }
+.move-card .move-stats { display: flex; gap: 14px; font-size: 12.5px; font-weight: 700; color: #bfefff; }
+.move-card .move-fx { font-size: 12px; font-weight: 600; color: #ffd166; margin-top: 5px; }
 
 /* Settings */
 .setting { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }

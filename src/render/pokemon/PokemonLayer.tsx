@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
+import { COMBAT } from '@/data/combatConfig';
 import { sheetKey } from './sprites';
 import type { SpriteSheet } from './sprites';
 import type { Entity } from '@/engine/ai/types';
@@ -207,8 +208,7 @@ export function PokemonLayer() {
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
       // the reef giants shrink further as companions so they don't wall off the screen
-      const giant = e.species.id === 'gyarados' || e.species.id === 'dondozo' || e.species.id === 'kyogre' || e.species.id === 'wailord';
-      const partnerScale = e.role === 'partner' ? (giant ? 0.62 * 0.7 : 0.62) : 1;
+      const partnerScale = e.role === 'partner' ? 0.62 * (COMBAT.COMPANION_GIANT_SHRINK[e.species.id] ?? 1) : 1;
       let alpha = 1, scale = e.species.size * e.scaleMul * partnerScale, y = e.y;
       if (e.role === 'partner') scale = Math.min(scale, 2.4); // no companion may wall off the view
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
