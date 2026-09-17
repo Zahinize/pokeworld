@@ -74,13 +74,18 @@ for (const levelId of [1, 2]) {
   const guardian = eco.byId.get(g.guardianId)!;
   // Park a living predator on the school and let it hunt repeatedly
   const harass = () => {
-    const pred = eco.alive.find((e) => e.behavior === 'predator');
     const m = eco.byId.get(g.memberIds[0]);
-    if (!pred || !m) return false;
+    if (!m) return null;
+    // a roaming predator that actually preys on this school — guardian-role predators (Jellicent & co.) mind their own flock
+    const pred = eco.alive.find((e) => e.behavior === 'predator' && e.role !== 'guardian' && e.species.prey?.includes(m.species.id))
+      ?? eco.alive.find((e) => e.behavior === 'predator' && e.role !== 'guardian');
+    if (!pred) return null;
     predIds.add(pred.id);
     pred.x = m.x + 4; pred.y = m.y; pred.z = m.z; pred.home.x = m.x; pred.home.z = m.z;
     pred.huntCooldown = 0; pred.state = 'patrol'; pred.hp = pred.maxHp;
-    return true;
+    // keep the school alive through repeated hunts — timid species (Wishiwashi…) die too fast to avenge otherwise
+    for (const id of g.memberIds) { const mm = eco.byId.get(id); if (mm) mm.hp = mm.maxHp; }
+    return pred;
   };
   eco.update(1 / 60, p, 0);
   harass(); step(20); harass(); step(20);
@@ -89,7 +94,16 @@ for (const levelId of [1, 2]) {
   eco.capture(guardian); step(1);
   if (g.avenging) ok('group entered avenging state after losing its guardian'); else fail('group not avenging after guardian capture');
   predDamage = 0; revenges = 0;
-  for (let round = 0; round < 6 && revenges === 0; round++) { if (!harass()) step(30); else step(15); }
+  for (let round = 0; round < 10 && revenges === 0; round++) {
+    const pred = harass();
+    if (!pred) { step(30); continue; }
+    // Force one clean strike on a member — the trigger under test is the school's coordinated revenge.
+    // (Left to the AI, a big alarmed school suppresses a lone harasser before it ever lands a bite,
+    // which is emergent group defense working — but not what this scenario measures.)
+    const m = eco.byId.get(g.memberIds[0]);
+    if (m) { pred.x = m.x + 1.2; pred.y = m.y; pred.z = m.z; pred.mcd = [0, 0]; pred.stunT = 0; (eco as any).moves.cast(pred, 0, { kind: 'entity', id: m.id }); }
+    for (let k = 0; k < 3 && revenges === 0; k++) { step(5); pred.hp = pred.maxHp; pred.stunT = 0; }
+  }
   if (revenges > 0) ok(`group revenge triggered ${revenges}×`); else fail('group revenge never triggered');
   if (predDamage > 0) ok(`avenging school dealt ${predDamage} damage to predators`); else fail('predators took no damage from the avenging school');
 }
@@ -139,7 +153,8 @@ for (const levelId of [1, 2]) {
   while (!events.includes('autoCaught') && guard++ < 90) {
     step(1);
     if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
-    if (wild.state === 'flee' && wild.duelWith < 0) { // fled duel — re-engage
+    if (wild.duelWith < 0 && partner.duelWith < 0 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
+      // duel broke (fled, regrouped, whatever the species' temperament) — re-engage
       wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
       partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
     }

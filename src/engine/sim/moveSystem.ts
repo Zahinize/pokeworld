@@ -162,7 +162,8 @@ export class MoveSystem {
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.z += pr.vz * dt;
       void vl;
       // hit test against the intended target
-      const hitR = (pr.target.kind === 'player' ? 0.9 : (this.host.byId.get(pr.target.id)?.species.size ?? 1) * 0.45) + 0.35;
+      // tiny species (Wishiwashi, Wiglett…) keep a floor so projectiles can actually connect
+      const hitR = (pr.target.kind === 'player' ? 0.9 : Math.max(0.9, this.host.byId.get(pr.target.id)?.species.size ?? 1) * 0.45) + 0.35;
       if (len3(tp.x - pr.x, tp.y - pr.y, tp.z - pr.z) < hitR) {
         const caster = this.host.byId.get(pr.casterId);
         pr.active = false;
