@@ -138,7 +138,8 @@ for (const levelId of [1, 2]) {
   const eco = new Ecosystem(gen, hp);
   const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
   const events: string[] = [];
-  const step = (sec: number) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (['duelStart', 'duelEnd', 'faint', 'autoCaught', 'recovered', 'partnerDown'].includes(ev.type)) events.push(ev.type); } };
+  let autoCaughtId = -1;
+  const step = (sec: number) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) if (['duelStart', 'duelEnd', 'faint', 'autoCaught', 'recovered', 'partnerDown'].includes(ev.type)) { events.push(ev.type); if (ev.type === 'autoCaught') autoCaughtId = ev.entityId; } } };
   eco.update(1 / 60, p, 0);
   const partner = eco.addPartner('sharpedo', 0);
   if (partner.kitOverride && partner.kitOverride.length === 2) ok(`partner spawned with kit ${partner.kitOverride.join('+')}`); else fail('partner has no kit override');
@@ -147,14 +148,28 @@ for (const levelId of [1, 2]) {
   if (dFollow < 8) ok(`partner follows in formation (${dFollow.toFixed(1)}m from trainer)`); else fail(`partner not following (${dFollow.toFixed(1)}m away)`);
   // Command a cast at a wild → duel → faint → recover
   const wild = eco.alive.find((e) => e.species.stage === 0 && e.role !== 'partner' && e.behavior !== 'predator' && e.groupId >= 0)!;
+  // isolate the 1v1 under test: the wild's school-mates defend it (and can pull the partner into stray duels)
+  const stunBystanders = () => {
+    const wg = eco.groups[wild.groupId];
+    if (!wg) return;
+    for (const id2 of [...wg.memberIds, wg.guardianId]) {
+      if (id2 === wild.id || id2 < 0) continue;
+      const o = eco.byId.get(id2);
+      if (o) o.stunT = 4;
+    }
+  };
+  stunBystanders();
   wild.x = p.x + 6; wild.y = p.y; wild.z = p.z - 6;
   partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
   let guard = 0;
   while (!events.includes('autoCaught') && guard++ < 90) {
     step(1);
     if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
-    if (wild.duelWith < 0 && partner.duelWith < 0 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
-      // duel broke (fled, regrouped, whatever the species' temperament) — re-engage
+    if (wild.duelWith < 0 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
+      // duel broke (fled, regrouped, whatever the species' temperament) — re-engage.
+      // A stray school defender may have hit the partner and pulled it into its own duel: break that first.
+      if (partner.duelWith >= 0 && partner.duelWith !== wild.id) (eco as any).endDuel(partner, 'separated');
+      stunBystanders();
       wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
       partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
     }
@@ -163,7 +178,9 @@ for (const levelId of [1, 2]) {
   if (events.includes('autoCaught')) {
     ok(`companion KO auto-caught the wild after ${guard}s of dueling`);
     step(1);
-    if ((wild.state as string) === 'caught' || (wild.state as string) === 'removed') ok('auto-caught wild removed from the reef'); else fail(`auto-caught wild still around (state ${wild.state})`);
+    // follow the event's entity — the partner may legitimately have KO'd a different school member
+    const ce = autoCaughtId >= 0 ? eco.byId.get(autoCaughtId) : undefined;
+    if (!ce || (ce.state as string) === 'caught' || (ce.state as string) === 'removed') ok('auto-caught wild removed from the reef'); else fail(`auto-caught wild still around (state ${ce.state})`);
   } else fail(`wild never auto-caught (state ${wild.state}, hp ${Math.round(wild.hp)}/${wild.maxHp})`);
   // Guardian defends its group against catch attempts
   {
