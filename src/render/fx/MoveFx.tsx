@@ -14,16 +14,16 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15 } as const;
 
 export interface MoveVis { s: number; w: number; c2: string; blend: 0 | 1; impact: string }
 
 /** Fallbacks by engine style. */
 const STYLE_VIS: Record<string, MoveVis> = {
-  bubbles: { s: ST.bubbles, w: 0.55, c2: '#e8f8ff', blend: 0, impact: 'bubble' },
-  jet: { s: ST.jet, w: 1.15, c2: '#e0f2fe', blend: 0, impact: 'splash' },
-  beam: { s: ST.aurora, w: 1.3, c2: '#ffffff', blend: 0, impact: 'spark' },
-  darts: { s: ST.dart, w: 0.5, c2: '#ffffff', blend: 0, impact: 'spark' },
+  bubbles: { s: ST.bubbles, w: 1.5, c2: '#e8f8ff', blend: 0, impact: 'bubble' },
+  jet: { s: ST.jet, w: 2.8, c2: '#e0f2fe', blend: 0, impact: 'splash' },
+  beam: { s: ST.aurora, w: 2.6, c2: '#ffffff', blend: 0, impact: 'spark' },
+  darts: { s: ST.dart, w: 0.7, c2: '#ffffff', blend: 0, impact: 'spark' },
   ink: { s: ST.ink, w: 1.2, c2: '#0b1220', blend: 1, impact: 'ink' },
   ring: { s: ST.pulse, w: 1.5, c2: '#ffffff', blend: 0, impact: 'splash' },
   crescent: { s: ST.crescent, w: 1.4, c2: '#ffffff', blend: 0, impact: 'splash' },
@@ -37,15 +37,17 @@ const STYLE_VIS: Record<string, MoveVis> = {
 
 /** Signature looks per move (override any fallback field). */
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
-  iceBeam: { s: ST.iceBeam, w: 1.5, c2: '#eaf9ff', impact: 'ice' },
-  freezeDry: { s: ST.iceBeam, w: 1.2, c2: '#dff4ff', impact: 'ice' },
-  auroraBeam: { s: ST.aurora, impact: 'spark' },
-  signalBeam: { s: ST.aurora, c2: '#f0abfc' },
-  originPulse: { s: ST.iceBeam, w: 2.3, c2: '#bfdbfe', impact: 'splash' },
-  hydroPump: { w: 1.6, c2: '#f0f9ff' },
-  brine: { c2: '#99f6e4' },
-  mudShot: { s: ST.mud, w: 0.9, c2: '#c9a46a', blend: 1, impact: 'mud' },
-  muddyWater: { s: ST.wave, w: 2.8, c2: '#c9a46a', blend: 1, impact: 'mud' },
+  iceBeam: { s: ST.iceBeam, w: 3.0, c2: '#eaf9ff', impact: 'ice' },
+  freezeDry: { s: ST.iceBeam, w: 2.2, c2: '#dff4ff', impact: 'ice' },
+  auroraBeam: { s: ST.aurora, w: 2.8, impact: 'spark' },
+  signalBeam: { s: ST.aurora, w: 2.4, c2: '#f0abfc' },
+  originPulse: { s: ST.iceBeam, w: 4.0, c2: '#bfdbfe', impact: 'splash' },
+  hydroPump: { w: 3.4, c2: '#f0f9ff' },
+  waterGun: { w: 1.9 },
+  brine: { w: 2.4, c2: '#99f6e4' },
+  // mud + ink travel as thick, opaque torrents (murk layer, never additive)
+  mudShot: { s: ST.mudRay, w: 2.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
+  muddyWater: { s: ST.mudRay, w: 3.4, c2: '#d8b27a', blend: 1, impact: 'mud' },
   surf: { s: ST.wave, w: 2.6, c2: '#e0f2fe', impact: 'splash' },
   psychic: { s: ST.psy, w: 2.4, c2: '#f5d0fe', impact: 'psy' },
   discharge: { s: ST.flash, w: 2.6, c2: '#fef9c3', impact: 'zap' },
@@ -53,12 +55,14 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   iceShard: { c2: '#ffffff', impact: 'ice' },
   icicleSpear: { c2: '#ffffff', impact: 'ice' },
   bubble: { impact: 'bubble' },
-  bubbleBeam: { w: 0.65, impact: 'bubble' },
-  waterPulse: { impact: 'splash' },
-  dragonPulse: { c2: '#99f6e4', impact: 'spark' },
+  bubbleBeam: { w: 1.7, impact: 'bubble' },
+  waterPulse: { s: ST.jet, w: 2.6, impact: 'splash' },
+  dragonPulse: { s: ST.aurora, w: 2.8, c2: '#99f6e4', impact: 'spark' },
+  round: { s: ST.aurora, w: 2.2, c2: '#fecaca' },
+  silverWind: { s: ST.aurora, w: 2.2, c2: '#ffffff' },
   airSlash: { impact: 'spark' },
   aquaCutter: { impact: 'splash' },
-  octazooka: { blend: 1, impact: 'ink' },
+  octazooka: { s: ST.mudRay, w: 2.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
   smokescreen: { blend: 1, impact: 'ink' },
   waterSpout: { w: 2.3 },
   drainingKiss: { impact: 'psy' },
@@ -83,7 +87,7 @@ export function visFor(moveId: string, style: string): MoveVis {
 }
 
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
-const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora]);
+const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay]);
 /** Camera-facing square billboards. */
 const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash]);
 
@@ -94,7 +98,7 @@ const PROJ_VERT = /* glsl */ `
 attribute vec4 aParams;   // style, seed, t, alpha
 attribute vec2 aDims;     // size (across), len (along)
 attribute vec3 aColor; attribute vec3 aColor2; attribute vec3 aDir;
-varying vec2 vUv; varying float vAlpha, vStyle, vSeed, vLen, vT; varying vec3 vColor, vColor2;
+varying vec2 vUv; varying float vAlpha, vStyle, vSeed, vLen, vT, vAlign; varying vec3 vColor, vColor2;
 void main(){
   float aStyle = aParams.x, aSeed = aParams.y, aT = aParams.z, aAlpha = aParams.w;
   float aSize = aDims.x, aLen = aDims.y;
@@ -105,6 +109,7 @@ void main(){
   vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   int s = int(aStyle + 0.5);
   vec3 w;
+  float align = 0.0;   // 1 when the ray points at the camera and the ribbon degenerates
   if (s == 11) {            // wave wall: perpendicular to travel, x = lateral, y = height
     vec3 axis = normalize(vec3(aDir.x, 0.001, aDir.z));
     vec3 side = normalize(cross(vec3(0.,1.,0.), axis));
@@ -116,7 +121,7 @@ void main(){
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
-    float align = smoothstep(0.82, 0.97, abs(dot(axis, toCam)));
+    align = smoothstep(0.60, 0.92, abs(dot(axis, toCam)));
     vec3 cr = cross(axis, toCam);
     vec3 side = normalize(mix(normalize(length(cr) < 1e-4 ? camUp : cr), camUp, align));
     vec3 alongAxis = normalize(mix(axis, camRight, align));
@@ -124,13 +129,23 @@ void main(){
     w = c.xyz + alongAxis * (position.x * len) + side * (position.y * aSize * mix(1.0, 1.4, align));
   }
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
-  vAlpha = aAlpha; vStyle = aStyle; vSeed = aSeed; vLen = aLen; vT = aT; vColor = aColor; vColor2 = aColor2;
+  vAlpha = aAlpha; vStyle = aStyle; vSeed = aSeed; vLen = aLen; vT = aT; vAlign = align; vColor = aColor; vColor2 = aColor2;
 }`;
 
 const PROJ_FRAG = /* glsl */ `
 uniform float uTime;
-varying vec2 vUv; varying float vAlpha, vStyle, vSeed, vLen, vT; varying vec3 vColor, vColor2;
+varying vec2 vUv; varying float vAlpha, vStyle, vSeed, vLen, vT, vAlign; varying vec3 vColor, vColor2;
 float n1(float x){ return fract(sin(x * 127.1) * 43758.5453); }
+/**
+ * Radius profile of a travelling ray: pinched at the caster's mouth, swelling into the shaft,
+ * capped with a hemisphere at the head. Gives a capsule silhouette instead of a flat rectangle.
+ */
+float rayRadius(float along) {
+  float mouth = smoothstep(0.0, 0.10, along);
+  float swell = mix(0.66, 1.0, smoothstep(0.02, 0.50, along));
+  float tipT = clamp((along - 0.84) / 0.16, 0.0, 1.0);
+  return mouth * swell * sqrt(max(0.0, 1.0 - tipT * tipT));
+}
 void main(){
   vec2 c = vUv - 0.5;
   float across = abs(c.y) * 2.0;      // ribbons: 0 centre .. 1 edge
@@ -139,7 +154,13 @@ void main(){
   float a = 0.0;
   vec3 col = vColor;
   int s = int(vStyle + 0.5);
-  if (s == 0) { // bubble stream: round rim-lit bubbles marching head-ward down the span
+  // Circular cross-section: 1 along the axis, falling to 0 at the silhouette. Shading with this
+  // makes a flat billboard read as a lit cylinder — a water/ice cannon, not a painted band.
+  float radius = rayRadius(along);
+  float rr = across / max(radius, 1e-3);
+  float cyl = sqrt(max(0.0, 1.0 - min(1.0, rr * rr)));
+  float skin = smoothstep(0.55, 0.0, cyl) * step(0.001, cyl);  // the curved outer surface
+  if (s == 0) { // bubble stream: round rim-lit bubbles marching head-ward inside the tube
     float cell = 1.15;
     float f = fract(alongW / cell - uTime * 2.0 + vSeed * 7.0);
     float wob = 0.35 * sin(alongW * 2.1 + uTime * 5.0 + vSeed * 9.0);
@@ -149,35 +170,34 @@ void main(){
     float rim = smoothstep(0.22, 0.05, abs(d - 1.0));
     float body = smoothstep(1.0, 0.2, d) * 0.22;
     float shine = smoothstep(0.34, 0.0, length(p - vec2(-r * 0.35, r * 0.35)));
-    a = (rim * 1.15 + body + shine * 0.9) * smoothstep(0.0, 0.12, along) * smoothstep(1.0, 0.94, along);
+    a = (rim * 1.15 + body + shine * 0.9) * smoothstep(0.0, 0.25, cyl);
     col = mix(vColor, vColor2, rim * 0.7 + shine);
-  } else if (s == 1) { // water jet: churning column, bright core, foam edges, spray head
-    float core = pow(max(0.0, 1.0 - across * 1.2), 2.0);
-    float churn = 0.7 + 0.3 * sin(alongW * 7.0 - uTime * 26.0 + vSeed * 12.0);
-    float foam = smoothstep(1.0, 0.5, across) * (0.5 + 0.5 * sin(alongW * 13.0 - uTime * 34.0 + c.y * 24.0));
-    float head = smoothstep(0.7, 1.0, along);
-    a = (core * churn * (0.7 + head * 0.7) + foam * 0.4) * smoothstep(0.0, 0.06, along);
-    col = mix(vColor, vColor2, core * 0.55 + foam * 0.3 + head * 0.3);
-  } else if (s == 2) { // ice beam: blazing white core, frosted edges, twinkling crystals
-    float core = pow(max(0.0, 1.0 - across * 1.3), 3.0);
-    float glow = pow(max(0.0, 1.0 - across), 1.6);
-    float frost = smoothstep(0.55, 1.0, across) * (0.45 + 0.55 * sin(alongW * 9.0 + uTime * 3.0 + vSeed * 5.0));
+  } else if (s == 1) { // water cannon: a solid cylinder of churning water with a foaming skin
+    float core = pow(cyl, 0.5);                                  // volumetric through the axis
+    float churn = 0.88 + 0.12 * sin(alongW * 3.2 - uTime * 18.0 + vSeed * 12.0);
+    float head = smoothstep(0.72, 1.0, along);
+    a = core * churn + skin * 0.5 + head * 0.3 * cyl;
+    // specular run down the top of the tube sells the roundness
+    col = mix(vColor, vColor2, pow(cyl, 2.2) * 0.65 + skin * 0.25 + head * 0.25);
+  } else if (s == 2) { // ice cannon: a faceted crystal rod, frosted along its curved surface
+    float facet = 0.86 + 0.14 * sin(across * 11.0 + alongW * 2.0 + vSeed * 4.0);
+    float core = pow(cyl, 0.6) * facet;
+    float frost = skin * (0.5 + 0.5 * sin(alongW * 9.0 + uTime * 3.0 + vSeed * 5.0));
     float cellId = floor(alongW * 2.4) + floor(vSeed * 90.0);
     float tw = step(0.55, n1(cellId + floor(uTime * 12.0)));
     float cx = fract(alongW * 2.4) - 0.5;
-    float star = tw * max(0.0, 1.0 - (abs(cx) * 3.0 + across * 2.2));
-    a = (core * 1.7 + glow * 0.5 + frost * 0.35 + star * 1.2) * (1.0 - vT);
-    col = mix(mix(vColor, vColor2, 0.5 + frost * 0.5), vec3(1.0), core * 0.8 + star * 0.8);
-  } else if (s == 3) { // aurora beam: brilliant core + shimmering spectral bands
-    float core = pow(max(0.0, 1.0 - across * 1.35), 3.0);
-    float bands = 0.5 + 0.5 * sin(alongW * 5.0 - uTime * 22.0 + c.y * 8.0 + vSeed * 6.0);
-    float glow = pow(max(0.0, 1.0 - across), 1.4);
-    a = (core * 1.5 + glow * bands * 0.55) * (1.0 - vT);
+    float star = tw * max(0.0, 1.0 - abs(cx) * 3.0) * cyl;
+    a = (core * 1.25 + frost * 0.5 + star * 0.9) * (1.0 - vT);
+    col = mix(mix(vColor, vColor2, 0.45 + frost * 0.4), vec3(1.0), pow(cyl, 2.2) * 0.85 + star * 0.6);
+  } else if (s == 3) { // energy cannon: a glowing rod with spectral bands rolling around it
+    float core = pow(cyl, 0.7);
+    float bands = 0.5 + 0.5 * sin(alongW * 5.0 - uTime * 22.0 + vSeed * 6.0);
+    a = (core * 1.2 + skin * bands * 0.55) * (1.0 - vT);
     vec3 spectral = vec3(0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0),
                          0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 2.1),
                          0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 4.2));
-    col = mix(vColor, mix(vColor2, spectral, 0.55), bands * (1.0 - core));
-    col = mix(col, vec3(1.0), core * 0.75);
+    col = mix(vColor, mix(vColor2, spectral, 0.55), bands * (1.0 - pow(cyl, 2.0)));
+    col = mix(col, vec3(1.0), pow(cyl, 2.5) * 0.8);
   } else if (s == 4) { // shard / needle: sharp icy dart with a bright tip
     float taper = mix(1.9, 0.35, along);           // wide tail, needle tip
     float m = across * taper * 1.5;
@@ -225,6 +245,17 @@ void main(){
     a = smoothstep(1.0, 0.58 + lump, d);
     col = mix(vColor, vColor2, smoothstep(0.6, -0.4, p.y) * 0.35 + smoothstep(0.7, 0.1, d) * 0.2);
     col *= 0.8 + 0.2 * (1.0 - d);
+  } else if (s == 15) { // mud / ink cannon: a heavy, writhing tube of sludge
+    float wob = 0.12 * sin(alongW * 3.4 - uTime * 13.0 + vSeed * 9.0);   // the rope writhes as it flies
+    float rrM = (across + wob) / max(radius, 1e-3);
+    float cylM = sqrt(max(0.0, 1.0 - min(1.0, rrM * rrM)));
+    float core = pow(cylM, 0.32);                                        // near-solid matter
+    float lumps = 0.5 + 0.5 * sin(alongW * 6.0 - uTime * 16.0 + vSeed * 5.0);
+    float silt = 0.5 + 0.5 * sin(alongW * 19.0 - uTime * 28.0 + c.y * 24.0);  // grit streaming through
+    float head = smoothstep(0.74, 1.0, along);
+    a = core * (0.9 + 0.1 * lumps) + head * 0.25 * cylM;
+    col = mix(vColor, vColor2, silt * 0.28 * cylM + head * 0.25);
+    col *= 0.55 + 0.45 * pow(cylM, 1.4);                                 // dark at the rim: wet, heavy
   } else if (s == 11) { // breaking wave wall: rolling crest with foam (Surf / Muddy Water)
     float x = vUv.x, h = vUv.y;
     float crest = 0.6 + 0.14 * sin(x * 9.0 + vT * 10.0 + vSeed * 8.0);
@@ -260,9 +291,20 @@ void main(){
     a = core * churn + foam * 0.45 + crown;
     col = mix(vColor, vColor2, core * 0.5 + crown * 0.6 + foam * 0.25);
   }
+  // Fired straight at the camera the tube has no length to show — resolve it into a round blast
+  // instead of a flat slab of colour.
+  if (vAlign > 0.001 && (s == 0 || s == 1 || s == 2 || s == 3 || s == 15)) {
+    float d2 = length(vec2((along - 0.5) * 2.0, c.y * 2.0));
+    float bloom = pow(max(0.0, 1.0 - d2), 1.6) * 1.5;
+    float k = smoothstep(0.0, 0.7, vAlign);   // resolve to the round blast quickly
+    a = mix(a, bloom, k);
+    col = mix(col, mix(vColor, vColor2, 0.5), k * 0.6);
+  }
   a *= vAlpha;
   if (a < 0.01) discard;
-  gl_FragColor = vec4(col * (0.72 + a * 0.7), a);
+  // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
+  bool murky = (s == 5 || s == 10 || s == 15);
+  gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
 const TRAIL = 4; // ghost copies for head-styled projectiles
