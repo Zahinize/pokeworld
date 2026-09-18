@@ -62,6 +62,9 @@ export const COMBAT = {
   /** Companion party. */
   PARTY_SIZE: 6,
   ACTIVE_COMPANIONS: 2,
+  /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
+   *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
+  BENCH_REGEN_FRAC_PER_SEC: 0.015,
 
   /** Extra render shrink for oversized companions (× the global 0.62 partner scale). */
   COMPANION_GIANT_SHRINK: { gyarados: 0.56, dondozo: 0.56, kyogre: 0.56, wailord: 0.56 } as Record<string, number>,

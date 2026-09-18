@@ -63,6 +63,8 @@ export class GameSession {
   activePartners: [number, number] = [-1, -1];
   /** Species knocked out this level (out until the level ends). */
   downedSpecies: string[] = [];
+  /** Bench HP memory: token -> HP fraction + when it was benched (eco time). */
+  private benchHp = new Map<string, { frac: number; at: number }>();
   /** Pending automatic reserve send-outs after a knockout: [slot, sim time]. */
   private autoSend: [number, number][] = [];
   /** Boss waves: index of the next wave to unleash (-1 = no boss level or all done). */
@@ -444,6 +446,7 @@ export class GameSession {
       for (const v of variants) loadSpriteSheet(id, v).then((sh) => this.sheets.set(sheetKey(id, v), sh));
     }
     this.downedSpecies = [];
+    this.benchHp.clear();
     for (const id of this.activePartners) if (id >= 0) this.eco.removePartner(id);
     this.activePartners = [-1, -1];
     this.party.slice(0, COMBAT.ACTIVE_COMPANIONS).forEach((t, i) => { this.activePartners[i] = this.eco!.addPartner(baseSpeciesId(t), i, isShinyToken(t)).id; });
@@ -467,11 +470,27 @@ export class GameSession {
     const otherSlot = slot === 0 ? 1 : 0;
     const other = this.eco.byId.get(this.activePartners[otherSlot]);
     if (other && this.tok(other) === token) return false; // already out in the other slot
-    if (this.activePartners[slot] >= 0) this.eco.removePartner(this.activePartners[slot]);
-    this.activePartners[slot] = this.eco.addPartner(baseSpeciesId(token), slot, isShinyToken(token)).id;
+    if (this.activePartners[slot] >= 0) {
+      // remember the outgoing companion's wounds — swapping must never be a free full-heal
+      const out = this.eco.byId.get(this.activePartners[slot]);
+      if (out) this.benchHp.set(this.tok(out), { frac: out.hp / out.maxHp, at: this.eco.time });
+      this.eco.removePartner(this.activePartners[slot]);
+    }
+    const fielded = this.eco.addPartner(baseSpeciesId(token), slot, isShinyToken(token));
+    this.applyBenchHp(fielded, token);
+    this.activePartners[slot] = fielded.id;
     Audio.uiConfirm();
     this.syncPartyHud();
     return true;
+  }
+
+  /** Restore a returning companion's remembered HP, regenerated at the bench rate while it rested. */
+  private applyBenchHp(e: Entity, token: string) {
+    const m = this.benchHp.get(token);
+    if (!m || !this.eco) return;
+    const frac = Math.min(1, m.frac + Math.max(0, this.eco.time - m.at) * COMBAT.BENCH_REGEN_FRAC_PER_SEC);
+    e.hp = Math.max(1, Math.round(e.maxHp * frac));
+    if (frac >= 1) this.benchHp.delete(token); else this.benchHp.set(token, { frac, at: this.eco.time });
   }
 
   /** Aim exactly like a Poké Ball: cast the companion's move along the camera ray. */
