@@ -7,6 +7,7 @@ import { OceanBackdrop, Panel, SpriteImg } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
 import { combatStatsOf } from '@/pokeapi/client';
 import { MOVES, SPECIES_MOVES, type MoveConfig, type MoveEffect } from '@/data/moves';
+import { BOSS_TUNING, BOSS_SHINY_MULT } from '@/data/combatConfig';
 
 const STAT_MAX = 200; // top of the normalized stat curve (see pokeapi/hp.ts)
 
@@ -92,21 +93,31 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                   </dl>
                   {(entry?.caught ?? 0) > 0 && (() => {
                     const st = combatStatsOf(s.id);
-                    const rows: [string, number][] = [['HP', st.maxHp], ['Attack', st.atk], ['Defense', st.def], ['Sp. Atk', st.spAtk], ['Sp. Def', st.spDef], ['Speed', st.speed]];
+                    // bosses fight boosted: HP/Attack/Sp.Atk at 2x, shinies at 3x — show the real battle values
+                    const t = s.bossOnly ? BOSS_TUNING[s.id] : undefined;
+                    const hpMult = (t?.hp ?? 1) * (t && selShiny ? BOSS_SHINY_MULT : 1);
+                    const atkMult = (t?.atk ?? 1) * (t && selShiny ? BOSS_SHINY_MULT : 1);
+                    const rows: [string, number, boolean][] = [
+                      ['HP', Math.round(st.maxHp * hpMult), hpMult > 1],
+                      ['Attack', Math.round(st.atk * atkMult), atkMult > 1],
+                      ['Defense', st.def, false],
+                      ['Sp. Atk', Math.round(st.spAtk * atkMult), atkMult > 1],
+                      ['Sp. Def', st.spDef, false],
+                      ['Speed', st.speed, false],
+                    ];
                     const kit = SPECIES_MOVES[s.id]?.map((id) => MOVES[id]).filter(Boolean) ?? [];
                     return (
                       <>
-                        <div className="sect-label">Stats</div>
+                        <div className="sect-label">Stats {t && <span className="badge gold" style={{ marginLeft: 6 }}>{selShiny ? `✨ Shiny Boss ×${(t.hp * BOSS_SHINY_MULT).toFixed(0)}` : `Boss ×${t.hp}`}</span>}</div>
                         <div className="stat-bars">
-                          {rows.map(([label, v]) => (
+                          {rows.map(([label, v, boosted]) => (
                             <div key={label} style={{ display: 'contents' }}>
                               <span className="sb-label">{label}</span>
-                              <span className="sb-track"><span className="sb-fill" style={{ width: `${Math.min(100, (v / STAT_MAX) * 100)}%` }} /></span>
-                              <span className="sb-val">{v}</span>
+                              <span className="sb-track"><span className={`sb-fill ${boosted ? 'boost' : ''}`} style={{ width: `${Math.min(100, (v / STAT_MAX) * 100)}%` }} /></span>
+                              <span className="sb-val" style={boosted ? { color: 'var(--gold)' } : undefined}>{v}</span>
                             </div>
                           ))}
                         </div>
-                        {selShiny && <div className="muted small" style={{ marginTop: 6 }}>✨ As a shiny boss it fought with triple HP and Attack.</div>}
                         <div className="sect-label">Moves</div>
                         <div className="move-cards">{kit.map((m) => <MoveCard key={m.id} m={m} />)}</div>
                       </>
