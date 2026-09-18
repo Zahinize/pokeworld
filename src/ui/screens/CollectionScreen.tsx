@@ -106,7 +106,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                             </div>
                           ))}
                         </div>
-                        {selShiny && <div className="muted small" style={{ marginTop: 6 }}>✨ As a shiny boss it fought with doubled HP and Attack.</div>}
+                        {selShiny && <div className="muted small" style={{ marginTop: 6 }}>✨ As a shiny boss it fought with triple HP and Attack.</div>}
                         <div className="sect-label">Moves</div>
                         <div className="move-cards">{kit.map((m) => <MoveCard key={m.id} m={m} />)}</div>
                       </>
