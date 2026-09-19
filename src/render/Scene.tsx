@@ -11,6 +11,7 @@ import { HealthBars } from './fx/HealthBars';
 import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
+import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
 
 function GameLoop() {
   useFrame((_, dt) => { session.update(dt); }, -1);
@@ -47,6 +48,7 @@ export function Scene() {
   const isTouch = useStore((s) => s.isTouch);
   const q = useMemo(() => QUALITY[resolveQuality(qualitySetting, isTouch)], [qualitySetting, isTouch]);
   const dpr: [number, number] = isTouch ? [1, 1.5] : [1, 2];
+  useEffect(() => () => bindTextureUploader(null), []);   // the renderer dies with this component
   return (
     <Canvas
       className="game-canvas"
@@ -55,7 +57,12 @@ export function Scene() {
       gl={{ antialias: !isTouch, powerPreference: 'high-performance', alpha: false, stencil: false }}
       performance={{ min: 0.6 }}
       frameloop="always"
-      onCreated={({ gl }) => { gl.setClearColor('#0b3d66'); }}
+      onCreated={({ gl }) => {
+        gl.setClearColor('#0b3d66');
+        // sprite sheets drop their CPU pixels after upload, so rebuild them if the GPU copy is lost
+        gl.domElement.addEventListener('webglcontextrestored', rebakeAllSheets);
+        bindTextureUploader((t) => gl.initTexture(t));   // push sheets to the GPU now, then drop their pixels
+      }}
     >
       <RendererSetup />
       <GameLoop />
