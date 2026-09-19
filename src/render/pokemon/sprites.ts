@@ -25,7 +25,14 @@ export interface SpriteSheet {
 export type SpriteVariant = 'front' | 'back' | 'shiny' | 'shinyback';
 
 const cache = new Map<string, Promise<SpriteSheet>>();
-const MAX_FRAMES = 64;
+/**
+ * Memory budget. Each sheet costs cols*cellW * rows*cellH * 4 bytes TWICE — once for the canvas
+ * the browser keeps and once for the GPU texture — so these two numbers dominate the game's
+ * footprint. 30 frames still reads as smooth animation, and a 104px cell is larger than these
+ * sprites are ever drawn on screen.
+ */
+const MAX_FRAMES = 30;
+const MAX_CELL = 104;
 
 export function sheetKey(speciesId: string, variant: SpriteVariant = 'front') {
   return variant === 'front' ? speciesId : `${speciesId}:${variant}`;
@@ -68,15 +75,19 @@ async function decode(speciesId: string, variant: SpriteVariant = 'front'): Prom
   }
   const cols = Math.ceil(Math.sqrt(frames.length));
   const rows = Math.ceil(frames.length / cols);
+  // Bake at most MAX_CELL per cell — Showdown art runs up to 200px, far more than we ever draw.
+  const cellScale = Math.min(1, MAX_CELL / Math.max(W, H));
+  const CW = Math.max(1, Math.round(W * cellScale)), CH = Math.max(1, Math.round(H * cellScale));
   const sheet = document.createElement('canvas');
-  sheet.width = cols * W; sheet.height = rows * H;
+  sheet.width = cols * CW; sheet.height = rows * CH;
   const sg = sheet.getContext('2d')!;
+  sg.imageSmoothingEnabled = true; sg.imageSmoothingQuality = 'high';
   const work = document.createElement('canvas'); work.width = W; work.height = H;
   const wg = work.getContext('2d')!;
   const patch = document.createElement('canvas');
   const pg = patch.getContext('2d')!;
   let prevDisposal = 0, prevDims: any = null;
-  let delaySum = 0, opaque = 0;
+  let totalDelay = 0, opaque = 0;
   // We must composite sequentially through ALL frames to respect disposal, but only bake sampled ones.
   const sampledSet = new Set(frames);
   let baked = 0;
@@ -88,11 +99,11 @@ async function decode(speciesId: string, variant: SpriteVariant = 'front'): Prom
     const img = new ImageData(new Uint8ClampedArray(f.patch) as unknown as Uint8ClampedArray<ArrayBuffer>, d.width, d.height);
     pg.putImageData(img, 0, 0);
     wg.drawImage(patch, d.left, d.top);
+    totalDelay += f.delay || 80;   // full clip duration, so sampling never changes playback speed
     if (sampledSet.has(f)) {
-      const cx = (baked % cols) * W, cy = Math.floor(baked / cols) * H;
-      sg.drawImage(work, cx, cy);
+      const cx = (baked % cols) * CW, cy = Math.floor(baked / cols) * CH;
+      sg.drawImage(work, 0, 0, W, H, cx, cy, CW, CH);
       baked++;
-      delaySum += f.delay || 80;
       if (baked === 1) {
         const px = wg.getImageData(0, 0, W, H).data;
         let n = 0; for (let k = 3; k < px.length; k += 4) if (px[k] > 40) n++;
@@ -105,7 +116,7 @@ async function decode(speciesId: string, variant: SpriteVariant = 'front'): Prom
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  return { speciesId, texture: tex, cols, rows, frames: frames.length, frameTime: Math.max(0.03, (delaySum / frames.length) / 1000), aspect: W / H, fill: opaque, fallback: false };
+  return { speciesId, texture: tex, cols, rows, frames: frames.length, frameTime: Math.max(0.03, (totalDelay / frames.length) / 1000), aspect: W / H, fill: opaque, fallback: false };
 }
 
 export function loadSpriteSheet(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
@@ -129,9 +140,22 @@ export async function preloadSprites(ids: string[], onProgress?: (done: number, 
   return out;
 }
 
-export function getLoadedSheet(speciesId: string): SpriteSheet | undefined {
-  // Only resolved promises are useful synchronously; we keep a side map.
-  return resolved.get(speciesId);
+/**
+ * Release every cached sheet whose key is not in `keep`, freeing both the GPU texture and the
+ * backing canvas. Called on each level transition — without it the cache grows to the entire
+ * roster (front + back + shiny + shinyback) and never shrinks.
+ */
+export function disposeSheetsExcept(keep: Set<string>): number {
+  let freed = 0;
+  for (const [key, p] of [...cache]) {
+    if (keep.has(key)) continue;
+    cache.delete(key);
+    p.then((sheet) => {
+      sheet.texture.dispose();
+      const img = sheet.texture.image as HTMLCanvasElement | undefined;
+      if (img && 'width' in img) { img.width = 1; img.height = 1; } // drop the pixel buffer too
+    }).catch(() => {});
+    freed++;
+  }
+  return freed;
 }
-const resolved = new Map<string, SpriteSheet>();
-export function rememberSheet(s: SpriteSheet) { resolved.set(s.speciesId, s); }

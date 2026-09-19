@@ -11,7 +11,7 @@ import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
 import { randomSeed } from './rng';
 import { maxHpOf, preloadSpeciesData } from '@/pokeapi/client';
-import { preloadSprites, rememberSheet, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
+import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
 import { useStore } from '@/state/store';
 import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
@@ -149,12 +149,18 @@ export class GameSession {
       ...this.gen.spawns.map((s) => s.speciesId),
       ...(this.level.bossPhases ?? []).flatMap((ph) => ph.bosses),
     ]));
+    // Release the previous dive's sheets (and any party/shiny variants) before decoding new ones —
+    // otherwise the sprite cache grows across levels until it holds the entire roster.
+    const keep = new Set<string>(ids);
+    for (const t of this.party) { const b = baseSpeciesId(t); for (const v of ['front', 'back', 'shiny', 'shinyback'] as const) keep.add(sheetKey(b, v)); }
+    disposeSheetsExcept(keep);
+    for (const k of [...this.sheets.keys()]) if (!keep.has(k)) this.sheets.delete(k);
     // Also preload the full roster's HP quietly (cheap, cached) so reinforcements/respawns are instant
     let hpDone = 0, spDone = 0;
     const prog = () => { this.prepareProgress = (hpDone / ids.length) * 0.3 + (spDone / ids.length) * 0.7; this.emit(); };
     await Promise.all([
       preloadSpeciesData(ids, (d) => { hpDone = d; prog(); }),
-      preloadSprites(ids, (d) => { spDone = d; prog(); }).then((m) => { for (const [k, v] of m) { this.sheets.set(k, v); rememberSheet(v); } }),
+      preloadSprites(ids, (d) => { spDone = d; prog(); }).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
     ]);
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
@@ -235,6 +241,8 @@ export class GameSession {
   pause() { if (this.phase === 'playing') { this.phase = 'paused'; useStore.getState().setPaused(true); this.emit(); } }
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
   end() {
+    disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
+    this.sheets.clear();
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null;
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
@@ -369,7 +377,7 @@ export class GameSession {
   private unleashWave(wave: BossPhase) {
     const eco = this.eco!;
     // Safety net: make sure every boss sheet is in memory (covers resumes and future dynamic waves)
-    for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => { this.sheets.set(b, sh); rememberSheet(sh); });
+    for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => this.sheets.set(b, sh));
     const store = useStore.getState();
     const site = ZONES[wave.site];
     // ~20% of encounters roll shiny: double HP & Attack, and a separate trophy if you win

@@ -211,7 +211,9 @@ class AudioManagerImpl {
   moveHit() { this.tone(300, 0.1, 0.16, 'triangle', 160); this.noiseBurst(0.12, 0.14, 1200, 1); }
 
   // ------------------------------------------------------------------ Pokémon cries (vendored ogg files)
+  /** Decoded cries are ~200KB each; keep only a working set so long sessions don't grow unbounded. */
   private cryCache = new Map<number, Promise<AudioBuffer | null>>();
+  private static readonly CRY_CACHE_MAX = 16;
 
   private loadCry(dexId: number): Promise<AudioBuffer | null> {
     let p = this.cryCache.get(dexId);
@@ -224,6 +226,10 @@ class AudioManagerImpl {
           return await this.ctx.decodeAudioData(await res.arrayBuffer());
         } catch { return null; }
       })();
+      if (this.cryCache.size >= AudioManagerImpl.CRY_CACHE_MAX) {
+        const oldest = this.cryCache.keys().next().value;   // insertion-ordered: evict the stalest
+        if (oldest !== undefined) this.cryCache.delete(oldest);
+      }
       this.cryCache.set(dexId, p);
     }
     return p;
