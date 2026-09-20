@@ -110,12 +110,21 @@ export function WaterDome() {
           float mGlow = pow(max(dMoon, 0.0), 220.0) * 0.5;
           colSky += vec3(0.81, 0.85, 0.92) * (mDisc * 2.6 + mGlow) * uStarI;
         }
-        // stars: hashed cells, twinkling, only well above the horizon
+        // stars: a sparse scatter of true points — few of them, each its own size and brightness
         if (uStarI > 0.01 && up > 0.02) {
-          vec3 cell = floor(dir * 210.0);
+          vec3 cf = dir * 60.0;
+          vec3 cell = floor(cf);
           float h = hash13(cell);
-          float star = step(0.9955, h) * (0.55 + 0.45 * sin(uTime * (1.5 + h * 4.0) + h * 40.0));
-          colSky += vec3(0.9, 0.94, 1.0) * star * uStarI * smoothstep(0.02, 0.12, up);
+          if (h > 0.99) {
+            // one star per lit cell, offset from the cell center so the grid never shows
+            vec3 sp2 = cell + 0.5 + 0.36 * (vec3(hash13(cell + 7.1), hash13(cell + 13.7), hash13(cell + 29.3)) - 0.5);
+            float dd = length(cf - sp2);
+            float sz = mix(0.06, 0.30, pow(hash13(cell + 3.3), 2.0));   // mostly small, a few big
+            float bright = mix(0.5, 1.6, hash13(cell + 5.5));
+            float tw = 0.65 + 0.35 * sin(uTime * (0.8 + h * 30.0) + h * 40.0);
+            float star = smoothstep(sz, 0.0, dd) * bright * tw;
+            colSky += vec3(0.9, 0.94, 1.0) * star * uStarI * smoothstep(0.02, 0.12, up);
+          }
         }
         // below the horizon (still above water): the sea stretching away
         vec3 colAbove = up >= 0.0 ? colSky : mix(uSkyHorizon, uSeaFar, smoothstep(0.0, 0.18, -up));

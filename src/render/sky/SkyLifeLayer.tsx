@@ -52,9 +52,10 @@ void main() {
   vec4 tex = texture2D(uMap, vUv);
   if (tex.a < 0.45) discard;
   vec3 col = tex.rgb * uLight;
-  // aerial perspective: distant birds melt into the horizon haze
-  float fog = 1.0 - exp(-uFogDensity * 28.0 * uFogDensity * 28.0 * vDepth * vDepth);
-  col = mix(col, uFogColor, clamp(fog, 0.0, 0.9));
+  // aerial perspective: only genuinely DISTANT birds melt into the horizon haze —
+  // nearby ones keep their true colors (white Wingull must still read against a pale sky)
+  float fog = 1.0 - exp(-uFogDensity * 8.0 * uFogDensity * 8.0 * vDepth * vDepth);
+  col = mix(col, uFogColor, clamp(fog, 0.0, 0.82));
   gl_FragColor = vec4(col, tex.a * vAlpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -243,7 +244,9 @@ export function SkyLifeLayer() {
       let f = flipMemo.get(b.id) ?? 1;
       if (dot > 0.4) f = -1; else if (dot < -0.4) f = 1;
       flipMemo.set(b.id, f);
-      const size = getSpecies(b.speciesId).size * (b.legendary ? 1 : SKY.BIRD_RENDER_SCALE);
+      let size = getSpecies(b.speciesId).size * (b.legendary ? SKY.LEGENDARY_RENDER_SCALE[b.speciesId] ?? 8 : SKY.BIRD_RENDER_SCALE);
+      if (b.state === 'captured') size *= Math.max(0.12, 1 - b.stateT * 0.9); // drawn into the ball
+      else if (b.state === 'caught') size *= 0.12;
       tmpM.makeTranslation(b.x, b.y + size * 0.5, b.z);
       bt.mesh.setMatrixAt(i, tmpM);
       bt.aPhase.array[i] = b.phase * 10;
@@ -275,7 +278,7 @@ export function SkyLifeLayer() {
       bt.mat.uniforms.uTime.value = time;
       (bt.mat.uniforms.uFogColor.value as THREE.Color).copy(L.skyHorizon);
       bt.mat.uniforms.uFogDensity.value = L.airFogDensity;
-      bt.mat.uniforms.uLight.value = 0.55 + (1 - L.nightness) * 0.55;
+      bt.mat.uniforms.uLight.value = 0.5 + (1 - L.nightness) * 0.42;
     }
   });
 

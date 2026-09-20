@@ -103,11 +103,16 @@ export class SkyLife {
 
   private spawnBird(speciesId: string, flockId: number, phase01: number): number {
     const sp = getSpecies(speciesId);
+    const legendary = !!sp.secondary.includes('legendary');
+    // flock members bunch into a tight arc so they read as a group; loners keep a full-circle phase
+    const phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2;
+    // the hit sphere matches what the player SEES (render scale included)
+    const rendered = sp.size * (legendary ? SKY.LEGENDARY_RENDER_SCALE[speciesId] ?? 8 : SKY.BIRD_RENDER_SCALE);
     const b: SkyBird = {
       id: this.nextId++, speciesId,
       x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0,
-      state: 'flying', stateT: 0, flockId, phase: phase01 * Math.PI * 2,
-      r: sp.size * 0.48 + 0.55, legendary: !!sp.secondary.includes('legendary'),
+      state: 'flying', stateT: 0, flockId, phase,
+      r: rendered * 0.35 + 0.55, legendary,
       fade: 0, heading: 0,
     };
     this.birds.push(b);
@@ -119,7 +124,7 @@ export class SkyLife {
     for (let i = 0; i < this.birds.length; i++) {
       if (this.birds[i].state === 'gone' && this.birds[i].speciesId === speciesId) {
         const b = this.birds[i];
-        b.flockId = flockId; b.phase = phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
+        b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
         return i;
       }
@@ -182,11 +187,12 @@ export class SkyLife {
           continue;
         }
         anyLeft = true;
-        // circling: anchor + per-member weave
+        // circling: anchor + per-member weave inside a bunched formation
         const ph = b.phase;
-        const ax2 = f.cx + Math.cos(f.angle + ph) * f.orbitR;
-        const az2 = f.cz + Math.sin(f.angle + ph) * f.orbitR;
-        const ay2 = f.alt + Math.sin(f.angle * 2.3 + ph * 3.1) * 2.2 + Math.sin(b.stateT * 1.7 + ph) * 0.8;
+        const rj = f.orbitR + Math.sin(ph * 57.0) * 4;              // radial stagger
+        const ax2 = f.cx + Math.cos(f.angle + ph) * rj;
+        const az2 = f.cz + Math.sin(f.angle + ph) * rj;
+        const ay2 = f.alt + Math.sin(ph * 41.0) * 1.6 + Math.sin(f.angle * 2.3 + ph * 3.1) * 1.2 + Math.sin(b.stateT * 1.7 + ph * 9.0) * 0.8;
         // velocity from pursuit of the moving slot (smooth, analytic-free)
         const k = Math.min(1, dt * 2.2);
         b.vx += ((ax2 - b.x) * 2.2 - b.vx) * k;

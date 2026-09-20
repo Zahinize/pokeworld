@@ -348,7 +348,7 @@ for (const levelId of [1, 2]) {
   let entered = false, vanished = false, minPass = Infinity, passAlt = 0;
   {
     const L = lightingAt(0.4);
-    for (let i = 0; i < 90 * 60 && !vanished; i++) {
+    for (let i = 0; i < 220 * 60 && !vanished; i++) { // roll (≤40s) + slow 130s crossing
       sky.update(1 / 60, L, 0.4, 0, 0);
       for (const ev of sky.drainEvents()) {
         if (ev.type === 'legendaryEnter') entered = true;
