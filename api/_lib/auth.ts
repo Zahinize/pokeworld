@@ -4,9 +4,9 @@
  * unguessable URLs — the username never appears in the key).
  */
 import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
-import type { ApiRequest } from './http';
-import { parseCookies, SESSION_COOKIE } from './http';
-import { getJSON } from './store';
+import type { ApiRequest } from './http.js';
+import { parseCookies, SESSION_COOKIE } from './http.js';
+import { getJSON } from './store.js';
 
 const scrypt = (pw: string, salt: string) =>
   new Promise<Buffer>((res, rej) => scryptCb(pw, salt, 64, (e, k) => (e ? rej(e) : res(k))));

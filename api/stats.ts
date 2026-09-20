@@ -3,10 +3,10 @@
  * rather than replaces — counters take max, completedLevels unions, bestTimes take min —
  * so stale blob reads, multi-device play and cleared localStorage can never regress stats.
  */
-import type { ApiRequest, ApiResponse } from './_lib/http';
-import { methodGuard, readJson, sendJson } from './_lib/http';
-import { requireUser, userKey, type UserStats } from './_lib/auth';
-import { putJSON } from './_lib/store';
+import type { ApiRequest, ApiResponse } from './_lib/http.js';
+import { methodGuard, readJson, sendJson } from './_lib/http.js';
+import { requireUser, userKey, type UserStats } from './_lib/auth.js';
+import { putJSON } from './_lib/store.js';
 
 const num = (v: unknown, cap = 1_000_000) =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(cap, Math.floor(v)) : 0;
