@@ -245,8 +245,8 @@ export function SkyLifeLayer() {
       if (dot > 0.4) f = -1; else if (dot < -0.4) f = 1;
       flipMemo.set(b.id, f);
       let size = getSpecies(b.speciesId).size * (b.legendary ? SKY.LEGENDARY_RENDER_SCALE[b.speciesId] ?? 8 : SKY.BIRD_RENDER_SCALE);
-      if (b.state === 'captured') size *= Math.max(0.12, 1 - b.stateT * 0.9); // drawn into the ball
-      else if (b.state === 'caught') size *= 0.12;
+      if (b.state === 'captured') size *= 0.96 + Math.sin(b.stateT * 30) * 0.03; // straining, full size — like any reef catch
+      else if (b.state === 'caught') size *= Math.max(0, 1 - b.stateT / 0.45);   // pops into the ball on the verdict
       tmpM.makeTranslation(b.x, b.y + size * 0.5, b.z);
       bt.mesh.setMatrixAt(i, tmpM);
       bt.aPhase.array[i] = b.phase * 10;

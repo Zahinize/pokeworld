@@ -383,6 +383,17 @@ for (const levelId of [1, 2]) {
     }
     if (exited && reentered && !missBeforeExit) ok(`sky: ball arced through air (apex ${maxY.toFixed(1)}m) and splashed back`);
     else fail(`sky: ball arc broken (exited=${exited} reentered=${reentered} missBeforeExit=${missBeforeExit} apex=${maxY.toFixed(1)})`);
+    // a straight-up throw must reach the HIGHEST legendary body center, or throws "bounce off"
+    const balls2 = new BallSystem();
+    balls2.throw('pokeball', 0, 0.2, 0, 0, 1, 0);
+    let apex = 0;
+    for (let i = 0; i < 12 * 60 && balls2.balls.length; i++) { balls2.update(1 / 60, eco, null); apex = Math.max(apex, balls2.balls[0]?.y ?? 0); }
+    let needed = 0;
+    for (const id of ['articuno', 'lugia', 'hooh', 'yveltal']) {
+      needed = Math.max(needed, SKY.LEGENDARY_ALT[1] + SPECIES[id].size * (SKY.LEGENDARY_RENDER_SCALE[id] ?? 8) * 0.45);
+    }
+    if (apex > needed + 2) ok(`sky: straight-up apex ${apex.toFixed(0)}m clears the highest legendary body center (${needed.toFixed(0)}m)`);
+    else fail(`sky: apex ${apex.toFixed(0)}m cannot reach legendary center at ${needed.toFixed(0)}m — balls will bounce off`);
   }
 
   // full capture: Master Ball dropped onto a paddling Ducklett → skyHit → 3 shakes → skyCaught

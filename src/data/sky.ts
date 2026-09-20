@@ -13,8 +13,8 @@ export const SKY = {
   SURFACE_BOB_HZ: 0.45,
 
   // ---- Poke Balls above water ----
-  AIR_DRAG: 0.12,
-  AIR_GRAVITY: 9.0,
+  AIR_DRAG: 0.08,
+  AIR_GRAVITY: 6.6,
 
   // ---- flocks (day flyers) ----
   FLOCKS: [
@@ -39,8 +39,9 @@ export const SKY = {
   LEGENDARY_PASS_DURATION: 40,
   /** Crossings chained per sighting before it vanishes for good (~2 min in the sky). */
   LEGENDARY_PASSES: 3,
-  /** Closest-approach altitude — must dip into Poke Ball range. */
-  LEGENDARY_ALT: [22, 30] as [number, number],
+  /** Closest-approach altitude of the FEET — the body (feet + ~0.45*rendered height) must sit
+   *  inside the ball's ~42m apex, or throws top out under the bird and read as "bouncing off". */
+  LEGENDARY_ALT: [16, 24] as [number, number],
   /** Lateral closest distance to the player at the pass point. */
   LEGENDARY_PASS_OFFSET: [15, 40] as [number, number],
   LEGENDARY_SPAWN_R: 300,
