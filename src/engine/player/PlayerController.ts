@@ -3,6 +3,7 @@
  * Acceleration/inertia/damping give the "swimming, not walking" feel; camera sway is gentle.
  */
 import { GAME } from '@/data/gameConfig';
+import { SKY } from '@/data/sky';
 import { floorY } from '../world/terrain';
 import type { Obstacle } from '../world/terrain';
 
@@ -61,7 +62,9 @@ export class PlayerController {
     // Constraints
     const fy0 = floorY(this.x, this.z) + 1.2;
     if (this.y < fy0) { this.y = fy0; if (this.vy < 0) this.vy = 0; }
-    if (this.y > -1.2) { this.y = -1.2; if (this.vy > 0) this.vy = 0; }
+    // Surface: a buoyancy spring lets the swimmer break the waterline and bob there, but never fly
+    if (this.y > SKY.BUOYANCY_BAND_Y) this.vy -= (this.y - SKY.BUOYANCY_BAND_Y) * SKY.BUOYANCY_K * dt;
+    if (this.y > SKY.SURFACE_MAX_Y) { this.y = SKY.SURFACE_MAX_Y; if (this.vy > 0) this.vy = 0; }
     const r = Math.hypot(this.x, this.z);
     if (r > GAME.PLAYER_BOUNDS_RADIUS) { const f = GAME.PLAYER_BOUNDS_RADIUS / r; this.x *= f; this.z *= f; }
     for (let i = 0; i < obstacles.length; i++) {
@@ -84,6 +87,11 @@ export class PlayerController {
   /** Gentle camera sway offsets (position, roll) — subtle to avoid motion sickness. */
   sway(): { dy: number; roll: number } {
     const a = 0.035 + Math.min(0.05, this.speed * 0.006);
-    return { dy: Math.sin(this.swayT * 1.1) * a, roll: Math.sin(this.swayT * 0.7) * 0.004 };
+    // riding the swell: extra bob while the head is near the waterline
+    const surf = Math.max(0, 1 - Math.abs(this.y) * 1.1);
+    const bob = Math.sin(this.swayT * Math.PI * 2 * SKY.SURFACE_BOB_HZ) * SKY.SURFACE_BOB_AMP * surf;
+    // at the waterline the eyes ride above the swell instead of straddling the interface
+    const lift = surf * 0.34;
+    return { dy: Math.sin(this.swayT * 1.1) * a + bob + lift, roll: Math.sin(this.swayT * 0.7) * 0.004 * (1 + surf) };
   }
 }

@@ -16,4 +16,5 @@ export const BEHAVIOR_GROUPS: Record<BehaviorGroup, BehaviorGroupMeta> = {
   bottom: { id: 'bottom', label: 'Bottom Dweller', plural: 'Bottom Dwellers', icon: '🪨', description: 'Rest among the rocks and sand of the reef floor.' },
   defensive: { id: 'defensive', label: 'Defensive Fish', plural: 'Defensive Fish', icon: '🫧', description: 'Peaceful, but flee fast and hard when threatened.' },
   giant: { id: 'giant', label: 'Gentle Giant', plural: 'Gentle Giants', icon: '🐋', description: 'Huge, slow travellers of the open water.' },
+  sky: { id: 'sky', label: 'Sky Pokémon', plural: 'Sky Pokémon', icon: '🕊️', description: 'Wheels above the waves. Can be caught from the surface but never battles in the reef.' },
 };

@@ -12,6 +12,9 @@ import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
 import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
+import { SkyWorld } from './env/Sky';
+import { SkyLifeLayer } from './sky/SkyLifeLayer';
+import { SKY } from '@/data/sky';
 
 function GameLoop() {
   useFrame((_, dt) => { session.update(dt); }, -1);
@@ -79,6 +82,8 @@ export function Scene() {
         <Particles count={q.particles} />
         <Particles count={Math.round(q.particles * 0.22)} bubbles />
         <Surface />
+        <SkyWorld clouds={SKY.CLOUDS[resolveQuality(qualitySetting, isTouch)] ?? 3} />
+        <SkyLifeLayer />
         <PokemonLayer />
         <PartnerTags />
         <HealthBars />

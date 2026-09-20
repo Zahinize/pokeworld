@@ -7,6 +7,7 @@ import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
+import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
 import { randomSeed } from './rng';
@@ -27,6 +28,7 @@ import type { Entity } from './ai/types';
 import { len3 } from './ai/steering';
 import type { CurrentRun } from '@/persistence';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
+import { SKY, SKY_SPECIES_IDS } from '@/data/sky';
 
 /** Exit pointer lock if held (desktop). Safe to call anywhere. */
 function releasePointer() {
@@ -47,6 +49,7 @@ export class GameSession {
   gen: GeneratedEcosystem | null = null;
   eco: Ecosystem | null = null;
   balls = new BallSystem();
+  sky: SkyLife | null = null;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -148,6 +151,7 @@ export class GameSession {
     const ids = Array.from(new Set([
       ...this.gen.spawns.map((s) => s.speciesId),
       ...(this.level.bossPhases ?? []).flatMap((ph) => ph.bosses),
+      ...SKY_SPECIES_IDS, // the world above the waves is part of every level
     ]));
     // Release the previous dive's sheets (and any party/shiny variants) before decoding new ones —
     // otherwise the sprite cache grows across levels until it holds the entire roster.
@@ -166,6 +170,7 @@ export class GameSession {
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
+    this.sky = new SkyLife(this.seed ^ 0x51ab1e);
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
     this.timeOfDay = this.level.timeOfDay;
@@ -243,7 +248,7 @@ export class GameSession {
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
-    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null;
+    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null;
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
@@ -445,6 +450,7 @@ export class GameSession {
 
   /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
   setParty(tokens: string[]) {
+    tokens = tokens.filter((t) => !getSpecies(baseSpeciesId(t)).skyOnly); // sky Pokémon never battle in the reef
     if (!this.eco) return;
     this.party = tokens.slice(0, COMBAT.PARTY_SIZE);
     // Load the party's sheets in the background; the renderer picks them up when ready
@@ -668,7 +674,8 @@ export class GameSession {
     const p = this.player;
     eco.playerYaw = p.yaw;
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
-    this.balls.update(dt, eco);
+    this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
+    this.balls.update(dt, eco, this.sky);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
@@ -684,6 +691,7 @@ export class GameSession {
     // Events
     this.handleEcoEvents();
     this.handleBallEvents();
+    this.handleSkyEvents();
     // Throttled UI / audio / persistence
     this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
@@ -879,6 +887,67 @@ export class GameSession {
         }
         case 'caught': this.onCaught(ev.entity); break;
         case 'thrown': break;
+        case 'splash': if (ev.entering) Audio.miss(); break; // soft plop on water entry
+        case 'skyHit': {
+          Audio.ballHit();
+          this.pushFx('hit', ev.ball.x, ev.ball.y, ev.ball.z, getSpecies(ev.speciesId).size);
+          break;
+        }
+        case 'skyCaught': this.onSkyCaught(ev.speciesId, ev.ball); break;
+        case 'skyEscaped': {
+          const sp = getSpecies(ev.speciesId);
+          Audio.escape(); this.pushFx('escape', ev.ball.x, ev.ball.y, ev.ball.z, sp.size);
+          store.pushToast({ kind: 'miss', title: `${sp.name} broke free and fled!`, body: `Catch chance was ${Math.round(ev.p * 100)}%`, speciesId: sp.id, ttl: 3 });
+          break;
+        }
+      }
+    }
+  }
+
+  /** A sky Pokémon joins the Collection — never the reef party, never mission credit. */
+  private onSkyCaught(speciesId: string, at: { x: number; y: number; z: number }) {
+    const store = useStore.getState();
+    const sp = getSpecies(speciesId);
+    Audio.catchSuccess();
+    Audio.playCry(sp.dexId, 0.5, 0.25);
+    this.pushFx('catch', at.x, at.y, at.z, sp.size);
+    store.recordCatch(sp.id, this.level.id);
+    store.setLastCatch({ speciesId: sp.id, missionTarget: false, objectiveLabel: undefined });
+    const legendary = sp.rarity === 'legendary';
+    store.pushToast({
+      kind: 'catch',
+      title: legendary ? `LEGENDARY! Caught ${sp.name}!` : `Caught ${sp.name}!`,
+      body: 'Sky Pokémon — collection only',
+      speciesId: sp.id, missionTarget: false, ttl: legendary ? 6 : 4,
+    });
+  }
+
+  private handleSkyEvents() {
+    if (!this.sky) return;
+    const store = useStore.getState();
+    const p = this.player;
+    for (const ev of this.sky.drainEvents()) {
+      switch (ev.type) {
+        case 'cry': {
+          // flock chatter only carries when the player is near the surface
+          if (p.y > -6) {
+            const d = len3(ev.x - p.x, ev.y - p.y, ev.z - p.z);
+            const vol = SKY.FLOCK_CRY_VOLUME * Math.max(0, 1 - d / 140);
+            if (vol > 0.01) Audio.playCry(ev.dexId, vol);
+          }
+          break;
+        }
+        case 'legendaryEnter': {
+          const sp = getSpecies(ev.speciesId);
+          Audio.playCry(sp.dexId, 0.55, 0.3); // its cry rolls across the water
+          store.pushToast({ kind: 'event', title: `A wild ${sp.name} crosses the sky!`, body: "Surface and look up — it won't stay long…", speciesId: sp.id, ttl: 6 });
+          break;
+        }
+        case 'legendaryVanish': {
+          const sp = getSpecies(ev.speciesId);
+          store.pushToast({ kind: 'info', title: `${sp.name} vanished beyond the horizon`, body: 'Legends never linger.', speciesId: sp.id, ttl: 4 });
+          break;
+        }
       }
     }
   }
@@ -1043,3 +1112,5 @@ function catchPhaseDoneUpTo(m: MissionState, wave: number): boolean {
 }
 
 export const session = new GameSession();
+// E2E / tuning hook: `pw.timeOfDay = 0.72`, `pw.sky.forceNextLegendary = 'lugia'`, …
+if (typeof window !== 'undefined' && (import.meta as any).env?.DEV) (window as any).pw = session;

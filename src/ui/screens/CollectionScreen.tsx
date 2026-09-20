@@ -86,8 +86,8 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     <dt>First captured</dt><dd>{entry?.firstCaughtLevel ? `Level ${entry.firstCaughtLevel}` : '—'}</dd>
                     {s.guardedBy && <><dt>Guardian</dt><dd>{s.guardedBy.map((g) => SPECIES[g].name).join(' / ')}</dd></>}
                     {s.guards && <><dt>Guards</dt><dd>{s.guards.map((g) => SPECIES[g].name).join(', ')}</dd></>}
-                    <dt>Habitat</dt><dd>{s.habitat.map((h) => ZONES[h].label).join(', ')}</dd>
-                    <dt>Depth</dt><dd>{s.depth[0]}–{s.depth[1]} m</dd>
+                    <dt>Habitat</dt><dd>{s.habitatLabel ?? s.habitat.map((h) => ZONES[h].label).join(', ')}</dd>
+                    <dt>Depth</dt><dd>{s.skyOnly ? 'Open sky' : `${s.depth[0]}–${s.depth[1]} m`}</dd>
                     <dt>Activity</dt><dd>{s.activity === 'both' ? 'Day & night' : s.activity}</dd>
                     {s.prey && <><dt>Prefers</dt><dd>{s.prey.map((p) => SPECIES[p]?.name).filter(Boolean).join(', ')}</dd></>}
                   </dl>
@@ -124,7 +124,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     );
                   })()}
                 </>
-              ) : <p className="muted">You haven't spotted this Pokémon yet. Explore {s.habitat.map((h) => ZONES[h].label).join(' or ')}.</p>}
+              ) : <p className="muted">You haven't spotted this Pokémon yet. Explore {s.habitatLabel ?? s.habitat.map((h) => ZONES[h].label).join(' or ')}.</p>}
             </div>
           </div>
         </div>

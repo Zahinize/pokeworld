@@ -480,6 +480,72 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 10, atk: 55, def: 25, spAtk: 35, spDef: 25, speed: 95 },
     blurb: 'A colony of pale periscopes poking from the sand, all vanishing the instant one flinches.',
   },
+
+  // ---------- Above the waves: sky Pokémon (catchable trophies, never reef companions) ----------
+  wingull: {
+    id: 'wingull', name: 'Wingull', dexId: 278, sprite: SPRITE(278), stage: 0,
+    primary: 'sky', secondary: [], skyOnly: true, habitatLabel: 'Above the Waves',
+    size: 0.6, speed: 7, burst: 9, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [4, 6], curiosity: 0.4, fear: 0.5, aggression: 0, activity: 'day',
+    rarity: 'common', catchBase: 1.2, fallbackStats: { hp: 40, atk: 30, def: 30, spAtk: 55, spDef: 30, speed: 85 },
+    blurb: 'Rides the sea breeze in chattering flocks, wingtips skimming the spray.',
+  },
+  pelipper: {
+    id: 'pelipper', name: 'Pelipper', dexId: 279, sprite: SPRITE(279), stage: 1,
+    primary: 'sky', secondary: [], skyOnly: true, habitatLabel: 'Above the Waves',
+    size: 1.2, speed: 5.5, burst: 8, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [2, 3], curiosity: 0.4, fear: 0.3, aggression: 0, activity: 'day',
+    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 60, atk: 50, def: 100, spAtk: 95, spDef: 70, speed: 65 },
+    blurb: 'The reef\u2019s mail carrier. Scoops the waves mid-flight and hardly ever lands.',
+  },
+  ducklett: {
+    id: 'ducklett', name: 'Ducklett', dexId: 580, sprite: SPRITE(580), stage: 0,
+    primary: 'sky', secondary: [], skyOnly: true, habitatLabel: 'On the Waves',
+    size: 0.5, speed: 1.2, burst: 3, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [3, 5], curiosity: 0.6, fear: 0.5, aggression: 0, activity: 'day',
+    rarity: 'common', catchBase: 1.3, fallbackStats: { hp: 62, atk: 44, def: 50, spAtk: 44, spDef: 50, speed: 55 },
+    blurb: 'A little paddling flotilla, bobbing over the reef without a care below.',
+  },
+  swanna: {
+    id: 'swanna', name: 'Swanna', dexId: 581, sprite: SPRITE(581), stage: 1,
+    primary: 'sky', secondary: [], skyOnly: true, habitatLabel: 'Above the Waves',
+    size: 1.3, speed: 6, burst: 9, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [3, 4], curiosity: 0.3, fear: 0.4, aggression: 0, activity: 'day',
+    rarity: 'uncommon', catchBase: 0.8, fallbackStats: { hp: 75, atk: 87, def: 63, spAtk: 87, spDef: 63, speed: 98 },
+    blurb: 'Elegant formations trace slow arcs over the water at dawn and dusk.',
+  },
+  articuno: {
+    id: 'articuno', name: 'Articuno', dexId: 144, sprite: SPRITE(144), stage: 2,
+    primary: 'sky', secondary: ['legendary'], skyOnly: true, habitatLabel: 'Far Above the Waves',
+    size: 1.7, speed: 12, burst: 14, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [1, 1], curiosity: 0.1, fear: 0, aggression: 0, activity: 'day',
+    rarity: 'legendary', catchBase: 0.436, fallbackStats: { hp: 90, atk: 85, def: 100, spAtk: 95, spDef: 125, speed: 85 },
+    blurb: 'A shimmer of frost crossing the noon sky. Blink and the legend is gone.',
+  },
+  lugia: {
+    id: 'lugia', name: 'Lugia', dexId: 249, sprite: SPRITE(249), stage: 2,
+    primary: 'sky', secondary: ['legendary'], skyOnly: true, habitatLabel: 'Far Above the Waves',
+    size: 5.2, speed: 12, burst: 14, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [1, 1], curiosity: 0.1, fear: 0, aggression: 0, activity: 'day',
+    rarity: 'legendary', catchBase: 0.436, fallbackStats: { hp: 106, atk: 90, def: 130, spAtk: 90, spDef: 154, speed: 110 },
+    blurb: 'The guardian of the seas, glimpsed in gold-dusted silence far overhead.',
+  },
+  hooh: {
+    id: 'hooh', name: 'Ho-Oh', dexId: 250, sprite: SPRITE(250), stage: 2,
+    primary: 'sky', secondary: ['legendary'], skyOnly: true, habitatLabel: 'Far Above the Waves',
+    size: 3.8, speed: 12, burst: 14, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [1, 1], curiosity: 0.1, fear: 0, aggression: 0, activity: 'day',
+    rarity: 'legendary', catchBase: 0.436, fallbackStats: { hp: 106, atk: 130, def: 90, spAtk: 110, spDef: 154, speed: 90 },
+    blurb: 'Flies into the sunset trailing embers of gold. Those who see it are blessed.',
+  },
+  yveltal: {
+    id: 'yveltal', name: 'Yveltal', dexId: 717, sprite: SPRITE(717), stage: 2,
+    primary: 'sky', secondary: ['legendary'], skyOnly: true, habitatLabel: 'Far Above the Waves',
+    size: 5.8, speed: 12, burst: 14, depth: [0, 0], habitat: ['openReef'],
+    groupSize: [1, 1], curiosity: 0.1, fear: 0, aggression: 0, activity: 'night',
+    rarity: 'legendary', catchBase: 0.436, fallbackStats: { hp: 126, atk: 131, def: 95, spAtk: 131, spDef: 98, speed: 99 },
+    blurb: 'A wing-shaped shadow against the stars, wrapped in violet murk.',
+  },
 };
 
 export const SPECIES_LIST: SpeciesConfig[] = Object.values(SPECIES);

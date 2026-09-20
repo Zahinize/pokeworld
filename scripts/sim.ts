@@ -300,5 +300,121 @@ for (const levelId of [1, 2]) {
   }
 }
 
+// ---- Sky World: flocks, legendaries, air-regime balls, the legendary catch cap ----
+{
+  const { SkyLife } = await import('@/engine/sky/SkyLife');
+  const { lightingAt } = await import('@/engine/world/lighting');
+  const { BallSystem } = await import('@/engine/sim/balls');
+  const { catchProbabilityFor } = await import('@/engine/sim/catching');
+  const { SKY } = await import('@/data/sky');
+
+  // catch math first — the product rule: sky legendaries are NEVER certain
+  const pMaster = catchProbabilityFor(SPECIES.lugia, 1, 'masterball');
+  const pPoke = catchProbabilityFor(SPECIES.lugia, 1, 'pokeball');
+  const pWingull = catchProbabilityFor(SPECIES.wingull, 1, 'masterball');
+  if (pMaster === SKY.LEGENDARY_CATCH_CAP) ok(`sky legendary Master Ball capped at ${pMaster} (expected ~${Math.round(1 / pMaster)} balls per catch)`);
+  else fail(`sky legendary Master Ball p = ${pMaster}, want ${SKY.LEGENDARY_CATCH_CAP}`);
+  if (pPoke > 0.06 && pPoke < 0.12) ok(`sky legendary Poke Ball p ≈ ${(pPoke * 100).toFixed(1)}%`);
+  else fail(`sky legendary Poke Ball p = ${pPoke}, want ~0.09`);
+  if (pWingull === 1) ok('regular sky bird keeps Master Ball certainty');
+  else fail(`wingull Master Ball p = ${pWingull}, want 1`);
+
+  // SkyLife day → dusk → dawn cycle
+  const sky = new SkyLife(1234);
+  const stepSky = (t: number, seconds: number) => {
+    const L = lightingAt(t);
+    for (let i = 0; i < seconds * 60; i++) sky.update(1 / 60, L, t, 0, 0);
+  };
+  const t0 = performance.now();
+  stepSky(0.4, 120); // day
+  const dayMs = (performance.now() - t0) / (120 * 60);
+  const flying = sky.birds.filter((b) => b.state === 'flying').length;
+  const swimming = sky.birds.filter((b) => b.state === 'swimming').length;
+  const nan = sky.birds.filter((b) => !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.z)).length;
+  const outOfBounds = sky.birds.filter((b) => b.state !== 'gone' && (Math.hypot(b.x, b.z) > SKY.EXIT_DESPAWN_R + 5 || b.y < -1 || b.y > 130)).length;
+  if (nan) fail(`sky: ${nan} NaN birds`); else ok('sky: no NaN birds after 2min of day');
+  if (flying >= 9) ok(`sky: ${flying} birds circling by day, ${swimming} Ducklett paddling`); else fail(`sky: only ${flying} flying by day`);
+  if (outOfBounds) fail(`sky: ${outOfBounds} birds out of bounds`); else ok('sky: all birds bounded');
+  if (dayMs < 0.02) ok(`sky: ${dayMs.toFixed(4)} ms/step (< 0.02 budget)`); else fail(`sky: ${dayMs.toFixed(4)} ms/step exceeds 0.02`);
+  stepSky(0.95, 180); // deep night: everyone flies home
+  const atNight = sky.birds.filter((b) => (b.state === 'flying' || b.state === 'swimming') && !b.legendary).length;
+  if (atNight === 0) ok('sky: flocks and Ducklett all gone by night'); else fail(`sky: ${atNight} birds still out at night`);
+  stepSky(0.4, 120); // dawn: they return
+  const returned = sky.birds.filter((b) => b.state === 'flying').length;
+  if (returned >= 9) ok(`sky: ${returned} birds returned at dawn`); else fail(`sky: only ${returned} birds returned at dawn`);
+
+  // forced legendary: enter → catchable pass → vanish
+  sky.forceNextLegendary = 'lugia';
+  let entered = false, vanished = false, minPass = Infinity, passAlt = 0;
+  {
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 90 * 60 && !vanished; i++) {
+      sky.update(1 / 60, L, 0.4, 0, 0);
+      for (const ev of sky.drainEvents()) {
+        if (ev.type === 'legendaryEnter') entered = true;
+        if (ev.type === 'legendaryVanish') vanished = true;
+      }
+      if (sky.legendaryIdx >= 0) {
+        const b = sky.birds[sky.legendaryIdx];
+        const d = Math.hypot(b.x, b.z);
+        if (d < minPass) { minPass = d; passAlt = b.y; }
+      }
+    }
+  }
+  if (entered && vanished) ok(`sky: forced Lugia completed enter→vanish (closest pass ${minPass.toFixed(0)}m at alt ${passAlt.toFixed(0)}m)`);
+  else fail(`sky: legendary lifecycle incomplete (entered=${entered} vanished=${vanished})`);
+  if (minPass < SKY.LEGENDARY_PASS_OFFSET[1] + 12 && passAlt < SKY.LEGENDARY_ALT[1] + 8) ok('sky: legendary dipped into throwing range');
+  else fail(`sky: pass unreachable (${minPass.toFixed(0)}m at alt ${passAlt.toFixed(0)}m)`);
+
+  // air-regime ball: up, out of the water, arc, splash back — never an instant surface miss
+  {
+    const gen = generateEcosystem(getLevel(1), 7);
+    const eco = new Ecosystem(gen, hp);
+    const balls = new BallSystem();
+    balls.throw('pokeball', 0, -0.5, 0, 0.25, 0.95, 0);
+    let exited = false, reentered = false, missBeforeExit = false, maxY = -Infinity;
+    for (let i = 0; i < 12 * 60 && balls.balls.length; i++) {
+      balls.update(1 / 60, eco, null);
+      maxY = Math.max(maxY, balls.balls[0]?.y ?? maxY);
+      for (const ev of balls.drainEvents()) {
+        if (ev.type === 'splash') { if (!ev.entering) exited = true; else reentered = true; }
+        if (ev.type === 'miss' && !exited) missBeforeExit = true;
+      }
+    }
+    if (exited && reentered && !missBeforeExit) ok(`sky: ball arced through air (apex ${maxY.toFixed(1)}m) and splashed back`);
+    else fail(`sky: ball arc broken (exited=${exited} reentered=${reentered} missBeforeExit=${missBeforeExit} apex=${maxY.toFixed(1)})`);
+  }
+
+  // full capture: Master Ball dropped onto a paddling Ducklett → skyHit → 3 shakes → skyCaught
+  {
+    const sky2 = new SkyLife(99);
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 10 * 60; i++) sky2.update(1 / 60, L, 0.4, 0, 0); // let fades settle
+    const bird = sky2.birds.find((b) => b.state === 'swimming' && b.speciesId === 'ducklett' && b.fade > 0.9);
+    if (!bird) fail('sky: no ducklett to test capture on');
+    else {
+      const gen = generateEcosystem(getLevel(1), 8);
+      const eco = new Ecosystem(gen, hp);
+      const balls = new BallSystem();
+      let hit = false, caught = false;
+      for (let i = 0; i < 30 * 60 && !caught; i++) {
+        if (!hit && balls.balls.length === 0) balls.throw('masterball', bird.x, bird.y + 2.5, bird.z, 0, -1, 0, 14);
+        sky2.update(1 / 60, L, 0.4, 0, 0);
+        balls.update(1 / 60, eco, sky2);
+        for (const ev of balls.drainEvents()) {
+          if (ev.type === 'skyHit') hit = true;
+          if (ev.type === 'skyCaught') caught = true;
+          if (ev.type === 'skyEscaped') fail('sky: Master Ball escaped a wingull?!');
+        }
+      }
+      if (hit && caught) ok('sky: ball→bird capture pipeline (skyHit → shakes at the waterline → skyCaught)');
+      else fail(`sky: capture pipeline broken (hit=${hit} caught=${caught})`);
+      const b2 = sky2.birds.find((b) => b.id === bird.id)!;
+      if (b2.state === 'caught' || b2.state === 'gone') ok('sky: caught bird retired from the pool');
+      else fail(`sky: caught bird still ${b2.state}`);
+    }
+  }
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');
