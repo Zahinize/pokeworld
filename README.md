@@ -59,15 +59,19 @@ The `api/` folder holds Vercel Node functions for signup/login, stats sync and t
 leaderboard. User data is stored as JSON documents — plain files under `data/` in local
 dev, **Vercel Blob** in production. One-time setup on the Vercel dashboard:
 
-1. **Storage → Create Database → Blob** on this project. Vercel injects
-   `BLOB_READ_WRITE_TOKEN` automatically.
+1. **Storage → Create Database → Blob** on this project and connect it to Production.
+   Modern stores connect via OIDC: Vercel injects `BLOB_STORE_ID` and the runtime
+   provides `VERCEL_OIDC_TOKEN` — no read-write token needed (a classic
+   `BLOB_READ_WRITE_TOKEN` also works if you prefer one). All documents are written
+   with `access: 'private'` — they are never publicly fetchable.
 2. **Settings → Environment Variables**: add `SESSION_SECRET` = 32+ random characters
    (e.g. `openssl rand -hex 32`). This signs session cookies AND derives the unguessable
    blob keys for user documents — never rotate it casually (existing sessions and doc
    keys derive from it).
-3. Redeploy. Verify: sign up in the deployed app, then check Storage → Blob — user files
-   appear as `users/<64-hex>.json` (never a guessable username), and the session cookie
-   is `HttpOnly; Secure; SameSite=Lax`.
+3. Redeploy (env/storage connections only apply to new deployments). Verify: sign up in
+   the deployed app, then check Storage → Blob — user files appear as
+   `users/<64-hex>.json` (never a guessable username), and the session cookie is
+   `HttpOnly; Secure; SameSite=Lax`.
 
 Local dev needs nothing: `npm run dev` serves `/api/*` through a Vite middleware and
 writes JSON files to `./data` (gitignored). `npm run check:api` runs the API test suite.
