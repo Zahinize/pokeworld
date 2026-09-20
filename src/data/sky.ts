@@ -6,6 +6,9 @@ export const SKY = {
   // ---- player surfacing ----
   /** Hard cap: eye height above the waterline. The buoyancy spring makes it unreachable in practice. */
   SURFACE_MAX_Y: 1.1,
+  /** Once the player swims within this depth of the surface, they float up and stay — no key-holding. */
+  FLOAT_ZONE_Y: -1.6,
+  FLOAT_K: 3.5,
   /** Above this, a downward spring pulls the swimmer back to the waterline (no flying). */
   BUOYANCY_BAND_Y: 0.0,
   BUOYANCY_K: 6.0,
@@ -35,13 +38,14 @@ export const SKY = {
   LEGENDARY_ROLL_PERIOD: 40,
   LEGENDARY_CHANCE: 0.07,
   LEGENDARY_COOLDOWN: 240,
-  /** Seconds per horizon-to-horizon crossing — a fast, purposeful sweep. */
-  LEGENDARY_PASS_DURATION: 40,
+  /** Seconds per horizon-to-horizon crossing — a purposeful glide with time to line up throws. */
+  LEGENDARY_PASS_DURATION: 66,
   /** Crossings chained per sighting before it vanishes for good (~2 min in the sky). */
   LEGENDARY_PASSES: 3,
   /** Closest-approach altitude of the FEET — the body (feet + ~0.45*rendered height) must sit
-   *  inside the ball's ~42m apex, or throws top out under the bird and read as "bouncing off". */
-  LEGENDARY_ALT: [16, 24] as [number, number],
+   *  inside the ball's ~42m apex, or throws top out under the bird and read as "bouncing off".
+   *  Low passes skim near the waves, right into Poke Ball and companion-duel range. */
+  LEGENDARY_ALT: [8, 20] as [number, number],
   /** Lateral closest distance to the player at the pass point. */
   LEGENDARY_PASS_OFFSET: [15, 40] as [number, number],
   LEGENDARY_SPAWN_R: 300,

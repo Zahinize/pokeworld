@@ -64,6 +64,8 @@ export class PlayerController {
     if (this.y < fy0) { this.y = fy0; if (this.vy < 0) this.vy = 0; }
     // Surface: a buoyancy spring lets the swimmer break the waterline and bob there, but never fly
     if (this.y > SKY.BUOYANCY_BAND_Y) this.vy -= (this.y - SKY.BUOYANCY_BAND_Y) * SKY.BUOYANCY_K * dt;
+    // near the surface the wetsuit floats: bob at the waterline hands-free (a held dive key still wins)
+    else if (this.y > SKY.FLOAT_ZONE_Y && input.up >= 0) this.vy += (SKY.BUOYANCY_BAND_Y - this.y) * SKY.FLOAT_K * dt;
     if (this.y > SKY.SURFACE_MAX_Y) { this.y = SKY.SURFACE_MAX_Y; if (this.vy > 0) this.vy = 0; }
     const r = Math.hypot(this.x, this.z);
     if (r > GAME.PLAYER_BOUNDS_RADIUS) { const f = GAME.PLAYER_BOUNDS_RADIUS / r; this.x *= f; this.z *= f; }
