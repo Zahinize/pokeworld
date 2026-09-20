@@ -64,11 +64,13 @@ export const SKY = {
   /** The whole sky group hides when the camera sinks below this. */
   SKY_VISIBLE_CAM_Y: -8,
   CLOUDS: { high: 5, medium: 4, low: 2 } as Record<string, number>,
+  /** Horizon landmasses: footprint radius ~90*s, peaks ~46*s. Kept beyond the 140m swim
+   *  bound and inside the 420m far plane. kind picks the silhouette. */
   ISLANDS: [
-    { angle: 0.45, r: 290, s: 1.0 },
-    { angle: 2.3, r: 320, s: 1.5 },
-    { angle: 4.4, r: 265, s: 0.8 },
-  ],
+    { angle: 0.45, r: 285, s: 1.0, kind: 'peak', seed: 11 },
+    { angle: 2.3, r: 300, s: 1.3, kind: 'plateau', seed: 23 },
+    { angle: 4.4, r: 268, s: 0.8, kind: 'ridge', seed: 37 },
+  ] as { angle: number; r: number; s: number; kind: 'peak' | 'plateau' | 'ridge'; seed: number }[],
 } as const;
 
 /** Species that live above the waves (derived flag lives on SpeciesConfig.skyOnly). */
