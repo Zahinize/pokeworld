@@ -20,7 +20,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const savedParty = useStore((s) => s.save.party);
   const setSavedParty = useStore((s) => s.setSavedParty);
   // Regular roster vs Boss Pokémon: bosses (and their shiny forms) are trophies — you may field ONE at a time.
-  const caught = useMemo(() => SPECIES_LIST.filter((sp) => !sp.bossOnly && (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
+  const caught = useMemo(() => SPECIES_LIST.filter((sp) => !sp.bossOnly && !sp.skyOnly && (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => b.stage - a.stage || a.dexId - b.dexId), [collection]);
   const bossTokens = useMemo(() => {
     const out: string[] = [];
     for (const sp of SPECIES_LIST) {
@@ -31,7 +31,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
     return out;
   }, [collection]);
   const isBossToken = (t: string) => !!SPECIES[baseSpeciesId(t)]?.bossOnly;
-  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
+  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0 && !SPECIES[baseSpeciesId(t)]?.skyOnly).slice(0, COMBAT.PARTY_SIZE) : []));
   const toggleParty = (t: string) => {
     Audio.uiClick();
     setParty((prev) => {

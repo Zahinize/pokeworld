@@ -92,6 +92,11 @@ export const MOVES: Record<string, MoveConfig> = {
   heavySlam: M({ id: 'heavySlam', name: 'Heavy Slam', desc: 'Drops its enormous bulk on the target, sometimes stunning it.', kind: 'damage', category: 'physical', power: 85, cooldown: 5, range: 3.5, style: 'melee', color: '#94a3b8', effect: { type: 'stun', magnitude: 1, duration: 1.5, chance: 0.2 } }),
   muddyWater: M({ id: 'muddyWater', name: 'Muddy Water', desc: 'A churning torrent of mud and water blasted at the target.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 11, style: 'jet', color: '#92764e', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.2 } }),
   crabhammer: M({ id: 'crabhammer', name: 'Crabhammer', desc: 'Slams down a massive pincer like a war hammer.', kind: 'damage', category: 'physical', power: 90, cooldown: 5, range: 2.5, style: 'melee', color: '#fb923c' }),
+  // Sky-Pokémon kits (they never battle in the reef; numbers clone already-validated profiles)
+  gust: M({ id: 'gust', name: 'Gust', desc: 'Whips up a sharp squall of wind.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 10, style: 'ring', color: '#e2e8f0' }),
+  aeroblast: M({ id: 'aeroblast', name: 'Aeroblast', desc: 'A vortex of compressed air fired like a cannon.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 14, style: 'beam', color: '#bfefff', chargeTime: 0.4 }),
+  sacredFire: M({ id: 'sacredFire', name: 'Sacred Fire', desc: 'Mystical golden flames that purify what they touch.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 12, style: 'beam', color: '#ffb27a' }),
+  oblivionWing: M({ id: 'oblivionWing', name: 'Oblivion Wing', desc: 'A crimson beam that drinks the life it strikes.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 13, style: 'beam', color: '#c026d3' }),
   // ---- utility ----
   supersonic: M({ id: 'supersonic', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
   supersonicSlow: M({ id: 'supersonicSlow', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
@@ -174,6 +179,15 @@ export const SPECIES_MOVES: Record<string, [string, string]> = {
   bruxish: ['crunch', 'psychic'],
   basculegion: ['waveCrash', 'crunch'],
   wiglett: ['waterGun', 'mudShot'],
+  // sky Pokémon (collection-only; kits exist for the audits and the Collection cards)
+  wingull: ['gust', 'wingAttack'],
+  pelipper: ['airSlash', 'gust'],
+  ducklett: ['wingAttack', 'bubble'],
+  swanna: ['airSlash', 'wingAttack'],
+  articuno: ['iceBeam', 'gust'],
+  lugia: ['aeroblast', 'airSlash'],
+  hooh: ['sacredFire', 'wingAttack'],
+  yveltal: ['oblivionWing', 'wingAttack'],
 };
 
 /** Companion replacements: species whose wild kit carries a utility swap it for this damage move. */

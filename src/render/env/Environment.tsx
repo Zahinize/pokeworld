@@ -27,19 +27,32 @@ vec3 applyFog(vec3 col, float depth){ float f = 1.0 - exp(-uFogDensity*uFogDensi
 
 // ------------------------------------------------------------------------------------------------ Lighting
 
+const WHITE = new THREE.Color('#ffffff');
+const smoothstep01 = (a: number, b: number, x: number) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
 export function SceneLighting() {
   const sun = useRef<THREE.DirectionalLight>(null);
   const amb = useRef<THREE.AmbientLight>(null);
   const hemi = useRef<THREE.HemisphereLight>(null);
   const { scene } = useThree();
   const fog = useMemo(() => new THREE.FogExp2('#1f8fd6', 0.018), []);
+  const bg = useMemo(() => new THREE.Color(), []);
   useEffect(() => { scene.fog = fog; return () => { scene.fog = null; }; }, [scene, fog]);
-  useFrame(() => {
+  useFrame((state) => {
     const L = session.lighting;
-    fog.color.copy(L.sky); fog.density = L.fogDensity;
-    scene.background = L.sky;
-    if (sun.current) { sun.current.intensity = L.sunIntensity; sun.current.color.copy(L.sun); }
-    if (amb.current) { amb.current.intensity = L.ambient; amb.current.color.copy(L.sky).lerp(new THREE.Color('#ffffff'), 0.5); }
+    // Crossing the waterline swaps the whole atmosphere: dense tinted water fog → thin air haze.
+    const above = smoothstep01(-0.6, 0.3, state.camera.position.y);
+    fog.color.copy(L.sky).lerp(L.skyHorizon, above);
+    fog.density = L.fogDensity + (L.airFogDensity - L.fogDensity) * above;
+    scene.background = bg.copy(L.sky).lerp(L.skyHorizon, above);
+    if (sun.current) {
+      sun.current.intensity = L.sunIntensity;
+      sun.current.color.copy(L.sun);
+      // above water the light tracks the analytic sun (moon at night) for coherent shading
+      const d = L.sunElevation > -0.05 ? L.sunDir : L.moonDir;
+      sun.current.position.set(30 + (d.x * 80 - 30) * above, 80 + (Math.max(0.15, d.y) * 80 - 80) * above, 10 + (d.z * 80 - 10) * above);
+    }
+    if (amb.current) { amb.current.intensity = L.ambient; amb.current.color.copy(L.sky).lerp(WHITE, 0.5); }
     if (hemi.current) { hemi.current.intensity = L.ambient * 0.8; hemi.current.color.copy(L.sky); hemi.current.groundColor.copy(L.deep); }
   });
   return (
@@ -57,18 +70,68 @@ export function WaterDome() {
   const ref = useRef<THREE.Mesh>(null);
   const mat = useMemo(() => new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { uSky: { value: new THREE.Color() }, uDeep: { value: new THREE.Color() }, uTime: { value: 0 }, uCamY: { value: -10 } },
+    uniforms: {
+      uSky: { value: new THREE.Color() }, uDeep: { value: new THREE.Color() }, uTime: { value: 0 }, uCamY: { value: -10 },
+      uSkyHigh: { value: new THREE.Color() }, uSkyHorizon: { value: new THREE.Color() }, uSeaFar: { value: new THREE.Color() },
+      uCelestial: { value: new THREE.Color() }, uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uMoonDir: { value: new THREE.Vector3(0, -1, 0) },
+      uStarI: { value: 0 }, uEvening: { value: 0 }, uSunI: { value: 1 },
+    },
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `
-      uniform vec3 uSky, uDeep; uniform float uTime, uCamY; varying vec3 vDir;
+      uniform vec3 uSky, uDeep, uSkyHigh, uSkyHorizon, uSeaFar, uCelestial, uSunDir, uMoonDir;
+      uniform float uTime, uCamY, uStarI, uEvening, uSunI;
+      varying vec3 vDir;
+      float hash13(vec3 p){ p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
       void main(){
-        float up = clamp(vDir.y, -1.0, 1.0);
+        vec3 dir = normalize(vDir);
+        float up = clamp(dir.y, -1.0, 1.0);
+
+        // ---------- underwater view (unchanged look) ----------
         float depthK = clamp(-uCamY / 60.0, 0.0, 1.0);
-        vec3 top = uSky * (1.35 - depthK * 0.5);
-        vec3 mid = uSky;
-        vec3 col = up > 0.0 ? mix(mid, top, pow(up, 0.8)) : mix(mid, uDeep, pow(-up, 0.6));
-        // faint surface shimmer when looking up
-        col += top * 0.12 * pow(max(0.0, up), 6.0) * (0.6 + 0.4 * sin(uTime * 1.7 + vDir.x * 14.0) * sin(uTime * 1.3 + vDir.z * 11.0));
+        vec3 topW = uSky * (1.35 - depthK * 0.5);
+        vec3 colWater = up > 0.0 ? mix(uSky, topW, pow(up, 0.8)) : mix(uSky, uDeep, pow(-up, 0.6));
+        colWater += topW * 0.12 * pow(max(0.0, up), 6.0) * (0.6 + 0.4 * sin(uTime * 1.7 + dir.x * 14.0) * sin(uTime * 1.3 + dir.z * 11.0));
+
+        // ---------- open sky ----------
+        vec3 colSky = mix(uSkyHorizon, uSkyHigh, pow(max(up, 0.0), 0.55));
+        // dusk band: molten gold hugging the horizon
+        colSky = mix(colSky, vec3(1.0, 0.78, 0.42), uEvening * pow(max(0.0, 1.0 - up * 6.0), 3.0) * step(0.0, up) * 0.8);
+        // sun: hot disc + atmospheric glow (only while it is up)
+        float dSun = dot(dir, uSunDir);
+        if (uSunDir.y > -0.08) {
+          float disc = smoothstep(0.99965, 0.99995, dSun);
+          float glow = pow(max(dSun, 0.0), 160.0) * 0.7 + pow(max(dSun, 0.0), 12.0) * 0.12;
+          colSky += uCelestial * (disc * 4.0 + glow) * min(uSunI, 1.6);
+        }
+        // moon: crisp silver disc + cool halo, riding out the night
+        float dMoon = dot(dir, uMoonDir);
+        if (uStarI > 0.01 && uMoonDir.y > 0.0) {
+          float mDisc = smoothstep(0.99975, 0.99993, dMoon);
+          float mGlow = pow(max(dMoon, 0.0), 220.0) * 0.5;
+          colSky += vec3(0.81, 0.85, 0.92) * (mDisc * 2.6 + mGlow) * uStarI;
+        }
+        // stars: a sparse scatter of true points — few of them, each its own size and brightness
+        if (uStarI > 0.01 && up > 0.02) {
+          vec3 cf = dir * 60.0;
+          vec3 cell = floor(cf);
+          float h = hash13(cell);
+          if (h > 0.99) {
+            // one star per lit cell, offset from the cell center so the grid never shows
+            vec3 sp2 = cell + 0.5 + 0.36 * (vec3(hash13(cell + 7.1), hash13(cell + 13.7), hash13(cell + 29.3)) - 0.5);
+            float dd = length(cf - sp2);
+            float sz = mix(0.06, 0.30, pow(hash13(cell + 3.3), 2.0));   // mostly small, a few big
+            float bright = mix(0.5, 1.6, hash13(cell + 5.5));
+            float tw = 0.65 + 0.35 * sin(uTime * (0.8 + h * 30.0) + h * 40.0);
+            float star = smoothstep(sz, 0.0, dd) * bright * tw;
+            colSky += vec3(0.9, 0.94, 1.0) * star * uStarI * smoothstep(0.02, 0.12, up);
+          }
+        }
+        // below the horizon (still above water): the sea stretching away
+        vec3 colAbove = up >= 0.0 ? colSky : mix(uSkyHorizon, uSeaFar, smoothstep(0.0, 0.18, -up));
+
+        // camera side picks the world; the narrow blend hides the swap while the eye crosses
+        float aboveK = smoothstep(-0.35, 0.25, uCamY);
+        vec3 col = mix(colWater, colAbove, aboveK);
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -76,15 +139,18 @@ export function WaterDome() {
   }), []);
   useFrame((state) => {
     const L = session.lighting;
-    mat.uniforms.uSky.value.copy(L.sky); mat.uniforms.uDeep.value.copy(L.deep);
-    mat.uniforms.uTime.value = state.clock.elapsedTime;
-    mat.uniforms.uCamY.value = state.camera.position.y;
+    const u = mat.uniforms;
+    u.uSky.value.copy(L.sky); u.uDeep.value.copy(L.deep);
+    u.uSkyHigh.value.copy(L.skyHigh); u.uSkyHorizon.value.copy(L.skyHorizon); u.uSeaFar.value.copy(L.seaFar);
+    u.uCelestial.value.copy(L.celestial); u.uSunDir.value.copy(L.sunDir); u.uMoonDir.value.copy(L.moonDir);
+    u.uStarI.value = L.starIntensity; u.uEvening.value = L.eveningness; u.uSunI.value = L.sunIntensity;
+    u.uTime.value = state.clock.elapsedTime;
+    u.uCamY.value = state.camera.position.y;
     ref.current?.position.copy(state.camera.position);
   });
+  useEffect(() => () => mat.dispose(), [mat]);
   return <mesh ref={ref} material={mat} renderOrder={-10} frustumCulled={false}><sphereGeometry args={[380, 24, 16]} /></mesh>;
 }
-
-// ------------------------------------------------------------------------------------------------ Sea floor
 
 export function SeaFloor() {
   const { geo, mat } = useMemo(() => {
@@ -370,6 +436,8 @@ export function Particles({ count, bubbles = false }: { count: number; bubbles?:
           vec4 mv = viewMatrix * vec4(p, 1.0);
           float d = -mv.z;
           float edge = 1.0 - smoothstep(uBox * 0.32, uBox * 0.5, length(p - uCam));
+          // marine snow and bubbles live in the water — fade any that wrap above the waterline
+          edge *= 1.0 - smoothstep(0.0, 0.5, p.y);
           vA = edge * (uBubble > 0.5 ? 0.8 : 0.55 + aSeed * 0.45);
           gl_PointSize = (uBubble > 0.5 ? (2.0 + aSeed * 7.0) : (1.5 + aSeed * 3.0)) * uDpr * 40.0 / max(1.0, d);
           gl_Position = projectionMatrix * mv;
@@ -459,18 +527,45 @@ export function Surface() {
   const ref = useRef<THREE.Mesh>(null);
   const mat = useMemo(() => new THREE.ShaderMaterial({
     transparent: true, depthWrite: false, side: THREE.DoubleSide,
-    uniforms: { uTime: { value: 0 }, uSky: { value: new THREE.Color() }, uSun: { value: new THREE.Color() }, uSunI: { value: 1 }, uCam: { value: new THREE.Vector3() } },
+    uniforms: {
+      uTime: { value: 0 }, uSky: { value: new THREE.Color() }, uSun: { value: new THREE.Color() }, uSunI: { value: 1 }, uCam: { value: new THREE.Vector3() },
+      uSkyHorizon: { value: new THREE.Color() }, uSeaFar: { value: new THREE.Color() }, uCelestial: { value: new THREE.Color() },
+      uLaneDir: { value: new THREE.Vector2(0, 1) }, uLaneI: { value: 0.6 }, uNight: { value: 0 },
+    },
     vertexShader: `varying vec3 vW; void main(){ vec3 p = position; p.y += sin(p.x * 0.25 + p.z * 0.2) * 0.15; vW = (modelMatrix * vec4(p,1.0)).xyz; gl_Position = projectionMatrix * viewMatrix * vec4(vW, 1.0); }`,
     fragmentShader: `
-      uniform float uTime, uSunI; uniform vec3 uSky, uSun, uCam; varying vec3 vW;
+      uniform float uTime, uSunI, uLaneI, uNight;
+      uniform vec3 uSky, uSun, uCam, uSkyHorizon, uSeaFar, uCelestial;
+      uniform vec2 uLaneDir;
+      varying vec3 vW;
       void main(){
         vec2 p = vW.xz * 0.35;
         float w = 0.5 + 0.5 * (sin(p.x * 1.3 + uTime * 1.2) * sin(p.y * 1.1 - uTime * 0.9) * 0.7 + 0.3 * sin((p.x + p.y) * 2.1 + uTime * 1.7));
-        float glint = pow(clamp(w, 0.0, 1.0), 5.0) * uSunI * 0.35;
         float d = length(vW.xz - uCam.xz);
-        float fade = 1.0 - smoothstep(40.0, 150.0, d);
-        vec3 col = uSky * (1.25 + 0.35 * w) + uSun * glint;
-        float a = (0.22 + 0.18 * glint) * fade;
+        float above = smoothstep(-0.2, 0.35, uCam.y);
+
+        // ---------- underside (unchanged): pale shimmer overhead ----------
+        float glintU = pow(clamp(w, 0.0, 1.0), 5.0) * uSunI * 0.35;
+        float fadeU = 1.0 - smoothstep(40.0, 150.0, d);
+        vec3 colU = uSky * (1.25 + 0.35 * w) + uSun * glintU;
+        float aU = (0.22 + 0.18 * glintU) * fadeU;
+
+        // ---------- top side: the open sea, mirroring the sky ----------
+        // Fresnel: straight down you glimpse the reef, but at grazing angles the sea is a mirror
+        vec3 vd = normalize(vW - uCam);
+        float grazing = pow(1.0 - clamp(abs(vd.y), 0.0, 1.0), 2.5);
+        vec3 base = mix(uSeaFar, uSkyHorizon, grazing * (0.34 + 0.26 * w));
+        base = mix(base, uSeaFar, smoothstep(30.0, 200.0, d) * 0.45);  // deepens toward the horizon
+        // the celestial lane: sun-gold at dusk, moon-silver at night, stretching toward the light
+        vec2 toFrag = normalize(vW.xz - uCam.xz + vec2(1e-4));
+        float lane = pow(max(dot(toFrag, uLaneDir), 0.0), mix(46.0, 160.0, w));
+        float laneSparkle = pow(clamp(w, 0.0, 1.0), 4.0);
+        vec3 colT = base + uCelestial * lane * uLaneI * (0.5 + laneSparkle);
+        float fadeT = 1.0 - smoothstep(180.0, 330.0, d) * 0.9;
+        float aT = (mix(0.5, 0.97, grazing) + 0.08 * w + lane * 0.25) * fadeT;
+
+        vec3 col = mix(colU, colT, above);
+        float a = mix(aU, aT, above);
         gl_FragColor = vec4(col, a);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -478,10 +573,19 @@ export function Surface() {
   }), []);
   useFrame((state) => {
     const L = session.lighting;
-    mat.uniforms.uTime.value = state.clock.elapsedTime; mat.uniforms.uSky.value.copy(L.sky); mat.uniforms.uSun.value.copy(L.sun); mat.uniforms.uSunI.value = L.sunIntensity;
-    mat.uniforms.uCam.value.copy(state.camera.position);
+    const u = mat.uniforms;
+    u.uTime.value = state.clock.elapsedTime; u.uSky.value.copy(L.sky); u.uSun.value.copy(L.sun); u.uSunI.value = L.sunIntensity;
+    u.uCam.value.copy(state.camera.position);
+    u.uSkyHorizon.value.copy(L.skyHorizon); u.uSeaFar.value.copy(L.seaFar); u.uCelestial.value.copy(L.celestial);
+    // the lane follows whichever light is up: low sun at dusk, moon at night
+    const lit = L.sunElevation > -0.05 ? L.sunDir : L.moonDir;
+    u.uLaneDir.value.set(lit.x, lit.z).normalize();
+    // strongest when the light hangs low over the horizon (sunset lane / moon lane)
+    const lowness = 1 - Math.min(1, Math.abs(lit.y) * 2.2);
+    u.uLaneI.value = 0.25 + lowness * 0.9 + L.starIntensity * 0.35;
+    u.uNight.value = L.nightness;
     if (ref.current) { ref.current.position.x = state.camera.position.x; ref.current.position.z = state.camera.position.z; }
   });
   useEffect(() => () => mat.dispose(), [mat]);
-  return <mesh ref={ref} material={mat} position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4} frustumCulled={false}><planeGeometry args={[340, 340, 24, 24]} /></mesh>;
+  return <mesh ref={ref} material={mat} position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={4} frustumCulled={false}><planeGeometry args={[680, 680, 24, 24]} /></mesh>;
 }

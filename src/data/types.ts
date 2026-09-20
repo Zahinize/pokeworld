@@ -10,7 +10,8 @@ export type BehaviorGroup =
   | 'predator'
   | 'bottom'
   | 'defensive'
-  | 'giant';
+  | 'giant'
+  | 'sky';
 
 export type SecondaryRole =
   | 'guardian'
@@ -69,6 +70,10 @@ export interface SpeciesConfig {
   fallbackStats: { hp: number; atk: number; def: number; spAtk: number; spDef: number; speed: number };
   /** Boss-only species never appear in normal ecosystem generation. */
   bossOnly?: boolean;
+  /** Lives above the waves: catchable from the surface, never a reef battle companion. */
+  skyOnly?: boolean;
+  /** Collection habitat text override (sky species have no underwater zone). */
+  habitatLabel?: string;
   /** Flavour text shown in the field guide. */
   blurb: string;
 }

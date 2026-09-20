@@ -323,7 +323,7 @@ function StatusChips() {
   return (
     <div className="hud-top-right">
       <div className="row" style={{ gap: 8 }}>
-        <span className="chip mono"><span>{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{Math.round(hud.depth)} m</span></span>
+        <span className="chip mono"><span>{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{hud.depth < 1 ? 'Surface' : `${Math.round(hud.depth)} m`}</span></span>
         <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}>⏸</button>
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}

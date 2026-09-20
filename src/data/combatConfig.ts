@@ -82,6 +82,7 @@ export interface BossTuning { hp: number; atk: number; def: number; chargeEvery:
 export const BOSS_TUNING: Record<string, BossTuning> = {
   dondozo: { hp: 2, atk: 2, def: 1, chargeEvery: 20, chargeSpeed: 9 },
   tatsugiri: { hp: 2, atk: 2, def: 1, chargeEvery: 26, chargeSpeed: 7 },
+  basculegion: { hp: 2, atk: 2, def: 1, chargeEvery: 18, chargeSpeed: 10 },
   wailord: { hp: 2, atk: 2, def: 1, chargeEvery: 25, chargeSpeed: 8 },
   kyogre: { hp: 2, atk: 2, def: 1, chargeEvery: 15, chargeSpeed: 11 },
 };

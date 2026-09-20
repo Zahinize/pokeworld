@@ -233,7 +233,7 @@ for (const levelId of [1, 2]) {
     let mission = createMission(levelId, 5, gen.objectives);
     const sc = mission.objectives.find((o) => o.kind === 'stageCatch')!;
     const bosses = mission.objectives.filter((o) => o.kind === 'boss');
-    if (sc && bosses.length === (levelId === 3 ? 2 : 2)) ok(`L${levelId}: mission = catch ${sc.required} stage-${sc.minStage}+ Pokémon + defeat ${bosses.map((b) => b.speciesId).join(' & ')}`);
+    if (sc && bosses.length === (levelId === 3 ? 2 : 3)) ok(`L${levelId}: mission = catch ${sc.required} stage-${sc.minStage}+ Pokémon + defeat ${bosses.map((b) => b.speciesId).join(' & ')}`);
     else fail(`L${levelId}: bad mission shape (${mission.objectives.map((o) => o.id).join(',')})`);
     const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
     const step = (sec: number, sink?: (ev: any) => void) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) sink?.(ev); } };
@@ -249,7 +249,7 @@ for (const levelId of [1, 2]) {
     // Boss wave: spawn all bosses at their sites, party fights them
     const partner1 = eco.addPartner('kingdra', 0);
     const partner2 = eco.addPartner('gyarados', 1);
-    const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8));
+    const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses.map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8, !!ph.shiny)));
     // mirror the session: commander duos ride together
     const wave0 = getLevel(levelId).bossPhases![0];
     if (wave0.bosses.length > 1) for (let i = 1; i < wave0.bosses.length; i++) bossEnts[i].pairBossId = bossEnts[0].id;
@@ -297,6 +297,156 @@ for (const levelId of [1, 2]) {
       if (maxPairSep > 0 && maxPairSep < 16) ok(`L${levelId}: commander duo stayed together (max separation ${maxPairSep.toFixed(1)}m)`); else fail(`L${levelId}: duo separated (${maxPairSep.toFixed(1)}m)`);
     }
     if (mission.complete) ok(`L${levelId}: mission complete after boss defeats (${mission.caught}/${mission.total})`); else fail(`L${levelId}: mission incomplete (${mission.caught}/${mission.total})`);
+  }
+}
+
+// ---- Sky World: flocks, legendaries, air-regime balls, the legendary catch cap ----
+{
+  const { SkyLife } = await import('@/engine/sky/SkyLife');
+  const { lightingAt } = await import('@/engine/world/lighting');
+  const { BallSystem } = await import('@/engine/sim/balls');
+  const { catchProbabilityFor } = await import('@/engine/sim/catching');
+  const { SKY } = await import('@/data/sky');
+
+  // catch math first — the product rule: sky legendaries are NEVER certain
+  const pMaster = catchProbabilityFor(SPECIES.lugia, 1, 'masterball');
+  const pPoke = catchProbabilityFor(SPECIES.lugia, 1, 'pokeball');
+  const pWingull = catchProbabilityFor(SPECIES.wingull, 1, 'masterball');
+  if (pMaster === SKY.LEGENDARY_CATCH_CAP) ok(`sky legendary Master Ball capped at ${pMaster} (expected ~${Math.round(1 / pMaster)} balls per catch)`);
+  else fail(`sky legendary Master Ball p = ${pMaster}, want ${SKY.LEGENDARY_CATCH_CAP}`);
+  if (pPoke > 0.06 && pPoke < 0.12) ok(`sky legendary Poke Ball p ≈ ${(pPoke * 100).toFixed(1)}%`);
+  else fail(`sky legendary Poke Ball p = ${pPoke}, want ~0.09`);
+  if (pWingull === 1) ok('regular sky bird keeps Master Ball certainty');
+  else fail(`wingull Master Ball p = ${pWingull}, want 1`);
+
+  // SkyLife day → dusk → dawn cycle
+  const sky = new SkyLife(1234);
+  const stepSky = (t: number, seconds: number) => {
+    const L = lightingAt(t);
+    for (let i = 0; i < seconds * 60; i++) sky.update(1 / 60, L, t, 0, 0);
+  };
+  const t0 = performance.now();
+  stepSky(0.4, 120); // day
+  const dayMs = (performance.now() - t0) / (120 * 60);
+  const flying = sky.birds.filter((b) => b.state === 'flying').length;
+  const swimming = sky.birds.filter((b) => b.state === 'swimming').length;
+  const nan = sky.birds.filter((b) => !isFinite(b.x) || !isFinite(b.y) || !isFinite(b.z)).length;
+  const outOfBounds = sky.birds.filter((b) => b.state !== 'gone' && (Math.hypot(b.x, b.z) > SKY.EXIT_DESPAWN_R + 5 || b.y < -1 || b.y > 130)).length;
+  if (nan) fail(`sky: ${nan} NaN birds`); else ok('sky: no NaN birds after 2min of day');
+  if (flying >= 9) ok(`sky: ${flying} birds circling by day, ${swimming} Ducklett paddling`); else fail(`sky: only ${flying} flying by day`);
+  if (outOfBounds) fail(`sky: ${outOfBounds} birds out of bounds`); else ok('sky: all birds bounded');
+  if (dayMs < 0.02) ok(`sky: ${dayMs.toFixed(4)} ms/step (< 0.02 budget)`); else fail(`sky: ${dayMs.toFixed(4)} ms/step exceeds 0.02`);
+  stepSky(0.95, 180); // deep night: everyone flies home
+  const atNight = sky.birds.filter((b) => (b.state === 'flying' || b.state === 'swimming') && !b.legendary).length;
+  if (atNight === 0) ok('sky: flocks and Ducklett all gone by night'); else fail(`sky: ${atNight} birds still out at night`);
+  stepSky(0.4, 120); // dawn: they return
+  const returned = sky.birds.filter((b) => b.state === 'flying').length;
+  if (returned >= 9) ok(`sky: ${returned} birds returned at dawn`); else fail(`sky: only ${returned} birds returned at dawn`);
+
+  // forced legendary: enter → catchable pass → vanish
+  sky.forceNextLegendary = 'lugia';
+  let entered = false, vanished = false, minPass = Infinity, passAlt = 0;
+  {
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 220 * 60 && !vanished; i++) { // roll (≤40s) + slow 130s crossing
+      sky.update(1 / 60, L, 0.4, 0, 0);
+      for (const ev of sky.drainEvents()) {
+        if (ev.type === 'legendaryEnter') entered = true;
+        if (ev.type === 'legendaryVanish') vanished = true;
+      }
+      if (sky.legendaryIdx >= 0) {
+        const b = sky.birds[sky.legendaryIdx];
+        const d = Math.hypot(b.x, b.z);
+        if (d < minPass) { minPass = d; passAlt = b.y; }
+      }
+    }
+  }
+  if (entered && vanished) ok(`sky: forced Lugia completed enter→vanish (closest pass ${minPass.toFixed(0)}m at alt ${passAlt.toFixed(0)}m)`);
+  else fail(`sky: legendary lifecycle incomplete (entered=${entered} vanished=${vanished})`);
+  if (minPass < SKY.LEGENDARY_PASS_OFFSET[1] + 12 && passAlt < SKY.LEGENDARY_ALT[1] + 8) ok('sky: legendary dipped into throwing range');
+  else fail(`sky: pass unreachable (${minPass.toFixed(0)}m at alt ${passAlt.toFixed(0)}m)`);
+
+  // air-regime ball: up, out of the water, arc, splash back — never an instant surface miss
+  {
+    const gen = generateEcosystem(getLevel(1), 7);
+    const eco = new Ecosystem(gen, hp);
+    const balls = new BallSystem();
+    balls.throw('pokeball', 0, -0.5, 0, 0.25, 0.95, 0);
+    let exited = false, reentered = false, missBeforeExit = false, maxY = -Infinity;
+    for (let i = 0; i < 12 * 60 && balls.balls.length; i++) {
+      balls.update(1 / 60, eco, null);
+      maxY = Math.max(maxY, balls.balls[0]?.y ?? maxY);
+      for (const ev of balls.drainEvents()) {
+        if (ev.type === 'splash') { if (!ev.entering) exited = true; else reentered = true; }
+        if (ev.type === 'miss' && !exited) missBeforeExit = true;
+      }
+    }
+    if (exited && reentered && !missBeforeExit) ok(`sky: ball arced through air (apex ${maxY.toFixed(1)}m) and splashed back`);
+    else fail(`sky: ball arc broken (exited=${exited} reentered=${reentered} missBeforeExit=${missBeforeExit} apex=${maxY.toFixed(1)})`);
+    // a straight-up throw must reach the HIGHEST legendary body center, or throws "bounce off"
+    const balls2 = new BallSystem();
+    balls2.throw('pokeball', 0, 0.2, 0, 0, 1, 0);
+    let apex = 0;
+    for (let i = 0; i < 12 * 60 && balls2.balls.length; i++) { balls2.update(1 / 60, eco, null); apex = Math.max(apex, balls2.balls[0]?.y ?? 0); }
+    let needed = 0;
+    for (const id of ['articuno', 'lugia', 'hooh', 'yveltal']) {
+      needed = Math.max(needed, SKY.LEGENDARY_ALT[1] + SPECIES[id].size * (SKY.LEGENDARY_RENDER_SCALE[id] ?? 8) * 0.45);
+    }
+    if (apex > needed + 2) ok(`sky: straight-up apex ${apex.toFixed(0)}m clears the highest legendary body center (${needed.toFixed(0)}m)`);
+    else fail(`sky: apex ${apex.toFixed(0)}m cannot reach legendary center at ${needed.toFixed(0)}m — balls will bounce off`);
+  }
+
+  // full capture: Master Ball dropped onto a paddling Ducklett → skyHit → 3 shakes → skyCaught
+  {
+    const sky2 = new SkyLife(99);
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 10 * 60; i++) sky2.update(1 / 60, L, 0.4, 0, 0); // let fades settle
+    const bird = sky2.birds.find((b) => b.state === 'swimming' && b.speciesId === 'ducklett' && b.fade > 0.9);
+    if (!bird) fail('sky: no ducklett to test capture on');
+    else {
+      const gen = generateEcosystem(getLevel(1), 8);
+      const eco = new Ecosystem(gen, hp);
+      const balls = new BallSystem();
+      let hit = false, caught = false;
+      for (let i = 0; i < 30 * 60 && !caught; i++) {
+        if (!hit && balls.balls.length === 0) balls.throw('masterball', bird.x, bird.y + 2.5, bird.z, 0, -1, 0, 14);
+        sky2.update(1 / 60, L, 0.4, 0, 0);
+        balls.update(1 / 60, eco, sky2);
+        for (const ev of balls.drainEvents()) {
+          if (ev.type === 'skyHit') hit = true;
+          if (ev.type === 'skyCaught') caught = true;
+          if (ev.type === 'skyEscaped') fail('sky: Master Ball escaped a wingull?!');
+        }
+      }
+      if (hit && caught) ok('sky: ball→bird capture pipeline (skyHit → shakes at the waterline → skyCaught)');
+      else fail(`sky: capture pipeline broken (hit=${hit} caught=${caught})`);
+      const b2 = sky2.birds.find((b) => b.id === bird.id)!;
+      if (b2.state === 'caught' || b2.state === 'gone') ok('sky: caught bird retired from the pool');
+      else fail(`sky: caught bird still ${b2.state}`);
+    }
+  }
+
+  // companion surface combat: real HP from the injected source, damage → skyKo → retirement
+  {
+    const sky3 = new SkyLife(7, (sid) => normalizeHp(SPECIES[sid].fallbackStats));
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 5 * 60; i++) sky3.update(1 / 60, L, 0.4, 0, 0);
+    const bird = sky3.birds.find((b) => b.state === 'flying' && b.fade > 0.9)!;
+    const expect = normalizeHp(SPECIES[bird.speciesId].fallbackStats);
+    if (bird.maxHp === expect && bird.hp === expect) ok(`sky: birds carry real HP (${bird.speciesId} ${bird.maxHp})`);
+    else fail(`sky: bird HP wrong (${bird.hp}/${bird.maxHp}, want ${expect})`);
+    let koEvents = 0;
+    while (bird.hp > 0) sky3.applyDamage(bird.id, 25);
+    for (const ev of sky3.drainEvents()) if (ev.type === 'skyKo' && ev.birdId === bird.id) koEvents++;
+    for (let i = 0; i < 90; i++) sky3.update(1 / 60, L, 0.4, 0, 0);
+    if (koEvents === 1 && (bird.state === 'gone' || bird.state === 'caught')) ok('sky: companion KO fires skyKo once and retires the bird');
+    else fail(`sky: KO path broken (events=${koEvents} state=${bird.state})`);
+    // a bird mid-capture ignores companion damage (the ball owns the verdict)
+    const b3 = sky3.birds.find((b) => b.state === 'flying' && b.fade > 0.9)!;
+    b3.state = 'captured';
+    const hpBefore = b3.hp;
+    sky3.applyDamage(b3.id, 999);
+    if (b3.hp === hpBefore) ok('sky: captured birds are immune to move damage'); else fail('sky: damage leaked into a capture attempt');
   }
 }
 

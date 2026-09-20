@@ -4,10 +4,13 @@
  */
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
+import { SKY } from '@/data/sky';
+import { getSpecies } from '@/data/species';
 import type { Ecosystem } from '../world/Ecosystem';
 import type { Entity } from '../ai/types';
+import type { SkyLife, SkyBird } from '../sky/SkyLife';
 import { floorY } from '../world/terrain';
-import { rollCatch } from './catching';
+import { rollCatch, rollCatchFor } from './catching';
 import { len3 } from '../ai/steering';
 
 export type BallState = 'flying' | 'shaking' | 'resting' | 'done';
@@ -26,6 +29,9 @@ export interface Ball {
   /** Rotation for visual spin. */
   spin: number;
   restY: number;
+  /** When >= 0, the shake target is a sky bird, not an ecosystem entity. */
+  skyTargetId: number;
+  skySpeciesId: string;
 }
 
 export type BallEvent =
@@ -35,7 +41,11 @@ export type BallEvent =
   | { type: 'caught'; ball: Ball; entity: Entity; p: number }
   | { type: 'escaped'; ball: Ball; entity: Entity; p: number }
   | { type: 'miss'; ball: Ball }
-  | { type: 'thrown'; ball: Ball };
+  | { type: 'thrown'; ball: Ball }
+  | { type: 'splash'; ball: Ball; entering: boolean }
+  | { type: 'skyHit'; ball: Ball; speciesId: string }
+  | { type: 'skyCaught'; ball: Ball; speciesId: string; birdId: number; p: number }
+  | { type: 'skyEscaped'; ball: Ball; speciesId: string; birdId: number; p: number };
 
 const SHAKE_INTERVAL = 0.65;
 
@@ -45,24 +55,45 @@ export class BallSystem {
   private nextId = 1;
 
   throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed = GAME.THROW_SPEED): Ball {
-    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0 };
+    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '' };
     this.balls.push(b);
     this.events.push({ type: 'thrown', ball: b });
     return b;
   }
 
-  update(dt: number, eco: Ecosystem) {
+  update(dt: number, eco: Ecosystem, sky?: SkyLife | null) {
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.t += dt;
       switch (b.state) {
         case 'flying': {
-          // drag + slight gravity (buoyancy makes underwater balls sink slowly)
-          const drag = Math.exp(-GAME.BALL_DRAG * dt);
+          // two regimes: crisp ballistic arcs in air, dragged buoyant sink underwater
+          const air = b.y > 0;
+          const prevY = b.y;
+          const drag = Math.exp(-(air ? SKY.AIR_DRAG : GAME.BALL_DRAG) * dt);
           b.vx *= drag; b.vy *= drag; b.vz *= drag;
-          b.vy -= GAME.BALL_GRAVITY * dt;
+          b.vy -= (air ? SKY.AIR_GRAVITY : GAME.BALL_GRAVITY) * dt;
           b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
           b.spin += dt * 12;
+          // surface crossing
+          if (prevY > 0 !== b.y > 0) {
+            const entering = b.y <= 0;
+            this.events.push({ type: 'splash', ball: b, entering });
+            if (entering) {
+              // water entry bleeds most of the speed; a spent ball bobs on the surface
+              b.vx *= 0.35; b.vy *= 0.25; b.vz *= 0.35;
+              if (len3(b.vx, b.vy, b.vz) < 2.2) {
+                b.y = 0.05; b.state = 'resting'; b.t = 0; b.restY = 0.05;
+                this.events.push({ type: 'miss', ball: b });
+                break;
+              }
+            }
+          }
+          // Sky hit test — birds overhead, Ducklett riding the waves
+          if (sky && b.y > -0.5) {
+            const bird = sky.hitTest(b.x, b.y, b.z);
+            if (bird) { this.onSkyHit(b, bird, sky); break; }
+          }
           // Entity hit test
           let hit: Entity | null = null, hitD = Infinity;
           eco.hash.query(b.x, b.y, b.z, 6, (e, d2) => {
@@ -88,11 +119,26 @@ export class BallSystem {
           // Floor
           const fy = floorY(b.x, b.z) + 0.3;
           if (b.y <= fy) { b.y = fy; b.state = 'resting'; b.t = 0; b.restY = fy; this.events.push({ type: 'miss', ball: b }); }
-          // Surface / bounds / timeout
-          if (b.y > -0.3 || Math.hypot(b.x, b.z) > GAME.WORLD_RADIUS || b.t > 12) { b.state = 'resting'; b.t = 0; b.restY = b.y; this.events.push({ type: 'miss', ball: b }); }
+          // Bounds / timeout (a ball still in the air rests where it is and drops no further events)
+          if (Math.hypot(b.x, b.z) > GAME.WORLD_RADIUS || b.t > 12) { b.state = 'resting'; b.t = 0; b.restY = Math.max(b.y, 0.05); this.events.push({ type: 'miss', ball: b }); }
           break;
         }
         case 'shaking': {
+          if (b.skyTargetId >= 0) {
+            // pinned to a sky bird riding down to the waterline
+            if (!sky || !sky.positionOf(b.skyTargetId, SKY_POS)) { b.state = 'done'; break; }
+            b.x = SKY_POS.x; b.y = SKY_POS.y - 0.12; b.z = SKY_POS.z;
+            const idx = Math.floor(b.t / SHAKE_INTERVAL);
+            if (idx > b.shakeIndex && idx <= b.shakes) { b.shakeIndex = idx; this.events.push({ type: 'shake', ball: b, index: idx }); }
+            const total = (b.shakes + 1) * SHAKE_INTERVAL + 0.25;
+            if (b.t >= total) {
+              const p = (b as any)._p as number;
+              sky.resolveCapture(b.skyTargetId, b.success);
+              this.events.push({ type: b.success ? 'skyCaught' : 'skyEscaped', ball: b, speciesId: b.skySpeciesId, birdId: b.skyTargetId, p });
+              b.state = 'done';
+            }
+            break;
+          }
           const e = eco.byId.get(b.targetId);
           if (!e) { b.state = 'done'; break; }
           b.x = e.x; b.y = e.y - e.species.size * 0.1; b.z = e.z;
@@ -133,7 +179,19 @@ export class BallSystem {
     eco.beginCaptureAttempt(e);
   }
 
+  private onSkyHit(b: Ball, bird: SkyBird, sky: SkyLife) {
+    this.events.push({ type: 'skyHit', ball: b, speciesId: bird.speciesId });
+    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type);
+    (b as any)._p = roll.p;
+    b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
+    b.state = 'shaking'; b.t = 0; b.targetId = -1; b.skyTargetId = bird.id; b.skySpeciesId = bird.speciesId;
+    b.vx = b.vy = b.vz = 0;
+    sky.beginCapture(bird.id);
+  }
+
   drainEvents(): BallEvent[] { return this.events.splice(0); }
 }
+
+const SKY_POS = { x: 0, y: 0, z: 0 };
 
 export function ballDistanceTo(b: Ball, x: number, y: number, z: number) { return len3(b.x - x, b.y - y, b.z - z); }
