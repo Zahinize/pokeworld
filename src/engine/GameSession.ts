@@ -859,7 +859,7 @@ export class GameSession {
           }
           // A defeated boss is yours — into the collection, trophy-style (shinies as their own entry)
           store.recordCatch(token, this.level.id);
-          store.setLastCatch({ speciesId: sp.id, shiny: ev.shiny, missionTarget: true, objectiveLabel: ev.shiny ? 'SHINY boss defeated ⚔️✨' : 'Boss defeated ⚔️' });
+          store.setLastCatch({ speciesId: sp.id, shiny: ev.shiny, missionTarget: true, objectiveLabel: ev.shiny ? 'SHINY boss defeated' : 'Boss defeated' });
           Audio.levelComplete();
           Audio.playCry(sp.dexId, 0.25, 0.4); // a last, low cry as it sinks
           store.pushToast({ kind: 'catch', title: `${tokenLabel(token)} defeated — added to your collection!`, body: ev.shiny ? 'A SHINY trophy — its full power now fights for you.' : 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, shiny: ev.shiny, missionTarget: true, ttl: 6 });

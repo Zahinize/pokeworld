@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Ic, AlertTriangle } from '../components/icons';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel, Switch, Segmented } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
@@ -33,7 +34,7 @@ export function SettingsView({ onClose, embedded = false }: { onClose: () => voi
         <div className="overlay" style={{ zIndex: 60 }} onClick={() => setConfirmReset(false)}>
           <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(100%, 460px)' }}>
           <Panel className="panel strong danger-dialog">
-            <div className="dd-icon">⚠️</div>
+            <div className="dd-icon"><Ic icon={AlertTriangle} size={34} color="var(--red)" /></div>
             <h2 className="title" style={{ fontSize: 24, margin: '6px 0 10px' }}>Erase all game data?</h2>
             <div className="danger-alert">
               This is dangerous! Your trainer, level progress, full collection — including every shiny trophy — and settings

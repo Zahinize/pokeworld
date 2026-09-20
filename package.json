@@ -7,20 +7,24 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
+    "typecheck": "tsc -b --noEmit && tsc -p api/tsconfig.json --noEmit",
     "check": "esbuild scripts/checks.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=node_modules/.cache/checks.mjs --log-level=warning && node node_modules/.cache/checks.mjs",
-    "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=node_modules/.cache/sim.mjs --log-level=warning && node node_modules/.cache/sim.mjs"
+    "sim": "esbuild scripts/sim.ts --bundle --platform=node --format=esm --alias:@=./src --outfile=node_modules/.cache/sim.mjs --log-level=warning && node node_modules/.cache/sim.mjs",
+    "check:api": "esbuild scripts/apiCheck.ts --bundle --platform=node --format=esm --alias:@=./src --external:@vercel/blob --outfile=node_modules/.cache/apiCheck.mjs --log-level=warning && node node_modules/.cache/apiCheck.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
+    "@vercel/blob": "^2.8.0",
     "gifuct-js": "^2.1.2",
+    "lucide-react": "^1.47.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "three": "^0.170.0",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@types/node": "^26.6.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.170.0",

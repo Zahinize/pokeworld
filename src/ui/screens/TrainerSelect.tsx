@@ -27,7 +27,7 @@ export function TrainerSelect() {
               ))}
             </div>
             <div className="row" style={{ marginTop: 24, justifyContent: 'flex-end' }}>
-              <button className="btn primary big" disabled={!picked} onClick={() => { if (!picked) return; Audio.uiConfirm(); selectTrainer(picked); setScreen('menu'); }}>Continue →</button>
+              <button className="btn primary big" disabled={!picked} onClick={() => { if (!picked) return; Audio.uiConfirm(); selectTrainer(picked); setScreen('worlds'); }}>Continue →</button>
             </div>
           </Panel>
         </div>

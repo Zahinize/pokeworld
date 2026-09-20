@@ -53,6 +53,25 @@ with embedded fallback stats if it is unreachable). All sprites and trainer port
 
 3. Deploy. No rewrites are needed (all screens are in-app state, not URL routes).
 
+### Accounts & leaderboard (serverless API)
+
+The `api/` folder holds Vercel Node functions for signup/login, stats sync and the
+leaderboard. User data is stored as JSON documents — plain files under `data/` in local
+dev, **Vercel Blob** in production. One-time setup on the Vercel dashboard:
+
+1. **Storage → Create Database → Blob** on this project. Vercel injects
+   `BLOB_READ_WRITE_TOKEN` automatically.
+2. **Settings → Environment Variables**: add `SESSION_SECRET` = 32+ random characters
+   (e.g. `openssl rand -hex 32`). This signs session cookies AND derives the unguessable
+   blob keys for user documents — never rotate it casually (existing sessions and doc
+   keys derive from it).
+3. Redeploy. Verify: sign up in the deployed app, then check Storage → Blob — user files
+   appear as `users/<64-hex>.json` (never a guessable username), and the session cookie
+   is `HttpOnly; Secure; SameSite=Lax`.
+
+Local dev needs nothing: `npm run dev` serves `/api/*` through a Vite middleware and
+writes JSON files to `./data` (gitignored). `npm run check:api` runs the API test suite.
+
 Any other static host (Netlify, Cloudflare Pages, GitHub Pages, an S3 bucket) works the same way: build, then serve `dist/`.
 
 ## Combat & companions (levels 3–4)

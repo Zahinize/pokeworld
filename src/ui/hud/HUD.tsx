@@ -1,5 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState } from 'react';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Wand2, Hourglass, Swords, Wind, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -14,7 +15,7 @@ import { CollectionView } from '../screens/CollectionScreen';
 import { SettingsView } from '../screens/SettingsScreen';
 import type { MissionObjective } from '@/engine/ecosystem/generator';
 
-const objectiveIcon: Record<MissionObjective['kind'], string> = { school: '🐟', passive: '🌊', curious: '🔎', bottom: '🪨', defensive: '🫧', stageCatch: '⭐', boss: '⚔️' };
+const ObjectiveIcon = ({ kind, size = 14 }: { kind: MissionObjective['kind']; size?: number }) => <Ic icon={OBJECTIVE_ICONS[kind] ?? Target} size={size} />;
 
 function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk: boolean; index: number; siblings: number }) {
   const done = objectiveDone(o);
@@ -25,7 +26,7 @@ function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk:
       <div className="check">{done ? '✓' : ''}</div>
       <div>
         <div className="label">
-          <span>{objectiveIcon[o.kind]} {label}</span>
+          <span><ObjectiveIcon kind={o.kind} /> {label}</span>
           {o.speciesId ? <span className="species"><SpriteImg id={o.speciesId} size={26} />{SPECIES[o.speciesId].name}</span>
             : <>{chips.map((c) => <span key={c} className="species"><SpriteImg id={c} size={26} />{SPECIES[c].name}</span>)}{o.kind === 'stageCatch' && o.candidateSpecies.length > 4 ? <span className="dim small">+{o.candidateSpecies.length - 4} more</span> : null}</>}
         </div>
@@ -33,7 +34,7 @@ function ObjectiveRow({ o, risk, index, siblings }: { o: MissionObjective; risk:
           <div className={`guardian ${o.guardianCaught ? 'done' : ''}`}>{o.guardianCaught ? '✓' : '□'} Guardian · <SpriteImg id={o.guardianSpeciesId} size={18} /> {SPECIES[o.guardianSpeciesId].name}</div>
         )}
       </div>
-      <div className="count">{o.caught} / {o.required}{risk && !done && <small>⚠</small>}</div>
+      <div className="count">{o.caught} / {o.required}{risk && !done && <small><Ic icon={AlertTriangle} size={10} color="var(--gold)" /></small>}</div>
     </div>
   );
 }
@@ -50,7 +51,7 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
   if (collapsed && !isTouch) {
     return (
       <button className="mission-mini glass interactive" title="Show mission (M)" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: false }); }}>
-        <span>🎯</span>
+        <span><Ic icon={Target} size={14} /></span>
         <b className="mono">{mission.caught}<small> / {mission.total}</small></b>
         <i className="mini-bar"><em style={{ width: `${pct}%` }} /></i>
       </button>
@@ -113,7 +114,7 @@ function LureButton() {
   return (
     <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure (available every 5 minutes)" title="Lure — once every 5 minutes" style={{ ['--p' as any]: `${p}%` }}>
       <span className="ring" />
-      <span className="ic">{active ? '✨' : ready ? '🪄' : '⏳'}</span>
+      <span className="ic">{active ? <Ic icon={Sparkles} size={15} /> : ready ? <Ic icon={Wand2} size={15} /> : <Ic icon={Hourglass} size={15} />}</span>
       <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? mmss(cd) : isTouch ? 'Lure' : 'Lure · E'}</span>
     </button>
   );
@@ -133,7 +134,7 @@ function PartyBar() {
           <div className="row" style={{ gap: 8 }}>
             <SpriteImg id={a.speciesId} shiny={a.shiny} size={40} />
             <div className="grow">
-              <div className="pn">{a.shiny && '✨'}{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag">⚔</span>}</div>
+              <div className="pn">{a.shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag"><Ic icon={Swords} size={11} /></span>}</div>
               <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
             </div>
           </div>
@@ -199,7 +200,7 @@ function PlayerVitals() {
   return (
     <>
       <div className="player-hp glass" title="Your health">
-        <span className="ic">{frac > 0.6 ? '🤿' : frac > 0.3 ? '😨' : '🆘'}</span>
+        <span className="ic">{frac > 0.6 ? <Ic icon={Wind} size={15} /> : frac > 0.3 ? <Ic icon={AlertTriangle} size={15} color="var(--gold)" /> : <Ic icon={LifeBuoy} size={15} color="var(--red)" />}</span>
         <div className="bar"><i style={{ width: `${frac * 100}%`, background: frac > 0.6 ? 'linear-gradient(90deg,#35d0ff,#7ff0c9)' : frac > 0.3 ? 'linear-gradient(90deg,#ffd166,#ff9f43)' : 'linear-gradient(90deg,#ff7a7a,#f43f5e)' }} /></div>
         <b className="mono">{Math.round(hp)}</b>
       </div>
@@ -253,8 +254,8 @@ function CatchCard() {
     <Panel className={`toast catch-toast ${last.shiny ? 'shiny' : ''}`}>
       <SpriteImg id={last.speciesId} shiny={last.shiny} size={40} className={last.shiny ? 'shiny-glow' : ''} />
       <div>
-        <div className="t">{last.shiny ? `✨ Shiny ${s.name} caught!` : `${s.name} caught!`}</div>
-        <div className="b">📖 ✓{last.missionTarget ? ` · 🎯 ${last.objectiveLabel} ✓` : ''}</div>
+        <div className="t">{last.shiny ? `Shiny ${s.name} caught!` : `${s.name} caught!`}</div>
+        <div className="b"><Ic icon={BookOpen} size={12} /> ✓{last.missionTarget ? <> · <Ic icon={Target} size={12} /> {last.objectiveLabel} ✓</> : ''}</div>
       </div>
     </Panel>
   );
@@ -292,12 +293,12 @@ function BossIntro() {
         <div className="boss-intro-sprites">
           {intro.bosses.map((b) => <SpriteImg key={b.speciesId} id={b.speciesId} shiny={b.shiny} size={intro.bosses.length > 1 ? 96 : 128} className={b.shiny ? 'shiny-glow' : ''} />)}
         </div>
-        {anyShiny && <div className="shiny-banner">✨ SHINY ✨</div>}
+        {anyShiny && <div className="shiny-banner"><Ic icon={Sparkles} size={14} /> SHINY <Ic icon={Sparkles} size={14} /></div>}
         <div className="eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)', marginTop: 10 }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
         <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
         <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
         <p className="muted small" style={{ margin: '12px 0 18px' }}>{anyShiny ? 'A shiny ruler — three times the power, three times the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
-        <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}>⚔️ I'm ready — battle!</button>
+        <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}><Ic icon={Swords} size={16} /> I'm ready — battle!</button>
       </Panel>
     </div>
   );
@@ -309,7 +310,7 @@ function BossBar() {
   const frac = Math.max(0, boss.hp / boss.maxHp);
   return (
     <div className="boss-bar glass strong">
-      <div className="row between"><span className="bn">⚔️ {boss.name}</span><span className="mono small muted">{boss.hp} / {boss.maxHp}</span></div>
+      <div className="row between"><span className="bn"><Ic icon={Swords} size={13} /> {boss.name}</span><span className="mono small muted">{boss.hp} / {boss.maxHp}</span></div>
       <div className="bhp"><i style={{ width: `${frac * 100}%` }} /></div>
     </div>
   );
@@ -323,11 +324,11 @@ function StatusChips() {
   return (
     <div className="hud-top-right">
       <div className="row" style={{ gap: 8 }}>
-        <span className="chip mono"><span>{timeLabel === 'Night' ? '🌙' : timeLabel === 'Evening' || timeLabel === 'Dawn' ? '🌅' : '☀️'}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{hud.depth < 1 ? 'Surface' : `${Math.round(hud.depth)} m`}</span></span>
-        <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}>⏸</button>
+        <span className="chip mono"><span>{timeLabel === 'Night' ? <Ic icon={Moon} size={13} /> : timeLabel === 'Evening' || timeLabel === 'Dawn' ? <Ic icon={Sunset} size={13} /> : <Ic icon={Sun} size={13} />}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{hud.depth < 1 ? 'Surface' : `${Math.round(hud.depth)} m`}</span></span>
+        <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}><Ic icon={Pause} size={16} /></button>
       </div>
-      {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert">⚠ <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
-      {hud.lureRemaining > 0 && <span className="chip lure-active">✨ {isTouch ? '' : 'Lure active · '}{Math.ceil(hud.lureRemaining)}s</span>}
+      {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert"><Ic icon={AlertTriangle} size={13} /> <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
+      {hud.lureRemaining > 0 && <span className="chip lure-active"><Ic icon={Sparkles} size={13} /> {isTouch ? '' : 'Lure active · '}{Math.ceil(hud.lureRemaining)}s</span>}
       <RestoreBanner />
       <CatchCard />
       <Toasts />
@@ -354,12 +355,12 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
     <div className="controls-grid">
       <Row keys={<b>Left stick</b>}>swim</Row>
       <Row keys={<b>Drag anywhere</b>}>look around</Row>
-      <Row keys={<b>🔴 Red button</b>}>throw the selected ball</Row>
+      <Row keys={<b><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: 'var(--red)', verticalAlign: '-1px' }} /> Red button</b>}>throw the selected ball</Row>
       <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
       <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
-      <Row keys={<b>🪄 Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
+      <Row keys={<b><Ic icon={Wand2} size={13} /> Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
       <Row keys={<b>»</b>}>toggle fast swim</Row>
-      <Row keys={<b>⏸</b>}>pause · mission in the top-left pill</Row>
+      <Row keys={<b><Ic icon={Pause} size={13} /></b>}>pause · mission in the top-left pill</Row>
     </div>
   ) : (
     <div className="controls-grid">
@@ -389,10 +390,10 @@ function PauseOverlay({ onQuit }: { onQuit: () => void }) {
         <div className="eyebrow">Paused</div>
         <h2 className="title" style={{ fontSize: 30, margin: '4px 0 14px' }}>{session.level.title}</h2>
         <div className="menu-list">
-          <button className="btn primary big block" onClick={resume}>▶ Resume</button>
+          <button className="btn primary big block" onClick={resume}><Ic icon={Play} size={16} /> Resume</button>
           <div className="row" style={{ gap: 10 }}>
-            <button className="btn ghost block" onClick={() => setOverlay('collection')}>📖 Collection</button>
-            <button className="btn ghost block" onClick={() => setOverlay('settings')}>⚙ Settings</button>
+            <button className="btn ghost block" onClick={() => setOverlay('collection')}><Ic icon={BookOpen} size={15} /> Collection</button>
+            <button className="btn ghost block" onClick={() => setOverlay('settings')}><Ic icon={Settings} size={15} /> Settings</button>
           </div>
           <button className="btn ghost block" onClick={onQuit}>Quit to menu · progress is saved</button>
         </div>
@@ -434,8 +435,8 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         <PlayerVitals />
         <PartyBar />
         <SwapPrompt />
-        {hint && !isTouch && <div className="hud-hint">💡 {hint}</div>}
-        {hint && isTouch && <div className="hud-hint touch-hint">💡 {hint}</div>}
+        {hint && !isTouch && <div className="hud-hint"><Ic icon={Sparkles} size={13} /> {hint}</div>}
+        {hint && isTouch && <div className="hud-hint touch-hint"><Ic icon={Sparkles} size={13} /> {hint}</div>}
       </div>
       {missionExpanded && (
         <div className="overlay" onClick={() => { setOverlay('none'); if (!isTouch && session.phase === 'paused') { session.resume(); requestPointerLock(); } }}>
@@ -467,7 +468,7 @@ export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouc
         <h2 className="title" style={{ fontSize: 28, margin: '4px 0 12px' }}>Controls</h2>
         <ControlsLegend isTouch={isTouch} />
         <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
-        <button className="btn primary big block" onClick={() => { Audio.init(); Audio.uiConfirm(); onDive(); }} autoFocus>🤿 Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
+        <button className="btn primary big block" onClick={() => { Audio.init(); Audio.uiConfirm(); onDive(); }} autoFocus><Ic icon={Play} size={16} /> Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
       </Panel>
     </div>
   );
