@@ -190,6 +190,8 @@ function makeIslands(): { geo: THREE.BufferGeometry } {
   const rock = new THREE.Color('#7d7568');
   const rockDark = new THREE.Color('#5d574e');
   const meadow = new THREE.Color('#7bab52');
+  const scrub = new THREE.Color('#9a8b52');
+  const brush = new THREE.Color('#7f6f46');
   const trunkC = new THREE.Color('#6d5738');
   const canopies = ['#2f7a3a', '#3c8a41', '#27633a', '#4a9448'].map((c) => new THREE.Color(c));
   const frondC = new THREE.Color('#3f7a3a');
@@ -211,7 +213,12 @@ function makeIslands(): { geo: THREE.BufferGeometry } {
       const jit = (vnoise(lx * 0.2 + 91, lz * 0.2, isl.seed + 5) - 0.5) * 0.14;
       if (h < 0.9) out.copy(sandWet).lerp(sandDry, Math.max(0, h + 0.6) / 1.5);
       else if (h < 2.6) out.copy(sandDry).lerp(grassLo, (h - 0.9) / 1.7);
-      else {
+      else if (isl.kind === 'peak') {
+        // the volcano is arid: dry scrub above the beach, bare stone owns the upper slopes
+        const t = Math.min(1, (h - 2.6) / (hmax * 0.5));
+        out.copy(scrub).lerp(brush, Math.min(1, t * 1.5));
+        if (h > hmax * 0.34) out.lerp(rock, Math.min(1, (h - hmax * 0.34) / (hmax * 0.22)));
+      } else {
         const t = Math.min(1, (h - 2.6) / (hmax * 0.7));
         out.copy(grassLo).lerp(forest, Math.min(1, t * 1.6)).lerp(forestDeep, Math.max(0, t - 0.45));
         if (isl.kind === 'plateau' && h > hmax * 0.53 && ny > 0.88) out.copy(meadow); // the mesa table
@@ -245,18 +252,22 @@ function makeIslands(): { geo: THREE.BufferGeometry } {
       }
     }
 
-    // ---- rainforest: clumped canopy trees on the gentler slopes ----
+    // ---- rainforest: clumped canopy trees on the gentler slopes.
+    //      the arid volcano keeps only a thin green fringe near the shore ----
+    const arid = isl.kind === 'peak';
+    const maxTrees = arid ? 20 : 95;
     let planted = 0;
-    for (let t = 0; t < 340 && planted < 95; t++) {
+    for (let t = 0; t < 340 && planted < maxTrees; t++) {
       const a = rng.next() * Math.PI * 2, u = 0.12 + rng.next() * 0.78;
       const lx = Math.cos(a) * u * R, lz = Math.sin(a) * u * R;
       const h = H(lx, lz);
-      if (h < 2.4 || h > hmax * 0.78) continue;
+      if (h < 2.4 || h > hmax * (arid ? 0.3 : 0.78)) continue;
       normalAt(lx, lz, tmpA);
       if (tmpA.y < 0.66) continue; // no trees on cliffs
       if (vnoise(lx * 0.05 + 50, lz * 0.05, isl.seed + 9) < 0.42 && rng.next() < 0.65) continue; // clumps
       const ts = (2.1 + rng.next() * 2.4) * Math.min(1.25, isl.s);
       const cc = canopies[(rng.next() * canopies.length) | 0].clone().offsetHSL(0, 0, rng.range(-0.04, 0.04));
+      if (arid) cc.offsetHSL(-0.06, -0.25, 0.02); // sun-scorched olive
       pushCone(X + lx, h - 0.3, Z + lz, ts * 0.16, ts * 0.85, 4, trunkC, 0.05);
       pushCone(X + lx, h + ts * 0.45, Z + lz, ts * 0.85, ts * 1.05, 5, cc, 0.22);
       pushCone(X + lx, h + ts * 1.1, Z + lz, ts * 0.55, ts * 0.8, 5, cc, 0.22);

@@ -21,8 +21,10 @@ export interface SkyBird {
   /** Index into flocks, -1 for ducklett / legendary. */
   flockId: number;
   phase: number;
-  /** Ball hit radius (mirrors the eco formula). */
+  /** Ball hit radius (matches the RENDERED body, not the tiny data size). */
   r: number;
+  /** Rendered sprite height — the hit sphere centers on the visible body. */
+  vis: number;
   legendary: boolean;
   /** Render alpha: ramps on spawn, fades on vanish/catch. */
   fade: number;
@@ -68,6 +70,7 @@ export class SkyLife {
   private bx = 0; private by = 0; private bz = 0;
   private cx2 = 0; private cy2 = 0; private cz2 = 0;
   private legT = 0;
+  private passesLeft = 0;
   private rollT = SKY.LEGENDARY_ROLL_PERIOD;
   private cooldownT = 0;
 
@@ -112,7 +115,7 @@ export class SkyLife {
       id: this.nextId++, speciesId,
       x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0,
       state: 'flying', stateT: 0, flockId, phase,
-      r: rendered * 0.35 + 0.55, legendary,
+      r: rendered * 0.42 + 0.55, vis: rendered, legendary,
       fade: 0, heading: 0,
     };
     this.birds.push(b);
@@ -228,20 +231,27 @@ export class SkyLife {
       const b = this.birds[this.legendaryIdx];
       if (b.state === 'flying') {
         this.legT += dt;
-        const u = Math.min(1, this.legT / SKY.LEGENDARY_DURATION);
+        const u = Math.min(1, this.legT / SKY.LEGENDARY_PASS_DURATION);
         const iu = 1 - u;
         const nx = iu * iu * this.ax + 2 * iu * u * this.bx + u * u * this.cx2;
         const ny = iu * iu * this.ay + 2 * iu * u * this.by + u * u * this.cy2;
         const nz = iu * iu * this.az + 2 * iu * u * this.bz + u * u * this.cz2;
         b.vx = (nx - b.x) / Math.max(dt, 1e-4); b.vy = (ny - b.y) / Math.max(dt, 1e-4); b.vz = (nz - b.z) / Math.max(dt, 1e-4);
         b.x = nx; b.y = ny; b.z = nz;
-        const edge = Math.min(this.legT, SKY.LEGENDARY_DURATION - this.legT);
+        const edge = Math.min(this.legT, SKY.LEGENDARY_PASS_DURATION - this.legT);
         b.fade = Math.max(0, Math.min(1, edge / SKY.LEGENDARY_VANISH_T));
         if (u >= 1) {
-          b.state = 'gone'; b.fade = 0;
-          this.events.push({ type: 'legendaryVanish', speciesId: b.speciesId });
-          this.legendaryIdx = -1;
-          this.cooldownT = SKY.LEGENDARY_COOLDOWN;
+          if (this.passesLeft > 0) {
+            // wheel around at the horizon and sweep back across the reef
+            this.passesLeft--;
+            this.aimPass(b, px, pz, L, this.passesLeft === 0);
+            this.legT = 0;
+          } else {
+            b.state = 'gone'; b.fade = 0;
+            this.events.push({ type: 'legendaryVanish', speciesId: b.speciesId });
+            this.legendaryIdx = -1;
+            this.cooldownT = SKY.LEGENDARY_COOLDOWN;
+          }
         }
       } else if (b.state === 'gone' || b.state === 'caught') {
         this.legendaryIdx = -1;
@@ -268,26 +278,33 @@ export class SkyLife {
     const idx = this.claim(speciesId, -1, 0);
     const b = this.birds[idx];
     const enter = this.rng.next() * Math.PI * 2;
-    // Ho-oh flies home into the sunset: exit toward the sun's azimuth. Others cross the sky.
-    const exit = speciesId === 'hooh'
+    b.x = Math.cos(enter) * SKY.LEGENDARY_SPAWN_R; b.y = 55; b.z = Math.sin(enter) * SKY.LEGENDARY_SPAWN_R;
+    b.fade = 0; b.state = 'flying'; b.stateT = 0;
+    this.passesLeft = SKY.LEGENDARY_PASSES - 1;
+    this.aimPass(b, px, pz, L, this.passesLeft === 0);
+    this.legT = 0;
+    this.legendaryIdx = idx;
+    this.events.push({ type: 'legendaryEnter', speciesId });
+    void timeOfDay;
+  }
+
+  /** One crossing: from the bird's current spot, through a catchable window near the player,
+   *  out to the horizon. Ho-oh's FINAL exit is toward the sun — it flies home into the sunset. */
+  private aimPass(b: SkyBird, px: number, pz: number, L: LightingState, final: boolean) {
+    this.ax = b.x; this.ay = b.y; this.az = b.z;
+    const exit = b.speciesId === 'hooh' && final
       ? Math.atan2(L.sunDir.z, L.sunDir.x)
-      : enter + Math.PI + this.rng.range(-0.6, 0.6);
-    const passDir = this.rng.next() * Math.PI * 2;
-    const passOff = this.rng.range(SKY.LEGENDARY_PASS_OFFSET[0], SKY.LEGENDARY_PASS_OFFSET[1]);
-    this.ax = Math.cos(enter) * SKY.LEGENDARY_SPAWN_R; this.az = Math.sin(enter) * SKY.LEGENDARY_SPAWN_R; this.ay = 55;
-    this.cx2 = Math.cos(exit) * SKY.LEGENDARY_SPAWN_R; this.cz2 = Math.sin(exit) * SKY.LEGENDARY_SPAWN_R; this.cy2 = 60;
+      : Math.atan2(b.z, b.x) + Math.PI + this.rng.range(-0.7, 0.7);
+    this.cx2 = Math.cos(exit) * SKY.LEGENDARY_SPAWN_R; this.cz2 = Math.sin(exit) * SKY.LEGENDARY_SPAWN_R; this.cy2 = final ? 60 : 50;
     // solve the control point so the curve truly passes through the catchable window at u=0.5
     // (a quadratic bezier never reaches its control point: B(0.5) = (P0+P2)/4 + P1/2)
+    const passDir = this.rng.next() * Math.PI * 2;
+    const passOff = this.rng.range(SKY.LEGENDARY_PASS_OFFSET[0], SKY.LEGENDARY_PASS_OFFSET[1]);
     const tx = px + Math.cos(passDir) * passOff, tz = pz + Math.sin(passDir) * passOff;
     const ty = this.rng.range(SKY.LEGENDARY_ALT[0], SKY.LEGENDARY_ALT[1]);
     this.bx = 2 * tx - (this.ax + this.cx2) / 2;
     this.by = 2 * ty - (this.ay + this.cy2) / 2;
     this.bz = 2 * tz - (this.az + this.cz2) / 2;
-    b.x = this.ax; b.y = this.ay; b.z = this.az; b.fade = 0; b.state = 'flying'; b.stateT = 0;
-    this.legT = 0;
-    this.legendaryIdx = idx;
-    this.events.push({ type: 'legendaryEnter', speciesId });
-    void timeOfDay;
   }
 
   // ------------------------------------------------------------------ BallSystem hooks
@@ -297,7 +314,8 @@ export class SkyLife {
     for (const b of this.birds) {
       if (b.state !== 'flying' && b.state !== 'swimming') continue;
       if (b.fade < 0.5) continue; // half-materialized birds aren't solid yet
-      const dx = b.x - x, dy = b.y - y, dz = b.z - z;
+      // the sprite is drawn from b.y upward — test against the middle of the visible body
+      const dx = b.x - x, dy = b.y + b.vis * 0.45 - y, dz = b.z - z;
       if (dx * dx + dy * dy + dz * dz < b.r * b.r) return b;
     }
     return null;

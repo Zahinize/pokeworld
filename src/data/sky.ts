@@ -35,8 +35,10 @@ export const SKY = {
   LEGENDARY_ROLL_PERIOD: 40,
   LEGENDARY_CHANCE: 0.07,
   LEGENDARY_COOLDOWN: 240,
-  /** Seconds for the full horizon-to-horizon crossing — a slow, majestic glide. */
-  LEGENDARY_DURATION: 130,
+  /** Seconds per horizon-to-horizon crossing — a fast, purposeful sweep. */
+  LEGENDARY_PASS_DURATION: 40,
+  /** Crossings chained per sighting before it vanishes for good (~2 min in the sky). */
+  LEGENDARY_PASSES: 3,
   /** Closest-approach altitude — must dip into Poke Ball range. */
   LEGENDARY_ALT: [22, 30] as [number, number],
   /** Lateral closest distance to the player at the pass point. */
@@ -58,7 +60,7 @@ export const SKY = {
   /** Members of a flock bunch into this arc (radians) of their orbit — a group, not a ring. */
   FLOCK_PHASE_SPREAD: 0.35,
   /** Legendaries draw enormous so a fly-by is unmissable. */
-  LEGENDARY_RENDER_SCALE: { articuno: 10, hooh: 10, lugia: 8, yveltal: 8 } as Record<string, number>,
+  LEGENDARY_RENDER_SCALE: { articuno: 10, hooh: 6, lugia: 4.5, yveltal: 4 } as Record<string, number>,
 
   // ---- rendering budgets ----
   /** The whole sky group hides when the camera sinks below this. */
