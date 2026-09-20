@@ -10,7 +10,18 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 const useBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
-const dataDir = () => process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+const dataDir = () => {
+  // On Vercel the filesystem is read-only — falling through to fs means the Blob store
+  // is missing. Fail with instructions instead of a bare ENOENT from mkdir.
+  if (process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error(
+      'Storage not configured: no BLOB_READ_WRITE_TOKEN. In the Vercel dashboard open ' +
+      'Storage → Create Database → Blob, connect it to Production, then REDEPLOY ' +
+      '(env vars only apply to new deployments).',
+    );
+  }
+  return process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+};
 
 const KEY_RE = /^[a-z0-9/_-]+$/i;
 function assertKey(key: string) {
