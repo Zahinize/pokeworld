@@ -1,16 +1,29 @@
 /**
  * JSON-document storage with two backends behind one interface:
  *  - dev / any Node host: plain JSON files under ./data (or DATA_DIR)
- *  - Vercel production:   @vercel/blob (BLOB_READ_WRITE_TOKEN present)
- * Blob objects are public-read by design, so callers MUST use unguessable keys
- * (see userKey in auth.ts). A per-instance write-through cache keeps a warm
- * lambda from reading its own stale write through the blob CDN.
+ *  - Vercel production:   @vercel/blob PRIVATE blobs. Credentials resolve automatically:
+ *    either a classic BLOB_READ_WRITE_TOKEN, or the modern OIDC connection where Vercel
+ *    injects BLOB_STORE_ID and the runtime provides VERCEL_OIDC_TOKEN.
+ * Documents are written with access:'private' (no public URLs at all) and keys are still
+ * HMAC-derived (see userKey in auth.ts) as defense in depth. A per-instance write-through
+ * cache plus useCache:false reads keep a warm lambda from ever seeing its own stale write.
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
-const useBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
-const dataDir = () => process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+const useBlob = () => !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID || process.env.VERCEL_OIDC_TOKEN);
+const dataDir = () => {
+  // On Vercel the filesystem is read-only — falling through to fs means the Blob store
+  // is missing. Fail with instructions instead of a bare ENOENT from mkdir.
+  if (process.env.VERCEL && !useBlob()) {
+    throw new Error(
+      'Storage not configured: no Blob credentials (BLOB_READ_WRITE_TOKEN or BLOB_STORE_ID). ' +
+      'In the Vercel dashboard open Storage -> Create Database -> Blob, connect it to this ' +
+      'project (Production), then REDEPLOY — env vars only apply to new deployments.',
+    );
+  }
+  return process.env.DATA_DIR ?? path.join(process.cwd(), 'data');
+};
 
 const KEY_RE = /^[a-z0-9/_-]+$/i;
 function assertKey(key: string) {
@@ -28,14 +41,16 @@ export async function getJSON(key: string): Promise<unknown | null> {
   assertKey(key);
   if (cache.has(key)) return cache.get(key);
   if (useBlob()) {
-    const { list } = await blob();
-    const { blobs } = await list({ prefix: `${key}.json`, limit: 1 });
-    if (!blobs.length) return null;
-    const r = await fetch(blobs[0].url, { cache: 'no-store' });
-    if (!r.ok) return null;
-    const doc = await r.json();
-    cache.set(key, doc);
-    return doc;
+    const { get } = await blob();
+    const r = await get(`${key}.json`, { access: 'private', useCache: false });
+    if (!r || r.statusCode !== 200 || !r.stream) return null;
+    try {
+      const doc = JSON.parse(await new Response(r.stream).text());
+      cache.set(key, doc);
+      return doc;
+    } catch {
+      return null;
+    }
   }
   try {
     const doc = JSON.parse(await fs.readFile(path.join(dataDir(), `${key}.json`), 'utf8'));
@@ -52,8 +67,8 @@ export async function putJSON(key: string, doc: unknown): Promise<void> {
   if (useBlob()) {
     const { put } = await blob();
     await put(`${key}.json`, body, {
-      access: 'public', addRandomSuffix: false, allowOverwrite: true,
-      contentType: 'application/json', cacheControlMaxAge: 60,
+      access: 'private', addRandomSuffix: false, allowOverwrite: true,
+      contentType: 'application/json',
     });
   } else {
     const file = path.join(dataDir(), `${key}.json`);
@@ -69,16 +84,22 @@ export async function putJSON(key: string, doc: unknown): Promise<void> {
 export async function listJSON(prefix: string): Promise<unknown[]> {
   assertKey(prefix);
   if (useBlob()) {
-    const { list } = await blob();
-    const urls: string[] = [];
+    const { list, get } = await blob();
+    const pathnames: string[] = [];
     let cursor: string | undefined;
     do {
       const page = await list({ prefix, cursor, limit: 1000 });
-      for (const b of page.blobs) urls.push(b.url);
+      for (const b of page.blobs) pathnames.push(b.pathname);
       cursor = page.cursor && page.hasMore ? page.cursor : undefined;
     } while (cursor);
-    const docs = await Promise.all(urls.map(async (u) => {
-      try { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? await r.json() : null; } catch { return null; }
+    const docs = await Promise.all(pathnames.map(async (pn) => {
+      try {
+        const r = await get(pn, { access: 'private' });
+        if (!r || r.statusCode !== 200 || !r.stream) return null;
+        return JSON.parse(await new Response(r.stream).text());
+      } catch {
+        return null;
+      }
     }));
     return docs.filter((d) => d !== null);
   }
