@@ -1,6 +1,6 @@
 import type { LevelConfig } from './types';
 
-/** Level 4 — The Deep Trench: catch stage-2 Pokémon, defeat Wailord, then Kyogre. Finishes the Sea World. */
+/** Level 4 — The Deep Trench: catch stage-2 Pokémon, then the boss ladder — SHINY Basculegion, Wailord, and finally Kyogre. */
 export const LEVEL_4: LevelConfig = {
   id: 4,
   name: 'Sea Reef',
@@ -29,6 +29,14 @@ export const LEVEL_4: LevelConfig = {
   companions: true,
   restockSeconds: 75,
   bossPhases: [
+    {
+      bosses: ['basculegion'],
+      shiny: true,
+      site: 'darkReef',
+      label: 'Shiny Basculegion',
+      event: 'currents',
+      arrivalToast: 'A spectral gleam cuts through the Dark Reef — a SHINY Basculegion, risen from lost souls!',
+    },
     {
       bosses: ['wailord'],
       site: 'openReef',

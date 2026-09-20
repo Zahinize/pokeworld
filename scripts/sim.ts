@@ -233,7 +233,7 @@ for (const levelId of [1, 2]) {
     let mission = createMission(levelId, 5, gen.objectives);
     const sc = mission.objectives.find((o) => o.kind === 'stageCatch')!;
     const bosses = mission.objectives.filter((o) => o.kind === 'boss');
-    if (sc && bosses.length === (levelId === 3 ? 2 : 2)) ok(`L${levelId}: mission = catch ${sc.required} stage-${sc.minStage}+ Pokémon + defeat ${bosses.map((b) => b.speciesId).join(' & ')}`);
+    if (sc && bosses.length === (levelId === 3 ? 2 : 3)) ok(`L${levelId}: mission = catch ${sc.required} stage-${sc.minStage}+ Pokémon + defeat ${bosses.map((b) => b.speciesId).join(' & ')}`);
     else fail(`L${levelId}: bad mission shape (${mission.objectives.map((o) => o.id).join(',')})`);
     const p = { x: 0, y: -14, z: 0, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
     const step = (sec: number, sink?: (ev: any) => void) => { for (let i = 0; i < sec * 60; i++) { eco.update(1 / 60, p, 0); for (const ev of eco.drainEvents()) sink?.(ev); } };
@@ -249,7 +249,7 @@ for (const levelId of [1, 2]) {
     // Boss wave: spawn all bosses at their sites, party fights them
     const partner1 = eco.addPartner('kingdra', 0);
     const partner2 = eco.addPartner('gyarados', 1);
-    const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8));
+    const bossEnts = (getLevel(levelId).bossPhases ?? []).flatMap((ph) => ph.bosses.map((b) => eco.spawnBoss(b, p.x + 14, p.z - 8, !!ph.shiny)));
     // mirror the session: commander duos ride together
     const wave0 = getLevel(levelId).bossPhases![0];
     if (wave0.bosses.length > 1) for (let i = 1; i < wave0.bosses.length; i++) bossEnts[i].pairBossId = bossEnts[0].id;

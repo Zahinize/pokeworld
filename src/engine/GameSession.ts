@@ -390,9 +390,9 @@ export class GameSession {
     for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => this.sheets.set(b, sh));
     const store = useStore.getState();
     const site = ZONES[wave.site];
-    // ~20% of encounters roll shiny: double HP & Attack, and a separate trophy if you win
+    // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it
     this.bossIds = wave.bosses.map((b, i) => {
-      const shiny = Math.random() < 0.2;
+      const shiny = !!wave.shiny || Math.random() < 0.2;
       if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
       return eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4, shiny).id;
     });

@@ -42,6 +42,8 @@ export interface BossPhase {
   /** Environmental drama on arrival. */
   event: 'none' | 'currents' | 'currents+shake';
   arrivalToast: string;
+  /** Force this wave to spawn SHINY (3x HP/Attack) instead of the usual 20% roll. */
+  shiny?: boolean;
 }
 
 export interface LevelConfig {
