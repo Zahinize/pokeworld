@@ -11,7 +11,7 @@ import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
 import { randomSeed } from './rng';
-import { maxHpOf, preloadSpeciesData } from '@/pokeapi/client';
+import { maxHpOf, combatStatsOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
 import { useStore } from '@/state/store';
 import { Audio, type WhaleSource } from '@/audio/AudioManager';
@@ -19,7 +19,8 @@ import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
-import { kitOf, effectiveRange } from './sim/moveSystem';
+import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
+import { computeDamage } from './sim/combat';
 import { getMove, isSupportive } from '@/data/moves';
 import { SPECIES, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
@@ -50,6 +51,9 @@ export class GameSession {
   eco: Ecosystem | null = null;
   balls = new BallSystem();
   sky: SkyLife | null = null;
+  private surfaceAtkReady = new Map<number, number>();
+  private surfaceDrainAcc = new Map<number, number>();
+  private surfaceHintShown = false;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -170,7 +174,8 @@ export class GameSession {
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
-    this.sky = new SkyLife(this.seed ^ 0x51ab1e);
+    this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
+    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear(); this.surfaceHintShown = false;
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
     this.timeOfDay = this.level.timeOfDay;
@@ -675,6 +680,7 @@ export class GameSession {
     eco.playerYaw = p.yaw;
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
+    this.updateSurfaceCombat(dt);
     this.balls.update(dt, eco, this.sky);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
@@ -905,7 +911,7 @@ export class GameSession {
   }
 
   /** A sky Pokémon joins the Collection — never the reef party, never mission credit. */
-  private onSkyCaught(speciesId: string, at: { x: number; y: number; z: number }) {
+  private onSkyCaught(speciesId: string, at: { x: number; y: number; z: number }, byCompanion = false) {
     const store = useStore.getState();
     const sp = getSpecies(speciesId);
     Audio.catchSuccess();
@@ -916,10 +922,61 @@ export class GameSession {
     const legendary = sp.rarity === 'legendary';
     store.pushToast({
       kind: 'catch',
-      title: legendary ? `LEGENDARY! Caught ${sp.name}!` : `Caught ${sp.name}!`,
+      title: byCompanion ? `KO! ${sp.name} joins your collection` : legendary ? `LEGENDARY! Caught ${sp.name}!` : `Caught ${sp.name}!`,
       body: 'Sky Pokémon — collection only',
       speciesId: sp.id, missionTarget: false, ttl: legendary ? 6 : 4,
     });
+  }
+
+  /**
+   * Companions at the waterline fight the sky (L3/L4): they auto-engage flyers and legendaries
+   * with their own moves — a KO is a catch, reef rules — but the open air drains their HP
+   * (SKY.COMPANION_SURFACE_HP_DRAIN per second), so every second up top is spent deliberately.
+   */
+  private updateSurfaceCombat(dt: number) {
+    const eco = this.eco, sky = this.sky;
+    if (!eco || !sky || !this.companionsEnabled) return;
+    for (const slot of [0, 1] as const) {
+      const id = this.activePartners[slot];
+      if (id < 0) continue;
+      const e = eco.byId.get(id);
+      if (!e || e.state === 'ko' || e.state === 'removed') continue;
+      const atSurface = e.y > -Math.max(0.8, e.species.size * 0.5);
+      if (!atSurface) { this.surfaceDrainAcc.set(id, 0); continue; }
+      if (!this.surfaceHintShown) {
+        this.surfaceHintShown = true;
+        useStore.getState().pushToast({ kind: 'warn', title: 'Your companions can\'t breathe air!', body: `They lose ${SKY.COMPANION_SURFACE_HP_DRAIN} HP/s above the waves — pick your sky battles wisely.`, ttl: 6 });
+      }
+      // suffocation drain, applied in whole-HP chunks
+      let acc = (this.surfaceDrainAcc.get(id) ?? 0) + SKY.COMPANION_SURFACE_HP_DRAIN * dt;
+      if (acc >= 1) { const chunk = Math.floor(acc); acc -= chunk; eco.damageAbs(e, chunk, -1); }
+      this.surfaceDrainAcc.set(id, acc);
+      if ((e.state as string) === 'ko') continue;
+      // auto-engage: nearest sky Pokémon within the strongest damage move's reach
+      if (eco.time < (this.surfaceAtkReady.get(id) ?? 0)) continue;
+      const kit = kitOf(e);
+      let mi: 0 | 1 = 0;
+      if (kit[1].kind === 'damage' && (kit[0].kind !== 'damage' || effectiveRange(e, kit[1]) > effectiveRange(e, kit[0]))) mi = 1;
+      if (kit[mi].kind !== 'damage') continue;
+      const move = kit[mi];
+      const reach = effectiveRange(e, move) + SKY.COMPANION_AIR_REACH_BONUS; // attacks carry further in open air
+      let best: (typeof sky.birds)[number] | null = null, bd = Infinity;
+      for (const b of sky.birds) {
+        if ((b.state !== 'flying' && b.state !== 'swimming') || b.fade < 0.5) continue;
+        const d = len3(b.x - e.x, b.y + b.vis * 0.45 - e.y, b.z - e.z);
+        if (d < bd) { bd = d; best = b; }
+      }
+      if (!best || bd > reach) continue;
+      const cy = best.y + best.vis * 0.45;
+      eco.moves.pushVisual('wave', move, e.x, e.y + e.species.size * 0.15, e.z, best.x, cy, best.z, Math.max(0.14, bd / 30));
+      eco.moves.pushVisual('impact', move, best.x, cy, best.z, best.x, cy, best.z, 0.5);
+      const st = combatStatsOf(best.speciesId);
+      const dmg = computeDamage(combatStatsOf(e.species.id), st, best.maxHp, move, stagesOf(e));
+      sky.applyDamage(best.id, dmg);
+      this.pushNumber(`-${dmg}`, '#ff8091', best.x, cy + 0.6, best.z, dmg >= best.maxHp * 0.3);
+      this.statsOf(this.tok(e)).dealt += dmg;
+      this.surfaceAtkReady.set(id, eco.time + move.cooldown);
+    }
   }
 
   private handleSkyEvents() {
@@ -946,6 +1003,11 @@ export class GameSession {
         case 'legendaryVanish': {
           const sp = getSpecies(ev.speciesId);
           store.pushToast({ kind: 'info', title: `${sp.name} vanished beyond the horizon`, body: 'Legends never linger.', speciesId: sp.id, ttl: 4 });
+          break;
+        }
+        case 'skyKo': {
+          // a companion KO is a catch — same rule as the reef
+          this.onSkyCaught(ev.speciesId, ev, true);
           break;
         }
       }

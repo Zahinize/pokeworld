@@ -50,6 +50,8 @@ export class Ecosystem {
   onPlayerDamage: (amount: number, casterId: number, moveId: string) => void = () => {};
   /** Camera yaw, used for companion formation (set by the session each frame). */
   playerYaw = 0;
+  /** True while the trainer floats at the waterline — companions ride up with them. */
+  playerAtSurface = false;
   private ctx: SimContext;
   private current: Vec3 = { x: 0, y: 0, z: 0 };
   objectives: MissionObjective[];
@@ -310,6 +312,7 @@ export class Ecosystem {
   // ---------------------------------------------------------------------------------------------
 
   update(dt: number, player: PlayerSnapshot, nightness: number) {
+    this.playerAtSurface = player.y > -1.2;
     dt = Math.min(dt, 0.05);
     this.time += dt;
     this.moves.setTime(this.time);
@@ -355,7 +358,9 @@ export class Ecosystem {
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
       if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;
       if (e.hotT > 0) { e.hotT -= dt; e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt); }
-      if (e.hp < e.maxHp && e.state !== 'ko') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
+      // no healing in open air: a surfaced companion's suffocation drain must bite at full rate
+      const surfacedPartner = e.role === 'partner' && e.y > -Math.max(0.8, e.species.size * 0.5);
+      if (e.hp < e.maxHp && e.state !== 'ko' && !surfacedPartner) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
 
       if (e.state === 'faint') {
         e.faintT -= dt;
@@ -493,7 +498,9 @@ export class Ecosystem {
     const fx = -sy, fz = -cy;            // camera forward
     const tx = p.x + fx * 3.2 + rx * side * 1.9;
     const tz = p.z + fz * 3.2 + rz * side * 1.9;
-    const ty = p.y - 0.55 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.15;
+    const ty = this.playerAtSurface
+      ? e.species.size * 0.22 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.1  // riding the swell beside you
+      : p.y - 0.55 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.15;
     const d = len3(tx - e.x, ty - e.y, tz - e.z);
     if (d > 35) { // fell too far behind (sprinting trainer) — return to their side in a swirl of bubbles
       e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0;
@@ -584,7 +591,8 @@ export class Ecosystem {
     // Hard constraints
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
-    const top = -Math.max(0.8, e.species.size * 0.45);
+    // companions may breach with a surfaced trainer (half their body rides above the waves)
+    const top = e.role === 'partner' && this.playerAtSurface ? e.species.size * 0.3 : -Math.max(0.8, e.species.size * 0.45);
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }

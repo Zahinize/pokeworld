@@ -50,6 +50,11 @@ export const SKY = {
    *  Master Ball included (expected ~5 Master Balls per catch). */
   LEGENDARY_CATCH_CAP: 0.2,
 
+  /** Water Pokemon suffocate slowly in open air: HP lost per second while a companion is surfaced. */
+  COMPANION_SURFACE_HP_DRAIN: 2,
+  /** Extra reach on companion moves fired into the open air (nothing to attenuate them up there). */
+  COMPANION_AIR_REACH_BONUS: 14,
+
   // ---- sparkles ----
   SPARKLE_RATE: 26,
   SPARKLE_GOLD: '#ffd166',

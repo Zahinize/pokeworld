@@ -28,6 +28,8 @@ export interface SkyBird {
   legendary: boolean;
   /** Render alpha: ramps on spawn, fades on vanish/catch. */
   fade: number;
+  hp: number;
+  maxHp: number;
   // ducklett wander heading
   heading: number;
 }
@@ -50,7 +52,8 @@ interface Flock {
 export type SkyEvent =
   | { type: 'cry'; dexId: number; x: number; y: number; z: number }
   | { type: 'legendaryEnter'; speciesId: string }
-  | { type: 'legendaryVanish'; speciesId: string };
+  | { type: 'legendaryVanish'; speciesId: string }
+  | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number };
 
 const LEGENDARY_POOL: Record<string, string[]> = { Day: ['articuno', 'lugia'], Evening: ['hooh'], Night: ['yveltal'], Dawn: [] };
 
@@ -74,7 +77,10 @@ export class SkyLife {
   private rollT = SKY.LEGENDARY_ROLL_PERIOD;
   private cooldownT = 0;
 
-  constructor(seed: number) {
+  private hpOf: (speciesId: string) => number;
+
+  constructor(seed: number, hpOf: (speciesId: string) => number = () => 100) {
+    this.hpOf = hpOf;
     this.rng = new RNG(seed >>> 0);
     // flocks
     for (const spec of SKY.FLOCKS) {
@@ -117,6 +123,7 @@ export class SkyLife {
       state: 'flying', stateT: 0, flockId, phase,
       r: rendered * 0.42 + 0.55, vis: rendered, legendary,
       fade: 0, heading: 0,
+      hp: this.hpOf(speciesId), maxHp: this.hpOf(speciesId),
     };
     this.birds.push(b);
     return this.birds.length - 1;
@@ -129,6 +136,7 @@ export class SkyLife {
         const b = this.birds[i];
         b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
+        b.hp = b.maxHp;
         return i;
       }
     }
@@ -350,6 +358,18 @@ export class SkyLife {
       b.vy = 6; b.fade = 1;
       if (b.flockId < 0 && b.legendary) { this.legendaryIdx = -1; this.cooldownT = SKY.LEGENDARY_COOLDOWN; }
       if (b.speciesId === 'ducklett') { b.state = 'gone'; b.fade = 0; }
+    }
+  }
+
+  /** Companion move damage. A KO by your team is a catch — same rule as the reef. */
+  applyDamage(id: number, dmg: number) {
+    const b = this.birds.find((x) => x.id === id);
+    if (!b || (b.state !== 'flying' && b.state !== 'swimming')) return;
+    b.hp -= dmg;
+    if (b.hp <= 0) {
+      b.hp = 0;
+      b.state = 'caught'; b.stateT = 0; // the retirement pass fades it out
+      this.events.push({ type: 'skyKo', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y + b.vis * 0.45, z: b.z });
     }
   }
 

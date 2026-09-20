@@ -425,6 +425,29 @@ for (const levelId of [1, 2]) {
       else fail(`sky: caught bird still ${b2.state}`);
     }
   }
+
+  // companion surface combat: real HP from the injected source, damage → skyKo → retirement
+  {
+    const sky3 = new SkyLife(7, (sid) => normalizeHp(SPECIES[sid].fallbackStats));
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 5 * 60; i++) sky3.update(1 / 60, L, 0.4, 0, 0);
+    const bird = sky3.birds.find((b) => b.state === 'flying' && b.fade > 0.9)!;
+    const expect = normalizeHp(SPECIES[bird.speciesId].fallbackStats);
+    if (bird.maxHp === expect && bird.hp === expect) ok(`sky: birds carry real HP (${bird.speciesId} ${bird.maxHp})`);
+    else fail(`sky: bird HP wrong (${bird.hp}/${bird.maxHp}, want ${expect})`);
+    let koEvents = 0;
+    while (bird.hp > 0) sky3.applyDamage(bird.id, 25);
+    for (const ev of sky3.drainEvents()) if (ev.type === 'skyKo' && ev.birdId === bird.id) koEvents++;
+    for (let i = 0; i < 90; i++) sky3.update(1 / 60, L, 0.4, 0, 0);
+    if (koEvents === 1 && (bird.state === 'gone' || bird.state === 'caught')) ok('sky: companion KO fires skyKo once and retires the bird');
+    else fail(`sky: KO path broken (events=${koEvents} state=${bird.state})`);
+    // a bird mid-capture ignores companion damage (the ball owns the verdict)
+    const b3 = sky3.birds.find((b) => b.state === 'flying' && b.fade > 0.9)!;
+    b3.state = 'captured';
+    const hpBefore = b3.hp;
+    sky3.applyDamage(b3.id, 999);
+    if (b3.hp === hpBefore) ok('sky: captured birds are immune to move damage'); else fail('sky: damage leaked into a capture attempt');
+  }
 }
 
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
