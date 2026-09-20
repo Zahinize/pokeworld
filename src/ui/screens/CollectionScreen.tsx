@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Ic, GROUP_ICONS, Zap, Timer, Target, Sparkles } from '../components/icons';
 import { SPECIES_LIST, SPECIES, makeToken, baseSpeciesId, isShinyToken } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { ZONES } from '@/engine/world/zones';
@@ -35,9 +36,9 @@ function MoveCard({ m }: { m: MoveConfig }) {
       </div>
       <p className="muted small">{m.desc}</p>
       <div className="move-stats">
-        {m.kind === 'damage' && <span title="Power">💥 {m.power}</span>}
-        <span title="Cooldown">⏱ {m.cooldown}s</span>
-        {m.range > 0 && <span title="Range">🎯 {m.range} m</span>}
+        {m.kind === 'damage' && <span title="Power"><Ic icon={Zap} size={13} /> {m.power}</span>}
+        <span title="Cooldown"><Ic icon={Timer} size={13} /> {m.cooldown}s</span>
+        {m.range > 0 && <span title="Range"><Ic icon={Target} size={13} /> {m.range} m</span>}
       </div>
       {m.effect && <div className="move-fx">{effectText(m.effect)}</div>}
     </div>
@@ -69,11 +70,11 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
             <SpriteImg id={s.id} shiny={selShiny} size={140} unseen={!entry?.seen && !selShiny} className={selShiny ? 'shiny-glow' : ''} />
             <div>
               <div className="row between wrap">
-                <h2>{selShiny ? `✨ Shiny ${s.name}` : entry?.seen ? s.name : '???'} <span className="dim" style={{ fontSize: 14, fontWeight: 600 }}>#{s.dexId}</span></h2>
+                <h2>{selShiny ? <><Ic icon={Sparkles} size={16} color="var(--gold)" /> Shiny {s.name}</> : entry?.seen ? s.name : '???'} <span className="dim" style={{ fontSize: 14, fontWeight: 600 }}>#{s.dexId}</span></h2>
                 <button className="btn ghost" style={{ minHeight: 34, padding: '0 12px' }} onClick={() => setSel(null)}>✕</button>
               </div>
               <div className="row wrap" style={{ margin: '8px 0 12px', gap: 6 }}>
-                <span className="badge aqua">{BEHAVIOR_GROUPS[s.primary].icon} {BEHAVIOR_GROUPS[s.primary].label}</span>
+                <span className="badge aqua"><Ic icon={GROUP_ICONS[s.primary]} size={13} /> {BEHAVIOR_GROUPS[s.primary].label}</span>
                 {s.secondary.map((r) => <span key={r} className="badge violet">{r}</span>)}
                 <span className="badge">{s.rarity}</span>
                 <span className="badge">Stage {s.stage}</span>
@@ -108,7 +109,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     const kit = SPECIES_MOVES[s.id]?.map((id) => MOVES[id]).filter(Boolean) ?? [];
                     return (
                       <>
-                        <div className="sect-label">Stats {t && <span className="badge gold" style={{ marginLeft: 6 }}>{selShiny ? `✨ Shiny Boss ×${(t.hp * BOSS_SHINY_MULT).toFixed(0)}` : `Boss ×${t.hp}`}</span>}</div>
+                        <div className="sect-label">Stats {t && <span className="badge gold" style={{ marginLeft: 6 }}>{selShiny ? `Shiny Boss ×${(t.hp * BOSS_SHINY_MULT).toFixed(0)}` : `Boss ×${t.hp}`}</span>}</div>
                         <div className="stat-bars">
                           {rows.map(([label, v, boosted]) => (
                             <div key={label} style={{ display: 'contents' }}>
@@ -146,7 +147,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
           if (se && se.caught > 0) cards.push(
             <button key={shinyKey} className={`card clickable dex-card ${sel === shinyKey ? 'selected' : ''}`} onClick={() => { Audio.uiClick(); setSel(shinyKey); }}>
               <SpriteImg id={sp.id} shiny size={64} className="shiny-glow" />
-              <div className="n">✨ Shiny {sp.name}</div>
+              <div className="n"><Ic icon={Sparkles} size={12} color="var(--gold)" /> Shiny {sp.name}</div>
               <div className="c">×{se.caught}</div>
             </button>
           );

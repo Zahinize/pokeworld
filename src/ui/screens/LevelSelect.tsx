@@ -1,4 +1,5 @@
 import { LEVELS, missionTotal } from '@/data/levels';
+import { Ic, Lock } from '../components/icons';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel, fmtTime } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
@@ -29,7 +30,7 @@ export function LevelSelect({ onPlay }: { onPlay: (levelId: number) => void }) {
                   <button key={lv.id} className={`card level-card ${unlocked ? 'clickable' : 'locked'}`} disabled={!unlocked} onClick={() => { Audio.uiConfirm(); onPlay(lv.id); }}>
                     <div className="row between">
                       <div className="level-num">{lv.id}</div>
-                      {done ? <span className="badge green">✓ Complete</span> : lv.status === 'comingSoon' ? <span className="badge">Coming soon</span> : unlocked ? <span className="badge aqua">Open</span> : <span className="badge">🔒 Locked</span>}
+                      {done ? <span className="badge green">✓ Complete</span> : lv.status === 'comingSoon' ? <span className="badge">Coming soon</span> : unlocked ? <span className="badge aqua">Open</span> : <span className="badge"><Ic icon={Lock} size={12} /> Locked</span>}
                     </div>
                     <h3>{lv.subtitle}</h3>
                     <div className="muted small">{missionTotal(lv.mission)} Pokémon required</div>

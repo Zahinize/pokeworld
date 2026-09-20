@@ -515,3 +515,19 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 @media (prefers-reduced-motion: reduce) {
   .ocean-bg::before, .ocean-bg .ray, .ocean-bg .bubble { animation: none; }
 }
+
+/* ---- text inputs (auth screen) ---- */
+.text-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(4, 22, 43, 0.55);
+  color: var(--ink, #eaf6ff);
+  font: 600 15px var(--font-body);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.text-input::placeholder { color: rgba(200, 225, 245, 0.45); font-weight: 500; }
+.text-input:focus { border-color: var(--aqua); box-shadow: 0 0 0 3px rgba(53, 208, 255, 0.15); }

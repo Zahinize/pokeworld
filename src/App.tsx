@@ -4,6 +4,11 @@ import { session } from '@/engine/GameSession';
 import { preloadSpeciesData } from '@/pokeapi/client';
 import { LoadingScreen } from './ui/screens/LoadingScreen';
 import { TrainerSelect } from './ui/screens/TrainerSelect';
+import { AuthScreen } from './ui/screens/AuthScreen';
+import { WorldsScreen } from './ui/screens/WorldsScreen';
+import { LeaderboardScreen } from './ui/screens/LeaderboardScreen';
+import { useAuth, authChoiceMade } from './state/auth';
+import { startSync } from './net/sync';
 import { StartScreen } from './ui/screens/StartScreen';
 import { MainMenu } from './ui/screens/MainMenu';
 import { LevelSelect } from './ui/screens/LevelSelect';
@@ -37,6 +42,8 @@ export default function App() {
   // Boot: load save, detect touch, warm PokeAPI cache
   useEffect(() => {
     boot();
+    useAuth.getState().init();  // background /me revalidation — never blocks
+    startSync();                // leaderboard stats push on save changes
     const touch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window && navigator.maxTouchPoints > 0;
     setIsTouch(touch);
     let done = false;
@@ -44,10 +51,10 @@ export default function App() {
     setLoadLabel('Fetching Pokémon data…');
     preloadSpeciesData(undefined, (d, t) => setLoadProgress(d / t)).finally(() => {
       const wait = Math.max(0, 900 - (performance.now() - t0));
-      setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'start'); }, wait);
+      setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'worlds' : 'start'); }, wait);
     });
     // hard cap so a slow network never blocks the menu
-    const cap = setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'menu' : 'start'); }, 9000);
+    const cap = setTimeout(() => { if (done) return; done = true; const s = useStore.getState(); s.setScreen(s.save.trainer ? 'worlds' : 'start'); }, 9000);
     return () => clearTimeout(cap);
   }, [boot, setIsTouch]);
 
@@ -83,7 +90,10 @@ export default function App() {
 
   switch (screen) {
     case 'loading': return <LoadingScreen progress={loadProgress} label={loadLabel} />;
-    case 'start': return <StartScreen onStart={() => setScreen('trainer')} />;
+    case 'start': return <StartScreen onStart={() => setScreen(authChoiceMade() ? (save.trainer ? 'worlds' : 'trainer') : 'login')} />;
+    case 'login': return <AuthScreen onDone={() => setScreen(save.trainer ? 'worlds' : 'trainer')} />;
+    case 'worlds': return <WorldsScreen />;
+    case 'leaderboard': return <LeaderboardScreen />;
     case 'trainer': return <TrainerSelect />;
     case 'menu': return <MainMenu onPlay={(id) => goBrief(id)} onResume={() => { const r = save.currentRun; if (r) goBrief(r.levelId, r.seed, r); }} />;
     case 'levels': return <LevelSelect onPlay={(id) => goBrief(id)} />;

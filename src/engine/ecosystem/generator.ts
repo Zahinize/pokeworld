@@ -346,7 +346,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   }
   for (const phase of level.bossPhases ?? []) {
     for (const b of phase.bosses) {
-      const name = phase.shiny ? `SHINY ${getSpecies(b).name} ✨` : getSpecies(b).name;
+      const name = phase.shiny ? `SHINY ${getSpecies(b).name}` : getSpecies(b).name;
       objectives.push({ id: `boss-${b}`, kind: 'boss', label: `Defeat ${name}`, speciesId: b, required: 1, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: [b] });
     }
   }

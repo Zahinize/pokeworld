@@ -1,4 +1,5 @@
 import { useStore } from '@/state/store';
+import { Ic, Globe, Settings, Play, Waves, Map, BookOpen } from '../components/icons';
 import { getTrainer } from '@/data/trainers';
 import { getLevel, LEVELS } from '@/data/levels';
 import { OceanBackdrop, Panel, TrainerAvatar } from '../components/common';
@@ -34,21 +35,22 @@ export function MainMenu({ onPlay, onResume }: { onPlay: (levelId: number) => vo
               </div>
               <div className="row">
                 {loadStatus === 'recovered' && <span className="badge gold">Save recovered</span>}
-                <button className="btn ghost" style={{ minHeight: 38 }} onClick={() => { Audio.uiClick(); setScreen('settings'); }}>⚙ Settings</button>
+                <button className="btn ghost" style={{ minHeight: 38 }} onClick={() => { Audio.uiClick(); setScreen('worlds'); }}><Ic icon={Globe} size={15} /> Worlds</button>
+                <button className="btn ghost" style={{ minHeight: 38 }} onClick={() => { Audio.uiClick(); setScreen('settings'); }}><Ic icon={Settings} size={15} /> Settings</button>
               </div>
             </div>
             <div className="menu-list">
               {run && run.total > 0 && (
                 <button className="btn primary big block" onClick={() => { Audio.uiConfirm(); onResume(); }}>
-                  ▶ Resume {getLevel(run.levelId).title} <span className="badge" style={{ marginLeft: 6, color: '#04162b', background: 'rgba(0,0,0,.12)', borderColor: 'transparent' }}>{run.caught} / {run.total}</span>
+                  <Ic icon={Play} size={16} /> Resume {getLevel(run.levelId).title} <span className="badge" style={{ marginLeft: 6, color: '#04162b', background: 'rgba(0,0,0,.12)', borderColor: 'transparent' }}>{run.caught} / {run.total}</span>
                 </button>
               )}
               <button className={`btn ${run ? 'ghost' : 'primary'} big block`} onClick={() => { Audio.uiConfirm(); onPlay(nextLevel); }}>
-                🌊 Sea World · {worldDone ? 'Replay Level 1' : `Level ${nextLevel}`}
+                <Ic icon={Waves} size={16} /> Sea World · {worldDone ? 'Replay Level 1' : `Level ${nextLevel}`}
               </button>
               <div className="row" style={{ gap: 10 }}>
-                <button className="btn ghost block" onClick={() => { Audio.uiClick(); setScreen('levels'); }}>🗺 Choose Level</button>
-                <button className="btn ghost block" onClick={() => { Audio.uiClick(); setScreen('collection'); }}>📖 Collection</button>
+                <button className="btn ghost block" onClick={() => { Audio.uiClick(); setScreen('levels'); }}><Ic icon={Map} size={15} /> Choose Level</button>
+                <button className="btn ghost block" onClick={() => { Audio.uiClick(); setScreen('collection'); }}><Ic icon={BookOpen} size={15} /> Collection</button>
               </div>
             </div>
           </Panel>

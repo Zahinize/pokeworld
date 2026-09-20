@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Ic, OBJECTIVE_ICONS, Fish, Waves, Search, Gem, Shield, Star, Swords, Sparkles } from '../components/icons';
+import type { LucideIcon } from 'lucide-react';
 import { getLevel, missionTotal } from '@/data/levels';
 import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
@@ -69,15 +71,15 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
             <p className="subtitle">Mission · {total} Pokémon required</p>
             <div className="hr" style={{ margin: '16px 0' }} />
             <div className="mission-list">
-              {m.schoolGroups.map((g, i) => <BriefRow key={`s${i}`} icon="🐟" label={`Schooling Fish${m.schoolGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `school-${i}`)} />)}
-              {m.passiveGroups.map((g, i) => <BriefRow key={`p${i}`} icon="🌊" label={`Passive Drifters${m.passiveGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `passive-${i}`)} />)}
-              {m.curious > 0 && <BriefRow icon="🔎" label="Curious Explorer" count={m.curious} done={objectives?.find((o) => o.id === 'curious')} />}
-              {m.bottom > 0 && <BriefRow icon="🪨" label="Bottom Dweller" count={m.bottom} done={objectives?.find((o) => o.id === 'bottom')} />}
-              {m.defensive > 0 && <BriefRow icon="🫧" label="Defensive Fish" count={m.defensive} done={objectives?.find((o) => o.id === 'defensive')} />}
-              {m.stageCatch && <BriefRow icon="⭐" label={`Stage ${m.stageCatch.minStage}+ Pokémon`} count={objectives?.find((o) => o.id === 'stageCatch')?.required ?? m.stageCatch.max} done={objectives?.find((o) => o.id === 'stageCatch')} />}
+              {m.schoolGroups.map((g, i) => <BriefRow key={`s${i}`} icon={Fish} label={`Schooling Fish${m.schoolGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `school-${i}`)} />)}
+              {m.passiveGroups.map((g, i) => <BriefRow key={`p${i}`} icon={Waves} label={`Passive Drifters${m.passiveGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `passive-${i}`)} />)}
+              {m.curious > 0 && <BriefRow icon={Search} label="Curious Explorer" count={m.curious} done={objectives?.find((o) => o.id === 'curious')} />}
+              {m.bottom > 0 && <BriefRow icon={Gem} label="Bottom Dweller" count={m.bottom} done={objectives?.find((o) => o.id === 'bottom')} />}
+              {m.defensive > 0 && <BriefRow icon={Shield} label="Defensive Fish" count={m.defensive} done={objectives?.find((o) => o.id === 'defensive')} />}
+              {m.stageCatch && <BriefRow icon={Star} label={`Stage ${m.stageCatch.minStage}+ Pokémon`} count={objectives?.find((o) => o.id === 'stageCatch')?.required ?? m.stageCatch.max} done={objectives?.find((o) => o.id === 'stageCatch')} />}
               {(level.bossPhases ?? []).flatMap((ph) => ph.bosses).map((b) => (
                 <div key={b} className="objective boss">
-                  <div style={{ fontSize: 18 }}>⚔️</div>
+                  <div><Ic icon={Swords} size={18} color="var(--red)" /></div>
                   <div><div className="label">Defeat {SPECIES[b].name}</div></div>
                   <div className="count"><SpriteImg id={b} size={30} /></div>
                 </div>
@@ -122,7 +124,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                             return (
                               <button key={t} className={`card clickable party-cell boss-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
                                 <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
-                                <span className="n">{shiny && '✨'}{tokenLabel(t)}</span>
+                                <span className="n">{shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
                                 {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                               </button>
                             );
@@ -160,11 +162,11 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   );
 }
 
-function BriefRow({ icon, label, count, guardian, done }: { icon: string; label: string; count: number; guardian?: boolean; done?: { caught: number; guardianCaught: boolean } }) {
+function BriefRow({ icon, label, count, guardian, done }: { icon: LucideIcon; label: string; count: number; guardian?: boolean; done?: { caught: number; guardianCaught: boolean } }) {
   const c = done?.caught ?? 0;
   return (
     <div className="objective">
-      <div style={{ fontSize: 18 }}>{icon}</div>
+      <div><Ic icon={icon} size={18} color="var(--aqua)" /></div>
       <div>
         <div className="label">{label}</div>
         {guardian && <div className={`guardian ${done?.guardianCaught ? 'done' : ''}`}>{done?.guardianCaught ? '✓' : '□'} Their guardian</div>}
