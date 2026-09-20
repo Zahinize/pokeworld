@@ -3,10 +3,10 @@
  * instance. O(users) on a cold cache — fine to ~1k players; the escape hatch is a
  * precomputed leaderboard.json updated on stats POST.
  */
-import type { ApiRequest, ApiResponse } from './_lib/http';
-import { methodGuard, sendJson } from './_lib/http';
-import type { UserDoc } from './_lib/auth';
-import { listJSON } from './_lib/store';
+import type { ApiRequest, ApiResponse } from './_lib/http.js';
+import { methodGuard, sendJson } from './_lib/http.js';
+import type { UserDoc } from './_lib/auth.js';
+import { listJSON } from './_lib/store.js';
 
 interface Row { username: string; displayName: string; value: number; detail?: string }
 const TOP = 20;

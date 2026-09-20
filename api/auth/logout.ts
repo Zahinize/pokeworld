@@ -1,5 +1,5 @@
-import type { ApiRequest, ApiResponse } from '../_lib/http';
-import { methodGuard, sendJson, setSessionCookie } from '../_lib/http';
+import type { ApiRequest, ApiResponse } from '../_lib/http.js';
+import { methodGuard, sendJson, setSessionCookie } from '../_lib/http.js';
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (!methodGuard(req, res, 'POST')) return;

@@ -1,7 +1,7 @@
-import type { ApiRequest, ApiResponse } from '../_lib/http';
-import { methodGuard, readJson, sendJson, setSessionCookie } from '../_lib/http';
-import { emptyStats, hashPassword, makeSession, publicUser, rateLimit, USERNAME_RE, userKey, type UserDoc } from '../_lib/auth';
-import { getJSON, putJSON } from '../_lib/store';
+import type { ApiRequest, ApiResponse } from '../_lib/http.js';
+import { methodGuard, readJson, sendJson, setSessionCookie } from '../_lib/http.js';
+import { emptyStats, hashPassword, makeSession, publicUser, rateLimit, USERNAME_RE, userKey, type UserDoc } from '../_lib/auth.js';
+import { getJSON, putJSON } from '../_lib/store.js';
 
 export default async function handler(req: ApiRequest, res: ApiResponse) {
   if (!methodGuard(req, res, 'POST')) return;
