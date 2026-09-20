@@ -9,9 +9,9 @@ export const LEVEL_1: LevelConfig = {
   timeOfDay: 0.38,
   dayCycleMinutes: 14,
   spawn: {
-    schools: 2,
+    schools: 3,
     passiveGroups: 1,
-    curious: 2,
+    curious: 3,
     predators: 3,
     bottom: 2,
     defensive: 1,
@@ -21,9 +21,10 @@ export const LEVEL_1: LevelConfig = {
     schoolGroups: [
       { members: 3, guardian: true },
       { members: 3, guardian: true },
+      { members: 3, guardian: true },
     ],
     passiveGroups: [{ members: 3, guardian: true }],
-    curious: 1,
+    curious: 2,
     bottom: 1,
     defensive: 0,
   },

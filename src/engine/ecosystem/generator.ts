@@ -199,7 +199,17 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     const pos = farFrom(rng, 10, () => posInZone(rng, zone, s, 0.75), anchors, 18);
     anchors.push(pos);
     spawns.push({ speciesId: s.id, role, groupIndex: -1, objectiveId, ambient, zone, pos });
-    return spawns.length - 1;
+    const idx = spawns.length - 1;
+    // entourage: followers that always spawn with this species (Kingler's Krabby court, Corsola/Wiglett clusters)
+    if (s.entourage) {
+      const cs = getSpecies(s.entourage.speciesId);
+      const gi = groups.length;
+      groups.push({ kind: 'companions', speciesId: cs.id, zone, anchor: { ...pos }, radius: 3, followsSpawn: idx });
+      const n = rng.int(s.entourage.count[0], s.entourage.count[1]);
+      for (let i = 0; i < n; i++) spawns.push({ speciesId: cs.id, role: 'companion', groupIndex: gi, ambient: true, zone, pos: { x: pos.x + rng.range(-2.5, 2.5), y: pos.y + rng.range(-0.8, 0.8), z: pos.z + rng.range(-2.5, 2.5) } });
+      summary.ambient.push(`${cs.name} \u00d7${n} (with ${s.name})`);
+    }
+    return idx;
   };
 
   // ---- Curious explorers ----
@@ -236,7 +246,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     preds.push(s);
   }
   // Predators roam in small packs (Carvanha 2–3, Sharpedo/Barraskewda 1–2, the big ones alone) sharing a territory.
-  const PACK: Record<string, [number, number]> = { carvanha: [2, 3], sharpedo: [1, 2], barraskewda: [1, 2], veluza: [1, 2], gyarados: [1, 1] };
+  const PACK: Record<string, [number, number]> = { carvanha: [2, 3], sharpedo: [1, 2], barraskewda: [1, 2], veluza: [1, 2], gyarados: [1, 1], basculegion: [1, 2] };
   preds.forEach((s) => {
     const [lo, hi] = PACK[s.id] ?? [1, 1];
     const n = rng.int(lo, hi);

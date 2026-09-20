@@ -43,6 +43,21 @@ export interface Projectile {
 
 interface PendingCast { at: number; casterId: number; moveId: string; target: MoveTarget; slot: number }
 
+/** Renderer-facing move visuals: travelling waves for instant moves, and per-move impacts. */
+export interface MoveVisual {
+  active: boolean;
+  kind: 'wave' | 'impact';
+  moveId: string;
+  style: string;
+  color: string;
+  x0: number; y0: number; z0: number;
+  x1: number; y1: number; z1: number;
+  t: number; dur: number;
+  /** impacts: set true by the renderer once particles have been emitted. */
+  consumed: boolean;
+}
+const VISUAL_CAP = 24;
+
 export interface CombatHost {
   time: number;
   byId: Map<number, Entity>;
@@ -56,6 +71,8 @@ export interface CombatHost {
 }
 
 const PROJECTILE_SPEED = 18;
+/** Canonical pacing: beams snap across the reef, streams surge, lobbed globs arc slower. */
+const STYLE_SPEED: Record<string, number> = { beam: 34, jet: 24, darts: 26, bubbles: 14, ring: 16, crescent: 21, ink: 13, motes: 14 };
 const HOMING_RATE = 2.6; // rad/s steering toward the target
 const MELEE_WINDUP = 0.25;
 
@@ -68,6 +85,15 @@ export function stagesOf(e: Entity) {
 
 export class MoveSystem {
   projectiles: Projectile[] = [];
+  visuals: MoveVisual[] = [];
+  private visCursor = 0;
+
+  /** Claim a pooled visual slot (round-robin; renderer treats inactive/expired as free). */
+  pushVisual(kind: 'wave' | 'impact', move: MoveConfig, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, dur: number) {
+    const v = this.visuals[this.visCursor]; this.visCursor = (this.visCursor + 1) % VISUAL_CAP;
+    v.active = true; v.kind = kind; v.moveId = move.id; v.style = move.style; v.color = move.color;
+    v.x0 = x0; v.y0 = y0; v.z0 = z0; v.x1 = x1; v.y1 = y1; v.z1 = z1; v.t = 0; v.dur = dur; v.consumed = false;
+  }
   private pending: PendingCast[] = [];
   private host: CombatHost;
 
@@ -88,6 +114,8 @@ export class MoveSystem {
     this.host = host;
     for (let i = 0; i < COMBAT.MAX_PROJECTILES; i++) {
       this.projectiles.push({ active: false, moveId: '', style: 'jet', color: '#fff', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, casterId: -1, target: { kind: 'player' }, t: 0, speed: PROJECTILE_SPEED });
+    for (let i = 0; i < VISUAL_CAP; i++)
+      this.visuals.push({ active: false, kind: 'impact', moveId: '', style: '', color: '#fff', x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0, t: 0, dur: 0, consumed: false });
     }
   }
 
@@ -124,6 +152,7 @@ export class MoveSystem {
 
   update(dt: number) {
     const h = this.host;
+    for (const v of this.visuals) { if (v.active) { v.t += dt; if (v.t > v.dur + 0.6) v.active = false; } }
     // Resolve pending casts
     for (let i = this.pending.length - 1; i >= 0; i--) {
       const p = this.pending[i];
@@ -132,13 +161,22 @@ export class MoveSystem {
       const caster = h.byId.get(p.casterId);
       if (!caster || caster.state === 'ko' || caster.state === 'removed' || caster.state === 'caught') continue;
       const move = getMove(p.moveId);
-      if (move.selfTarget) { this.applyEffectTo(caster, caster, move); continue; }
+      if (move.selfTarget) {
+        this.pushVisual('impact', move, caster.x, caster.y, caster.z, caster.x, caster.y, caster.z, 0.5);
+        this.applyEffectTo(caster, caster, move); continue;
+      }
       const tp = this.targetPos(p.target);
       if (!tp) continue;
       const d = len3(tp.x - caster.x, tp.y - caster.y, tp.z - caster.z);
       if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
-        if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) this.applyHit(caster, p.target, move);
+        if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
+          // canonical travel visuals: bursts sweep a wave at the target, geysers erupt beneath it, lightning drops from above
+          if (move.style === 'burst') this.pushVisual('wave', move, caster.x, caster.y, caster.z, tp.x, tp.y, tp.z, 0.45);
+          else if (move.style === 'geyser') this.pushVisual('wave', move, tp.x, tp.y - 2.5, tp.z, tp.x, tp.y, tp.z, 0.7);
+          else if (move.style === 'lightning') this.pushVisual('wave', move, tp.x, tp.y + 11, tp.z, tp.x, tp.y, tp.z, 0.5);
+          this.applyHit(caster, p.target, move);
+        }
       } else {
         this.launch(caster, p.target, move);
       }
@@ -162,11 +200,16 @@ export class MoveSystem {
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.z += pr.vz * dt;
       void vl;
       // hit test against the intended target
-      const hitR = (pr.target.kind === 'player' ? 0.9 : (this.host.byId.get(pr.target.id)?.species.size ?? 1) * 0.45) + 0.35;
+      // tiny species (Wishiwashi, Wiglett…) keep a floor so projectiles can actually connect
+      const hitR = (pr.target.kind === 'player' ? 0.9 : Math.max(0.9, this.host.byId.get(pr.target.id)?.species.size ?? 1) * 0.45) + 0.35;
       if (len3(tp.x - pr.x, tp.y - pr.y, tp.z - pr.z) < hitR) {
         const caster = this.host.byId.get(pr.casterId);
         pr.active = false;
-        if (caster) this.applyHit(caster, pr.target, getMove(pr.moveId));
+        const mv = getMove(pr.moveId);
+        this.pushVisual('impact', mv, pr.x, pr.y, pr.z, pr.x, pr.y, pr.z, 0.5);
+        // beams linger for a beat after connecting instead of vanishing mid-air
+        if (caster && mv.style === 'beam') this.pushVisual('wave', mv, caster.x, caster.y, caster.z, pr.x, pr.y, pr.z, 0.22);
+        if (caster) this.applyHit(caster, pr.target, mv);
       }
     }
   }
@@ -189,12 +232,16 @@ export class MoveSystem {
     pr.x = caster.x + (dx / d) * caster.species.size * 0.5;
     pr.y = caster.y + (dy / d) * caster.species.size * 0.5;
     pr.z = caster.z + (dz / d) * caster.species.size * 0.5;
-    pr.speed = PROJECTILE_SPEED;
+    pr.speed = STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
     pr.vx = (dx / d) * pr.speed; pr.vy = (dy / d) * pr.speed; pr.vz = (dz / d) * pr.speed;
     pr.casterId = caster.id; pr.target = target; pr.t = 0;
   }
 
   private applyHit(caster: Entity, target: MoveTarget, move: MoveConfig) {
+    if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
+      const tp = this.targetPos(target);
+      if (tp) this.pushVisual('impact', move, tp.x, tp.y, tp.z, tp.x, tp.y, tp.z, 0.5);
+    }
     const h = this.host;
     if (target.kind === 'player') {
       if (move.kind === 'damage') {

@@ -53,6 +53,8 @@ export interface SpeciesConfig {
   depth: [number, number];
   habitat: ZoneId[];
   groupSize: [number, number];
+  /** Followers that always spawn with (and trail) this species, e.g. Kingler's Krabby court. */
+  entourage?: { speciesId: string; count: [number, number] };
   curiosity: number;
   fear: number;
   aggression: number;

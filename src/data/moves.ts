@@ -90,7 +90,8 @@ export const MOVES: Record<string, MoveConfig> = {
   drillRun: M({ id: 'drillRun', name: 'Drill Run', desc: 'Spins like a drill and crashes into the target.', kind: 'damage', category: 'physical', power: 80, cooldown: 7, range: 10, style: 'dash', color: '#d6d3d1' }),
   waveCrash: M({ id: 'waveCrash', name: 'Wave Crash', desc: 'Rides a wave headlong into the foe.', kind: 'damage', category: 'physical', power: 100, cooldown: 7, range: 8, style: 'dash', color: '#38bdf8' }),
   heavySlam: M({ id: 'heavySlam', name: 'Heavy Slam', desc: 'Drops its enormous bulk on the target, sometimes stunning it.', kind: 'damage', category: 'physical', power: 85, cooldown: 5, range: 3.5, style: 'melee', color: '#94a3b8', effect: { type: 'stun', magnitude: 1, duration: 1.5, chance: 0.2 } }),
-  muddyWater: M({ id: 'muddyWater', name: 'Muddy Water', desc: 'A murky wave that can blind whatever it engulfs.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 11, style: 'burst', color: '#92764e', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.2 } }),
+  muddyWater: M({ id: 'muddyWater', name: 'Muddy Water', desc: 'A churning torrent of mud and water blasted at the target.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 11, style: 'jet', color: '#92764e', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.2 } }),
+  crabhammer: M({ id: 'crabhammer', name: 'Crabhammer', desc: 'Slams down a massive pincer like a war hammer.', kind: 'damage', category: 'physical', power: 90, cooldown: 5, range: 2.5, style: 'melee', color: '#fb923c' }),
   // ---- utility ----
   supersonic: M({ id: 'supersonic', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
   supersonicSlow: M({ id: 'supersonicSlow', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
@@ -155,6 +156,24 @@ export const SPECIES_MOVES: Record<string, [string, string]> = {
   veluza: ['aquaCutter', 'drillRun'],
   dondozo: ['waveCrash', 'heavySlam'],
   tatsugiri: ['muddyWater', 'dragonPulse'],
+  // content drop 2
+  krabby: ['bubble', 'harden'],
+  kingler: ['crabhammer', 'bubbleBeam'],
+  starmie: ['psychic', 'bubbleBeam'],
+  magikarp: ['tackle', 'flail'],
+  kabutops: ['aquaCutter', 'liquidation'],
+  totodile: ['bite', 'aquaJet'],
+  corsola: ['bubbleBeam', 'aquaRing'],
+  lotad: ['bubble', 'sweetScent'],
+  whiscash: ['mudShot', 'muddyWater'],
+  spheal: ['iceShard', 'brine'],
+  walrein: ['iceBeam', 'bodySlam'],
+  frillish: ['waterPulse', 'drainingKiss'],
+  jellicent: ['brine', 'drainingKiss'],
+  wishiwashi: ['waterGun', 'aquaRing'],
+  bruxish: ['crunch', 'psychic'],
+  basculegion: ['waveCrash', 'crunch'],
+  wiglett: ['waterGun', 'mudShot'],
 };
 
 /** Companion replacements: species whose wild kit carries a utility swap it for this damage move. */
@@ -181,6 +200,7 @@ export const COMPANION_REPLACEMENTS: Record<string, string> = {
   mantyke: 'wingAttack',
   phione: 'waterPulse',
   tympole: 'mudShot',
+  lotad: 'bubbleBeam',
   alomomola: 'wakeUpSlap',
   arctovish: 'freezeDry',
   finizen: 'aquaJet',

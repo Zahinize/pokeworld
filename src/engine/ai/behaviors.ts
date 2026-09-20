@@ -480,7 +480,9 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       const effDist = tdist * (e.lod === 2 ? 0.45 : e.lod === 1 ? 0.7 : 1);
       // open with a utility (Screech, Scary Face…) sometimes, then hit with a damage move
       const wantUtility = target!.slowT <= 0 && target!.defStage >= 1 && ctx.rng() < 0.35;
-      const slot = ctx.pickMove(e, effDist, wantUtility);
+      // outside a deliberate utility opener, only a damage move ends the hunt — otherwise a ranged
+      // Screech would satisfy the rush from 8m and the predator would never close for the kill
+      const slot = ctx.pickMove(e, effDist, wantUtility, !wantUtility);
       if (slot !== -1) {
         ctx.cast(e, slot, { kind: 'entity', id: target!.id });
         const cool = s.id === 'gyarados' ? 8 + ctx.rng() * 5 : 4 + ctx.rng() * 4;

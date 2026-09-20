@@ -12,7 +12,7 @@ import { RNG } from '../rng';
 import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT, BOSS_TUNING } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT} from '@/data/combatConfig';
 import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -727,7 +727,7 @@ export class Ecosystem {
     const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     e.isBoss = true;
     e.isShiny = shiny;
-    const shinyMult = shiny ? 2 : 1;
+    const shinyMult = shiny ? BOSS_SHINY_MULT : 1;
     e.maxHp = Math.round(e.maxHp * t.hp * shinyMult); e.hp = e.maxHp;
     e.cs = { ...e.cs, atk: e.cs.atk * t.atk * shinyMult, spAtk: e.cs.spAtk * t.atk * shinyMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
     e.home = { x, y, z };

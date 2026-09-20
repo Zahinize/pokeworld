@@ -25,7 +25,12 @@ export interface SpriteSheet {
 export type SpriteVariant = 'front' | 'back' | 'shiny' | 'shinyback';
 
 const cache = new Map<string, Promise<SpriteSheet>>();
-const MAX_FRAMES = 64;
+/**
+ * Every GIF frame is baked at native resolution: Showdown sprites animate at 33 fps and are
+ * pixel art, so dropping frames makes them stutter and downscaling makes them soft. The only
+ * reason to ever sample frames is a sheet that would exceed a mobile GPU's texture limit.
+ */
+const MAX_SHEET_EDGE = 4096;
 
 export function sheetKey(speciesId: string, variant: SpriteVariant = 'front') {
   return variant === 'front' ? speciesId : `${speciesId}:${variant}`;
@@ -50,24 +55,19 @@ const VARIANT_PATH: Record<SpriteVariant, string> = {
   front: '/sprites/pokemon/', back: '/sprites/pokemon/back/', shiny: '/sprites/pokemon/shiny/', shinyback: '/sprites/pokemon/back/shiny/',
 };
 
-async function decode(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
-  const front = SPECIES[speciesId].sprite;
-  const url = front.replace('/sprites/pokemon/', VARIANT_PATH[variant]);
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
-  const buf = await res.arrayBuffer();
+interface Baked { canvas: HTMLCanvasElement; cols: number; rows: number; frames: number; frameTime: number; aspect: number; fill: number }
+
+/** Composite every GIF frame (honouring disposal) into one native-resolution spritesheet. */
+function bake(buf: ArrayBuffer): Baked {
   const gif = parseGIF(buf);
   const all = decompressFrames(gif, true);
   if (!all.length) throw new Error('no frames');
   const W = gif.lsd.width, H = gif.lsd.height;
-  // Sample evenly if the GIF has too many frames
-  let frames = all;
-  if (all.length > MAX_FRAMES) {
-    frames = [];
-    for (let i = 0; i < MAX_FRAMES; i++) frames.push(all[Math.floor((i / MAX_FRAMES) * all.length)]);
-  }
-  const cols = Math.ceil(Math.sqrt(frames.length));
-  const rows = Math.ceil(frames.length / cols);
+  const fits = (k: number) => { const c = Math.ceil(Math.sqrt(k)); return c * W <= MAX_SHEET_EDGE && Math.ceil(k / c) * H <= MAX_SHEET_EDGE; };
+  let n = all.length;
+  while (n > 1 && !fits(n)) n--;
+  const pick = n === all.length ? null : new Set(Array.from({ length: n }, (_, i) => Math.floor((i / n) * all.length)));
+  const cols = Math.ceil(Math.sqrt(n)), rows = Math.ceil(n / cols);
   const sheet = document.createElement('canvas');
   sheet.width = cols * W; sheet.height = rows * H;
   const sg = sheet.getContext('2d')!;
@@ -75,37 +75,91 @@ async function decode(speciesId: string, variant: SpriteVariant = 'front'): Prom
   const wg = work.getContext('2d')!;
   const patch = document.createElement('canvas');
   const pg = patch.getContext('2d')!;
-  let prevDisposal = 0, prevDims: any = null;
-  let delaySum = 0, opaque = 0;
-  // We must composite sequentially through ALL frames to respect disposal, but only bake sampled ones.
-  const sampledSet = new Set(frames);
-  let baked = 0;
+  let prevDisposal = 0, prevDims: { left: number; top: number; width: number; height: number } | null = null;
+  let totalDelay = 0, opaque = 0, baked = 0;
   for (let i = 0; i < all.length; i++) {
     const f = all[i];
     if (prevDisposal === 2 && prevDims) wg.clearRect(prevDims.left, prevDims.top, prevDims.width, prevDims.height);
     const d = f.dims;
     if (patch.width !== d.width || patch.height !== d.height) { patch.width = d.width; patch.height = d.height; }
-    const img = new ImageData(new Uint8ClampedArray(f.patch) as unknown as Uint8ClampedArray<ArrayBuffer>, d.width, d.height);
-    pg.putImageData(img, 0, 0);
+    pg.putImageData(new ImageData(new Uint8ClampedArray(f.patch) as unknown as Uint8ClampedArray<ArrayBuffer>, d.width, d.height), 0, 0);
     wg.drawImage(patch, d.left, d.top);
-    if (sampledSet.has(f)) {
-      const cx = (baked % cols) * W, cy = Math.floor(baked / cols) * H;
-      sg.drawImage(work, cx, cy);
-      baked++;
-      delaySum += f.delay || 80;
-      if (baked === 1) {
+    totalDelay += f.delay || 80;
+    if (!pick || pick.has(i)) {
+      sg.drawImage(work, (baked % cols) * W, Math.floor(baked / cols) * H);
+      if (baked === 0) {
         const px = wg.getImageData(0, 0, W, H).data;
-        let n = 0; for (let k = 3; k < px.length; k += 4) if (px[k] > 40) n++;
-        opaque = n / (W * H);
+        let k = 0; for (let j = 3; j < px.length; j += 4) if (px[j] > 40) k++;
+        opaque = k / (W * H);
       }
+      baked++;
     }
     prevDisposal = f.disposalType; prevDims = d;
   }
-  const tex = new THREE.CanvasTexture(sheet);
+  // Whole-clip duration over the frames we show: identical to native playback when nothing is sampled.
+  return { canvas: sheet, cols, rows, frames: n, frameTime: Math.max(0.03, totalDelay / n / 1000), aspect: W / H, fill: opaque };
+}
+
+/**
+ * The compressed GIF behind each live sheet. A few KB each — kept so a sheet can be rebuilt if the
+ * GPU context is lost, which lets us throw its decoded pixels away the moment they're uploaded.
+ */
+const sources = new Map<string, { buf: ArrayBuffer; texture: THREE.Texture; bytes: number }>();
+
+/**
+ * Uploads a texture to the GPU immediately (renderer.initTexture). Without it, sheets that aren't
+ * drawn yet — bosses, reserve companions — keep their CPU pixels until they first appear.
+ */
+let uploader: ((t: THREE.Texture) => void) | null = null;
+export function bindTextureUploader(fn: ((t: THREE.Texture) => void) | null) {
+  uploader = fn;
+  if (fn) for (const src of sources.values()) fn(src.texture);
+}
+
+/** Sprite memory right now: GPU-resident sheet bytes and any CPU pixels not yet released. */
+export function spriteMemoryStats() {
+  let gpu = 0, cpu = 0;
+  for (const src of sources.values()) {
+    gpu += src.bytes;
+    const img = src.texture.image as HTMLCanvasElement;
+    if (img && img.width > 1) cpu += img.width * img.height * 4;
+  }
+  return { sheets: sources.size, gpuMB: +(gpu / 1048576).toFixed(1), cpuMB: +(cpu / 1048576).toFixed(1) };
+}
+
+/**
+ * After the first GPU upload the canvas is a redundant second copy of every pixel (the texture
+ * lives on the GPU). Releasing it halves sprite memory with no visual cost.
+ */
+function releaseOnUpload(tex: THREE.Texture) {
+  tex.onUpdate = () => {
+    const img = tex.image as HTMLCanvasElement | undefined;
+    if (img && img.width > 1) { img.width = 1; img.height = 1; }
+  };
+}
+
+async function decode(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
+  const front = SPECIES[speciesId].sprite;
+  const url = front.replace('/sprites/pokemon/', VARIANT_PATH[variant]);
+  const res = await fetch(url, { cache: 'force-cache' });
+  if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  const b = bake(buf);
+  const tex = new THREE.CanvasTexture(b.canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
   tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  return { speciesId, texture: tex, cols, rows, frames: frames.length, frameTime: Math.max(0.03, (delaySum / frames.length) / 1000), aspect: W / H, fill: opaque, fallback: false };
+  releaseOnUpload(tex);
+  sources.set(sheetKey(speciesId, variant), { buf, texture: tex, bytes: b.canvas.width * b.canvas.height * 4 });
+  uploader?.(tex);
+  return { speciesId, texture: tex, cols: b.cols, rows: b.rows, frames: b.frames, frameTime: b.frameTime, aspect: b.aspect, fill: b.fill, fallback: false };
+}
+
+/** Rebuild every live sheet from its GIF after a WebGL context loss wiped the GPU copies. */
+export function rebakeAllSheets() {
+  for (const src of sources.values()) {
+    try { src.texture.image = bake(src.buf).canvas; src.texture.needsUpdate = true; } catch { /* leave it blank */ }
+  }
 }
 
 export function loadSpriteSheet(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
@@ -129,9 +183,23 @@ export async function preloadSprites(ids: string[], onProgress?: (done: number, 
   return out;
 }
 
-export function getLoadedSheet(speciesId: string): SpriteSheet | undefined {
-  // Only resolved promises are useful synchronously; we keep a side map.
-  return resolved.get(speciesId);
+/**
+ * Release every cached sheet whose key is not in `keep`, freeing both the GPU texture and the
+ * backing canvas. Called on each level transition — without it the cache grows to the entire
+ * roster (front + back + shiny + shinyback) and never shrinks.
+ */
+export function disposeSheetsExcept(keep: Set<string>): number {
+  let freed = 0;
+  for (const [key, p] of [...cache]) {
+    if (keep.has(key)) continue;
+    cache.delete(key);
+    sources.delete(key);
+    p.then((sheet) => {
+      sheet.texture.dispose();
+      const img = sheet.texture.image as HTMLCanvasElement | undefined;
+      if (img && 'width' in img) { img.width = 1; img.height = 1; } // drop the pixel buffer too
+    }).catch(() => {});
+    freed++;
+  }
+  return freed;
 }
-const resolved = new Map<string, SpriteSheet>();
-export function rememberSheet(s: SpriteSheet) { resolved.set(s.speciesId, s); }

@@ -62,6 +62,9 @@ export const COMBAT = {
   /** Companion party. */
   PARTY_SIZE: 6,
   ACTIVE_COMPANIONS: 2,
+  /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
+   *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
+  BENCH_REGEN_FRAC_PER_SEC: 0.015,
 
   /** Extra render shrink for oversized companions (× the global 0.62 partner scale). */
   COMPANION_GIANT_SHRINK: { gyarados: 0.56, dondozo: 0.56, kyogre: 0.56, wailord: 0.56 } as Record<string, number>,
@@ -75,10 +78,13 @@ export const COMBAT = {
 
 /** Per-boss stat multipliers and charge cadence (level configs reference these by boss id). */
 export interface BossTuning { hp: number; atk: number; def: number; chargeEvery: number; chargeSpeed: number }
-/** Bosses fight at their natural stats — their base bulk, charges and pairing carry the fight. */
+/** Bosses fight at 2× HP/Attack — stage-2 frontlines (Kingdra/Gyarados/Basculegion) melt 1× rulers. */
 export const BOSS_TUNING: Record<string, BossTuning> = {
-  dondozo: { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 9 },
-  tatsugiri: { hp: 1, atk: 1, def: 1, chargeEvery: 26, chargeSpeed: 7 },
-  wailord: { hp: 1, atk: 1, def: 1, chargeEvery: 25, chargeSpeed: 8 },
-  kyogre: { hp: 1, atk: 1, def: 1, chargeEvery: 15, chargeSpeed: 11 },
+  dondozo: { hp: 2, atk: 2, def: 1, chargeEvery: 20, chargeSpeed: 9 },
+  tatsugiri: { hp: 2, atk: 2, def: 1, chargeEvery: 26, chargeSpeed: 7 },
+  wailord: { hp: 2, atk: 2, def: 1, chargeEvery: 25, chargeSpeed: 8 },
+  kyogre: { hp: 2, atk: 2, def: 1, chargeEvery: 15, chargeSpeed: 11 },
 };
+
+/** Shiny bosses multiply HP/Attack again on top of BOSS_TUNING: 2× base → 3× total. */
+export const BOSS_SHINY_MULT = 1.5;

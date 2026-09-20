@@ -296,7 +296,7 @@ function BossIntro() {
         <div className="eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)', marginTop: 10 }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
         <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
         <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
-        <p className="muted small" style={{ margin: '12px 0 18px' }}>{anyShiny ? 'A shiny ruler — twice the power, twice the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
+        <p className="muted small" style={{ margin: '12px 0 18px' }}>{anyShiny ? 'A shiny ruler — three times the power, three times the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
         <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}>⚔️ I'm ready — battle!</button>
       </Panel>
     </div>

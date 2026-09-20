@@ -52,7 +52,8 @@ export interface SaveData {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'auto', showHints: true, reducedMotion: false, missionCollapsed: false,
+  // New trainers see the reef at its best — 'auto' stays available as an explicit downgrade path.
+  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'high', showHints: true, reducedMotion: false, missionCollapsed: false,
 };
 
 export function createNewSave(): SaveData {
