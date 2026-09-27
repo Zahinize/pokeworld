@@ -15,6 +15,7 @@
   "dependencies": {
     "@react-three/drei": "^9.122.0",
     "@react-three/fiber": "^8.18.0",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.8.0",
     "gifuct-js": "^2.1.2",
     "lucide-react": "^1.47.0",
