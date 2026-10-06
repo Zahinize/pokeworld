@@ -238,10 +238,10 @@ export function PokemonLayer() {
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
-      // grazing posture: feeding fish pitch nose-down (with a peck bob); drifters tip up to sip
-      const sipping = e.state === 'feed' && e.species.primary === 'passive';
-      const tiltTarget = e.state === 'feed'
-        ? f * (sipping ? -0.42 : 0.5 + Math.sin(time * 2 + e.phase * 11) * 0.14)
+      // grazing posture: feeding schools pitch nose-down with a peck bob;
+      // passive drifters stay level — their happy surface swirl is the tell
+      const tiltTarget = e.state === 'feed' && e.species.primary !== 'passive'
+        ? f * (0.5 + Math.sin(time * 2 + e.phase * 11) * 0.14)
         : 0;
       const tPrev = tiltMemo.get(e.id) ?? 0;
       const tNow = tPrev + (tiltTarget - tPrev) * 0.06;

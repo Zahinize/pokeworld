@@ -196,11 +196,17 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   if (e.state === 'feed' && e.lod < 2) {
     const fa = e.phase * 12.9898; // deterministic per-fish offset — no per-frame RNG
     const fr = (0.25 + 0.45 * ((e.phase * 7.31) % 1)) * g.radius * GAME.FEED_HUDDLE; // packed in tight: dinner is a family affair
-    seek(e, g.anchor.x + Math.cos(fa) * fr, g.anchor.y, g.anchor.z + Math.sin(fa) * fr, 1.1, 0.8);
-    // rhythmic peck lunges: schools stab down at the substrate, drifters tip up to sip
-    const peck = Math.sin(ctx.time * 2.0 + e.phase * 11.0);
-    const lunge = peck > 0.45 ? 1.7 : -0.45;
-    acc.y += isSchool ? -lunge : lunge;
+    const sx = g.anchor.x + Math.cos(fa) * fr, sz = g.anchor.z + Math.sin(fa) * fr;
+    if (isSchool) {
+      seek(e, sx, g.anchor.y, sz, 1.1, 0.8);
+      // rhythmic peck lunges: schools stab down at the substrate
+      const peck = Math.sin(ctx.time * 2.0 + e.phase * 11.0);
+      acc.y += peck > 0.45 ? -1.7 : 0.45;
+    } else {
+      // passive drifters celebrate the surface: happy little circles around their spot
+      const sw = ctx.time * 1.7 + e.phase * 6.283;
+      seek(e, sx + Math.cos(sw) * 1.3, g.anchor.y + Math.sin(sw * 0.9 + e.phase * 3) * 0.35, sz + Math.sin(sw) * 1.3, 1.3, 0.4);
+    }
   }
 
   // Noise, vertical life, current, habitat
@@ -217,7 +223,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const act = activityFactor(e, ctx);
   // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
   const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
-  const feedMult = e.state === 'feed' ? (atTable ? GAME.FEED_SPEED_MULT : 1.3) : 1;
+  const feedMult = e.state === 'feed' ? (atTable ? (isSchool ? GAME.FEED_SPEED_MULT : 0.65) : 1.3) : 1;
   const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }

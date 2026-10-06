@@ -84,7 +84,10 @@ for (const levelId of [1, 2]) {
     for (const e of eco.alive) {
       const sp2 = Math.hypot(e.vx, e.vy, e.vz);
       if (e.state === 'feed') {
-        speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++;
+        // crawl is judged AT THE TABLE; the descent is a deliberate 1.3x hustle
+        const grp = eco.groups.find((gr) => gr.id === e.groupId);
+        const atTable = grp ? Math.abs(e.y - grp.anchor.y) < 2.2 : false;
+        if (e.behavior === 'schooling' && atTable) { speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++; }
         if (e.y > -1) bandViolations++; // never above the waterline; grazing may dive below the comfort band by design
         if (e.behavior === 'schooling') schoolFloorMin = Math.min(schoolFloorMin, e.y - floorY(e.x, e.z));
       } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
@@ -93,8 +96,9 @@ for (const levelId of [1, 2]) {
   if (feedWindows >= 2) ok(`feed: ${feedWindows} grazing windows over 4 calm minutes (${feedTicks} sampled ticks)`);
   else fail(`feed: only ${feedWindows} windows in 4 minutes`);
   const avgFeed = speedSumFeed / Math.max(1, nFeed), avgSwim = speedSumSwim / Math.max(1, nSwim);
-  if (avgFeed < avgSwim * 0.75) ok(`feed: grazing crawl ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
-  else fail(`feed: grazing not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
+  // schools crawl while pecking; drifters deliberately stay lively (the happy surface swirl)
+  if (avgFeed < avgSwim * 0.75) ok(`feed: pecking schools crawl at ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
+  else fail(`feed: pecking schools not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
   if (bandViolations === 0) ok('feed: grazing stays inside depth bands'); else fail(`feed: ${bandViolations} depth-band violations`);
   // the group must ARRIVE at the table: drifter anchors reach the actual waterline
   if (passiveRise > -2.0) ok(`feed: drifter anchors reach the waterline (peak ${passiveRise.toFixed(1)}m)`);
