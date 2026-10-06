@@ -20,6 +20,7 @@ attribute float aFlash;
 attribute float aGlow;
 attribute float aSize;
 attribute float aStatus;
+attribute float aTilt;
 uniform float uTime, uFrameTime, uFrames, uCols, uRows, uAspect;
 varying vec2 vUv;
 varying float vAlpha, vFlash, vGlow, vDepth, vWorldY, vStatus;
@@ -35,7 +36,11 @@ void main() {
   vec3 camUp = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
   float h = aSize;
   float w = h * uAspect;
-  vec3 world = center.xyz + camRight * (position.x * w) + camUp * (position.y * h);
+  // aTilt pitches the sprite in its billboard plane (feeding fish tip nose-down like grazing birds)
+  float tc = cos(aTilt), ts = sin(aTilt);
+  vec2 lp = vec2(position.x * w, position.y * h);
+  lp = vec2(lp.x * tc - lp.y * ts, lp.x * ts + lp.y * tc);
+  vec3 world = center.xyz + camRight * lp.x + camUp * lp.y;
   vec4 mv = viewMatrix * vec4(world, 1.0);
   vDepth = -mv.z;
   vWorldY = world.y;
@@ -110,19 +115,21 @@ interface SpeciesBatch {
   aGlow: THREE.InstancedBufferAttribute;
   aSize: THREE.InstancedBufferAttribute;
   aStatus: THREE.InstancedBufferAttribute;
+  aTilt: THREE.InstancedBufferAttribute;
   sheet: SpriteSheet;
 }
 
 const planeGeo = new THREE.PlaneGeometry(1, 1);
 const tmpM = new THREE.Matrix4();
 const facingMemo = new Map<number, number>();
+const tiltMemo = new Map<number, number>();
 
 function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   const geo = planeGeo.clone();
   const mk = (n: number, def = 0) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(def), 1); a.setUsage(THREE.DynamicDrawUsage); return a; };
-  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1), aStatus = mk(capacity);
+  const aPhase = mk(capacity), aFlip = mk(capacity, 1), aAlpha = mk(capacity, 1), aFlash = mk(capacity), aGlow = mk(capacity), aSize = mk(capacity, 1), aStatus = mk(capacity), aTilt = mk(capacity);
   geo.setAttribute('aPhase', aPhase); geo.setAttribute('aFlip', aFlip); geo.setAttribute('aAlpha', aAlpha);
-  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize); geo.setAttribute('aStatus', aStatus);
+  geo.setAttribute('aFlash', aFlash); geo.setAttribute('aGlow', aGlow); geo.setAttribute('aSize', aSize); geo.setAttribute('aStatus', aStatus); geo.setAttribute('aTilt', aTilt);
   const mat = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: true, side: THREE.DoubleSide,
     uniforms: {
@@ -135,7 +142,7 @@ function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   mesh.frustumCulled = false;
   mesh.count = 0;
-  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, aStatus, sheet };
+  return { mesh, mat, capacity, aPhase, aFlip, aAlpha, aFlash, aGlow, aSize, aStatus, aTilt, sheet };
 }
 
 export function PokemonLayer() {
@@ -231,6 +238,15 @@ export function PokemonLayer() {
       b.aGlow.array[i] = glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
+      // grazing posture: feeding fish pitch nose-down (with a peck bob); drifters tip up to sip
+      const sipping = e.state === 'feed' && e.species.primary === 'passive';
+      const tiltTarget = e.state === 'feed'
+        ? f * (sipping ? -0.42 : 0.5 + Math.sin(time * 2 + e.phase * 11) * 0.14)
+        : 0;
+      const tPrev = tiltMemo.get(e.id) ?? 0;
+      const tNow = tPrev + (tiltTarget - tPrev) * 0.06;
+      tiltMemo.set(e.id, tNow);
+      b.aTilt.array[i] = tNow;
       if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);
@@ -246,7 +262,7 @@ export function PokemonLayer() {
     for (const b of batches.current.values()) {
       if (b.mesh.count === 0) continue;
       b.mesh.instanceMatrix.needsUpdate = true;
-      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = b.aStatus.needsUpdate = true;
+      b.aPhase.needsUpdate = b.aFlip.needsUpdate = b.aAlpha.needsUpdate = b.aFlash.needsUpdate = b.aGlow.needsUpdate = b.aSize.needsUpdate = b.aStatus.needsUpdate = b.aTilt.needsUpdate = true;
       b.mat.uniforms.uTime.value = time;
       b.mat.uniforms.uFogColor.value.copy(light.sky);
       b.mat.uniforms.uFogDensity.value = light.fogDensity;

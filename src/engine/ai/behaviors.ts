@@ -195,10 +195,12 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   // Grazing: settle onto a personal peck spot near the anchor and nibble in place
   if (e.state === 'feed' && e.lod < 2) {
     const fa = e.phase * 12.9898; // deterministic per-fish offset — no per-frame RNG
-    const fr = (0.35 + 0.65 * ((e.phase * 7.31) % 1)) * g.radius;
+    const fr = (0.3 + 0.5 * ((e.phase * 7.31) % 1)) * g.radius * 0.8; // tighter huddle: the drop reads as deliberate
     seek(e, g.anchor.x + Math.cos(fa) * fr, g.anchor.y, g.anchor.z + Math.sin(fa) * fr, 1.1, 0.8);
-    // nose-down pecks for floor grazers, surface sips for drifters
-    acc.y += Math.sin(ctx.time * 3 + e.phase * 7) * 0.5 - (isSchool ? 0.25 : -0.25);
+    // rhythmic peck lunges: schools stab down at the substrate, drifters tip up to sip
+    const peck = Math.sin(ctx.time * 2.0 + e.phase * 11.0);
+    const lunge = peck > 0.45 ? 1.7 : -0.45;
+    acc.y += isSchool ? -lunge : lunge;
   }
 
   // Noise, vertical life, current, habitat
