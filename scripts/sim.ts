@@ -52,6 +52,61 @@ for (const levelId of [1, 2]) {
   ok(`level ${levelId} within budgets`);
 }
 
+// ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
+{
+  const { GAME } = await import('@/data/gameConfig');
+  const { catchProbability } = await import('@/engine/sim/catching');
+  const gen = generateEcosystem(getLevel(1), 11);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: 200, y: -14, z: 200, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false }; // far away: calm reef
+  let feedTicks = 0, feedWindows = 0, wasFeeding = false;
+  let speedSumFeed = 0, nFeed = 0, speedSumSwim = 0, nSwim = 0;
+  let bandViolations = 0;
+  for (let i = 0; i < 240 * 60; i++) {
+    eco.update(1 / 60, p, 0); eco.drainEvents();
+    if (i % 30 !== 0) continue;
+    const feeding = eco.alive.some((e) => e.state === 'feed');
+    if (feeding) feedTicks++;
+    if (feeding && !wasFeeding) feedWindows++;
+    wasFeeding = feeding;
+    for (const e of eco.alive) {
+      const sp2 = Math.hypot(e.vx, e.vy, e.vz);
+      if (e.state === 'feed') {
+        speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++;
+        if (e.y > -1 || e.y < -(e.species.depth[1] + 6)) bandViolations++;
+      } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
+    }
+  }
+  if (feedWindows >= 2) ok(`feed: ${feedWindows} grazing windows over 4 calm minutes (${feedTicks} sampled ticks)`);
+  else fail(`feed: only ${feedWindows} windows in 4 minutes`);
+  const avgFeed = speedSumFeed / Math.max(1, nFeed), avgSwim = speedSumSwim / Math.max(1, nSwim);
+  if (avgFeed < avgSwim * 0.75) ok(`feed: grazing crawl ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
+  else fail(`feed: grazing not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
+  if (bandViolations === 0) ok('feed: grazing stays inside depth bands'); else fail(`feed: ${bandViolations} depth-band violations`);
+
+  // threat preemption: force a window, then alarm the group — every feeder must scatter on the next think
+  const g = eco.groups.find((gr) => gr.memberIds.length >= 3)!;
+  g.alarm = 0; g.feedUntil = eco.time + 10; g.nextAnchorChange = eco.time + 10;
+  for (let i = 0; i < 120; i++) { eco.update(1 / 60, p, 0); eco.drainEvents(); }
+  const feedersBefore = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length;
+  g.alarm = 1; g.threatId = -2; // player as stand-in threat
+  for (let i = 0; i < 90; i++) { eco.update(1 / 60, p, 0); eco.drainEvents(); }
+  const stillFeeding = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length;
+  const scattered = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'scatter').length;
+  if (feedersBefore > 0 && stillFeeding === 0 && g.feedUntil === 0) ok(`feed: alarm preempts grazing instantly (${feedersBefore} feeders -> ${scattered} scattered)`);
+  else fail(`feed: preemption broken (before=${feedersBefore} still=${stillFeeding} feedUntil=${g.feedUntil})`);
+
+  // catch bonus: exactly FEED_CATCH_MULT, inside the clamp
+  const target = eco.byId.get(g.memberIds[0])!;
+  target.state = 'school';
+  const pSwimState = catchProbability(target, 'pokeball');
+  target.state = 'feed';
+  const pFeedState = catchProbability(target, 'pokeball');
+  const expected = Math.min(GAME.CATCH_MAX, pSwimState * GAME.FEED_CATCH_MULT);
+  if (Math.abs(pFeedState - expected) < 1e-9) ok(`feed: catch bonus exact (${(pSwimState * 100).toFixed(1)}% -> ${(pFeedState * 100).toFixed(1)}%)`);
+  else fail(`feed: catch bonus wrong (${pFeedState} vs ${expected})`);
+}
+
 // ---- Guardian aggression + group revenge (synthetic scenario) ----
 {
   const gen = generateEcosystem(getLevel(1), 42);

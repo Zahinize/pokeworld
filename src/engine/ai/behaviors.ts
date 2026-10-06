@@ -120,10 +120,13 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
 
   // State transitions
   const baseState = isSchool ? 'school' : 'drift';
+  const feeding = g.feedUntil > ctx.time;
   if (e.lured) e.state = 'lured';
   else if (g.alarm > 0.05 && e.state !== 'scatter') { e.state = 'scatter'; e.stateT = 0; }
   else if (g.alarm <= 0.05 && e.state === 'scatter') { e.state = baseState; e.stateT = 0; }
   else if (e.state === 'lured') { e.state = baseState; e.stateT = 0; }
+  else if (feeding && e.state === baseState) { e.state = 'feed'; e.stateT = 0; }
+  else if (!feeding && e.state === 'feed') { e.state = baseState; e.stateT = 0; }
 
   const scattering = e.state === 'scatter';
   const energy = Math.min(1.6, s.speed / 1.4);
@@ -186,8 +189,17 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     seek(e, px, ctx.player.y + Math.sin(e.phase * 3) * 1.2, pz, 1.4, 2);
   }
 
+  // Grazing: settle onto a personal peck spot near the anchor and nibble in place
+  if (e.state === 'feed' && e.lod < 2) {
+    const fa = e.phase * 12.9898; // deterministic per-fish offset — no per-frame RNG
+    const fr = (0.35 + 0.65 * ((e.phase * 7.31) % 1)) * g.radius;
+    seek(e, g.anchor.x + Math.cos(fa) * fr, g.anchor.y, g.anchor.z + Math.sin(fa) * fr, 1.1, 0.8);
+    // nose-down pecks for floor grazers, surface sips for drifters
+    acc.y += Math.sin(ctx.time * 3 + e.phase * 7) * 0.5 - (isSchool ? 0.25 : -0.25);
+  }
+
   // Noise, vertical life, current, habitat
-  const noiseW = (isSchool ? 0.55 : 0.7) * energy;
+  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1);
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
@@ -198,7 +210,8 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
 
   const act = activityFactor(e, ctx);
-  const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1)) * act;
+  const feedMult = e.state === 'feed' ? GAME.FEED_SPEED_MULT : 1;
+  const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }
 
@@ -226,6 +239,27 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
       return;
     }
     g.followId = -1; // leader gone: become an independent drifting group
+  }
+
+  // Feeding windows: only a calm, independent group grazes — any alarm cancels instantly.
+  if (g.alarm > 0.05 || lured) g.feedUntil = 0;
+  else if (g.followId < 0 && ctx.time >= g.nextFeedAt && g.feedUntil <= 0) {
+    g.feedUntil = ctx.time + GAME.FEED_DURATION[0] + ctx.rng() * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
+    g.nextFeedAt = g.feedUntil + GAME.FEED_PERIOD[0] + ctx.rng() * (GAME.FEED_PERIOD[1] - GAME.FEED_PERIOD[0]);
+    // aim the anchor at the feed site, clamped inside the species' depth band:
+    // schools graze down along the floor, drifters tip up to sip at their band's ceiling
+    const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
+    if (sp) {
+      const school = g.kind === 'school' || g.kind === 'ambientSchool';
+      const bandTop = -sp.depth[0], bandBot = -sp.depth[1];
+      g.anchorTarget.y = school
+        ? Math.max(bandBot, floorY(g.anchor.x, g.anchor.z) + sp.size + 1.2)
+        : Math.min(-2.5, bandTop - 0.5);
+      g.nextAnchorChange = g.feedUntil + 1; // hold position while grazing
+    }
+  } else if (g.feedUntil > 0 && ctx.time >= g.feedUntil) {
+    g.feedUntil = 0; // window over: the next wander leg resumes naturally
+    g.nextAnchorChange = ctx.time;
   }
 
   if (lured) {

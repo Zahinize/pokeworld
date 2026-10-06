@@ -3,7 +3,7 @@ import type { SpeciesConfig, BehaviorGroup, ZoneId } from '@/data/types';
 export type EntityRole = 'member' | 'guardian' | 'solo' | 'companion' | 'partner';
 
 export type EntityState =
-  | 'wander' | 'school' | 'drift' | 'flee' | 'scatter'
+  | 'wander' | 'school' | 'drift' | 'feed' | 'flee' | 'scatter'
   | 'patrol' | 'approach' | 'circle' | 'rush' | 'retreat'
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
@@ -118,6 +118,9 @@ export interface Group {
   alarm: number;
   threatId: number;
   nextAnchorChange: number;
+  /** Feeding window: members graze while time < feedUntil; next window opens at nextFeedAt. */
+  feedUntil: number;
+  nextFeedAt: number;
   /** When set, anchor follows this entity (Mantine/Lapras followers). */
   followId: number;
   objectiveId?: string;

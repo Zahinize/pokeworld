@@ -26,6 +26,15 @@ export const GAME = {
   /** Base catch probability and modifiers. */
   CATCH_BASE_PROB: 0.38,
   CATCH_LOW_HP_BONUS: 0.45,
+  /** FEED: calm groups graze in synchronized windows — schools dip to the floor,
+   *  drifters sip at the surface. A threat cancels the window instantly. */
+  FEED_PERIOD: [45, 90] as [number, number],
+  FEED_DURATION: [8, 14] as [number, number],
+  FEED_SPEED_MULT: 0.35,
+  FEED_WANDER_DAMP: 0.3,
+  /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
+  FEED_CATCH_MULT: 1.15,
+
   CATCH_MIN: 0.06,
   CATCH_MAX: 0.96,
 
