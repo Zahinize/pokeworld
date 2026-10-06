@@ -40,6 +40,11 @@ export const GAME = {
   /** Anchor hustles to the feed site so the group arrives with time left to graze. */
   FEED_ANCHOR_SPEED_MULT: 3,
   FEED_WANDER_DAMP: 0.3,
+  /** Grazing huddle tightness (fraction of group radius). */
+  FEED_HUDDLE: 0.5,
+  /** Soft feeding chatter: a quiet cry from the group every few seconds while grazing. */
+  FEED_CRY_PERIOD: [2.5, 6] as [number, number],
+  FEED_CRY_VOLUME: 0.14,
   /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
   FEED_CATCH_MULT: 1.15,
 

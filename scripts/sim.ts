@@ -7,6 +7,7 @@ import { Ecosystem } from '@/engine/world/Ecosystem';
 import { getLevel } from '@/data/levels';
 import { normalizeHp } from '@/pokeapi/hp';
 import { SPECIES } from '@/data/species';
+import { floorY } from '@/engine/world/terrain';
 
 const hp = (id: string) => normalizeHp(SPECIES[id].fallbackStats);
 let failures = 0;
@@ -64,8 +65,11 @@ for (const levelId of [1, 2]) {
   let bandViolations = 0;
   let passiveRise = -999; // highest a passive group's anchor climbs during its feed windows
   let feederRise = -999;  // highest an actual FEEDING MEMBER gets (the thing the player sees)
+  let chatter = 0;        // feeding cries emitted
+  let schoolFloorMin = 999; // closest a feeding school member presses to the sand
   for (let i = 0; i < 240 * 60; i++) {
-    eco.update(1 / 60, p, 0); eco.drainEvents();
+    eco.update(1 / 60, p, 0);
+    for (const ev of eco.drainEvents()) if ((ev as any).type === 'feedChatter') chatter++;
     if (i % 30 !== 0) continue;
     for (const gr of eco.groups) {
       if (gr.feedUntil > eco.time && gr.kind !== 'school' && gr.kind !== 'ambientSchool') {
@@ -81,7 +85,8 @@ for (const levelId of [1, 2]) {
       const sp2 = Math.hypot(e.vx, e.vy, e.vz);
       if (e.state === 'feed') {
         speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++;
-        if (e.y > -1 || e.y < -(e.species.depth[1] + 6)) bandViolations++;
+        if (e.y > -1) bandViolations++; // never above the waterline; grazing may dive below the comfort band by design
+        if (e.behavior === 'schooling') schoolFloorMin = Math.min(schoolFloorMin, e.y - floorY(e.x, e.z));
       } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
     }
   }
@@ -96,6 +101,10 @@ for (const levelId of [1, 2]) {
   else fail(`feed: drifter anchors never reached the surface (peak ${passiveRise.toFixed(1)}m)`);
   if (feederRise > -3.2) ok(`feed: feeding MEMBERS visibly sip at the surface (member peak ${feederRise.toFixed(1)}m)`);
   else fail(`feed: members lag below the surface (peak ${feederRise.toFixed(1)}m) — travel eats the window`);
+  if (schoolFloorMin < 1.6) ok(`feed: schools press down onto the sand (closest ${schoolFloorMin.toFixed(2)}m off the floor)`);
+  else fail(`feed: schools hover too high while grazing (${schoolFloorMin.toFixed(2)}m off the floor)`);
+  if (chatter >= 6) ok(`feed: grazing chatter cries emitted (${chatter} over 4 minutes)`);
+  else fail(`feed: too little grazing chatter (${chatter})`);
 
   // threat preemption: force a window, then alarm the group — every feeder must scatter on the next think
   const g = eco.groups.find((gr) => gr.memberIds.length >= 3 && gr.followId < 0)!;

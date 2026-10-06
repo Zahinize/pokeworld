@@ -121,6 +121,7 @@ export interface Group {
   /** Feeding window: members graze while time < feedUntil; next window opens at nextFeedAt. */
   feedUntil: number;
   nextFeedAt: number;
+  nextFeedCry: number;
   /** When set, anchor follows this entity (Mantine/Lapras followers). */
   followId: number;
   objectiveId?: string;
@@ -138,6 +139,7 @@ export type EcoEvent =
   | { type: 'hit'; entityId: number; by: 'ball' | 'predator'; damage: number }
   | { type: 'ko'; entityId: number; speciesId: string; bySpeciesId?: string }
   | { type: 'alarm'; groupId: number; threatId: number }
+  | { type: 'feedChatter'; entityId: number }
   | { type: 'huntStart'; predatorId: number; targetId: number }
   | { type: 'huntEnd'; predatorId: number }
   | { type: 'respawn'; speciesId: string }

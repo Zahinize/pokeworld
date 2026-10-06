@@ -843,6 +843,16 @@ export class GameSession {
           break;
         }
         case 'recovered': break;
+        case 'feedChatter': {
+          // soft nibble-cries from a grazing school, carrying only a short distance
+          const e = eco.byId.get(ev.entityId);
+          if (e) {
+            const d = len3(e.x - p.x, e.y - p.y, e.z - p.z);
+            const vol = GAME.FEED_CRY_VOLUME * Math.max(0, 1 - d / 35);
+            if (vol > 0.015) Audio.playCry(e.species.dexId, vol);
+          }
+          break;
+        }
         case 'bossSpawn': break;
         case 'bossCharge': {
           const e = eco.byId.get(ev.entityId);

@@ -195,7 +195,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   // Grazing: settle onto a personal peck spot near the anchor and nibble in place
   if (e.state === 'feed' && e.lod < 2) {
     const fa = e.phase * 12.9898; // deterministic per-fish offset — no per-frame RNG
-    const fr = (0.3 + 0.5 * ((e.phase * 7.31) % 1)) * g.radius * 0.8; // tighter huddle: the drop reads as deliberate
+    const fr = (0.25 + 0.45 * ((e.phase * 7.31) % 1)) * g.radius * GAME.FEED_HUDDLE; // packed in tight: dinner is a family affair
     seek(e, g.anchor.x + Math.cos(fa) * fr, g.anchor.y, g.anchor.z + Math.sin(fa) * fr, 1.1, 0.8);
     // rhythmic peck lunges: schools stab down at the substrate, drifters tip up to sip
     const peck = Math.sin(ctx.time * 2.0 + e.phase * 11.0);
@@ -209,7 +209,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
   if (e.state !== 'feed') depthPreference(e, 0.8); // feeding suspends the comfort band entirely
-  floorAndSurface(e, s.size * 0.6 + 0.8);
+  floorAndSurface(e, e.state === 'feed' ? s.size * 0.35 : s.size * 0.6 + 0.8); // grazers press right down to the sand
   if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
   containWorld(e);
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
@@ -268,9 +268,8 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
     if (sp) {
       const school = g.kind === 'school' || g.kind === 'ambientSchool';
-      const bandBot = -sp.depth[1];
       g.anchorTarget.y = school
-        ? Math.max(bandBot, floorY(g.anchor.x, g.anchor.z) + sp.size + 1.2)
+        ? Math.max(floorY(g.anchor.x, g.anchor.z) + sp.size * 0.55 + 0.25, g.anchor.y - GAME.FEED_MAX_CLIMB) // right down onto the sand
         : Math.max(GAME.FEED_SURFACE_Y, g.anchor.y + GAME.FEED_MAX_CLIMB); // sip at the waterline, or migrate up as far as a deep dweller can
       // the clock starts when they ARRIVE: add the travel time (deep groups climb a long way)
       const travel = Math.min(25, Math.abs(g.anchorTarget.y - g.anchor.y) / Math.max(0.3, g.anchorSpeed * GAME.FEED_ANCHOR_SPEED_MULT) + 4);
@@ -281,6 +280,13 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   } else if (g.feedUntil > 0 && ctx.time >= g.feedUntil) {
     g.feedUntil = 0; // window over: the next wander leg resumes naturally
     g.nextAnchorChange = ctx.time;
+  }
+  // grazing chatter: quiet nibble-cries roll through the group while it feeds
+  if (g.feedUntil > ctx.time && ctx.time >= g.nextFeedCry && g.memberIds.length > 0) {
+    g.nextFeedCry = ctx.time + GAME.FEED_CRY_PERIOD[0]
+      + ((Math.sin(g.id * 73.3 + ctx.time * 0.61) + 1) * 0.5) * (GAME.FEED_CRY_PERIOD[1] - GAME.FEED_CRY_PERIOD[0]);
+    const m = ctx.byId.get(g.memberIds[Math.floor(ctx.time * 7.7) % g.memberIds.length]);
+    if (m && m.state === 'feed') ctx.events.push({ type: 'feedChatter', entityId: m.id });
   }
 
   if (lured) {
@@ -311,7 +317,7 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     g.anchor.x += (dx / d) * step; g.anchor.y += (dy / d) * step; g.anchor.z += (dz / d) * step;
   }
   // keep anchor above the floor
-  const fy = floorY(g.anchor.x, g.anchor.z) + 3;
+  const fy = floorY(g.anchor.x, g.anchor.z) + (g.feedUntil > ctx.time ? 1.0 : 3);
   if (g.anchor.y < fy) g.anchor.y = fy;
   const ceiling = g.feedUntil > ctx.time ? GAME.FEED_SURFACE_Y : -2.5;
   if (g.anchor.y > ceiling) g.anchor.y = ceiling;
