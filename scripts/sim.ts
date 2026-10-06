@@ -62,9 +62,13 @@ for (const levelId of [1, 2]) {
   let feedTicks = 0, feedWindows = 0, wasFeeding = false;
   let speedSumFeed = 0, nFeed = 0, speedSumSwim = 0, nSwim = 0;
   let bandViolations = 0;
+  let passiveRise = -999; // highest a passive group's anchor climbs during its feed windows
   for (let i = 0; i < 240 * 60; i++) {
     eco.update(1 / 60, p, 0); eco.drainEvents();
     if (i % 30 !== 0) continue;
+    for (const gr of eco.groups) {
+      if (gr.feedUntil > eco.time && gr.kind !== 'school' && gr.kind !== 'ambientSchool') passiveRise = Math.max(passiveRise, gr.anchor.y);
+    }
     const feeding = eco.alive.some((e) => e.state === 'feed');
     if (feeding) feedTicks++;
     if (feeding && !wasFeeding) feedWindows++;
@@ -83,6 +87,9 @@ for (const levelId of [1, 2]) {
   if (avgFeed < avgSwim * 0.75) ok(`feed: grazing crawl ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
   else fail(`feed: grazing not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
   if (bandViolations === 0) ok('feed: grazing stays inside depth bands'); else fail(`feed: ${bandViolations} depth-band violations`);
+  // the group must ARRIVE at the table: drifters reach the surface band inside the window
+  if (passiveRise > -3.6) ok(`feed: drifters rise to the surface band while grazing (anchor peak ${passiveRise.toFixed(1)}m)`);
+  else fail(`feed: drifters never reached the surface (anchor peak ${passiveRise.toFixed(1)}m) — window too short or anchor too slow`);
 
   // threat preemption: force a window, then alarm the group — every feeder must scatter on the next think
   const g = eco.groups.find((gr) => gr.memberIds.length >= 3)!;

@@ -29,8 +29,10 @@ export const GAME = {
   /** FEED: calm groups graze in synchronized windows — schools dip to the floor,
    *  drifters sip at the surface. A threat cancels the window instantly. */
   FEED_PERIOD: [45, 90] as [number, number],
-  FEED_DURATION: [8, 14] as [number, number],
+  FEED_DURATION: [12, 18] as [number, number],
   FEED_SPEED_MULT: 0.35,
+  /** Anchor hustles to the feed site so the group arrives with time left to graze. */
+  FEED_ANCHOR_SPEED_MULT: 3,
   FEED_WANDER_DAMP: 0.3,
   /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
   FEED_CATCH_MULT: 1.15,

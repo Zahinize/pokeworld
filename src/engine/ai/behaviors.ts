@@ -67,6 +67,9 @@ function detectThreat(e: Entity, ctx: SimContext, baseRadius: number): number {
   let best = -1, bestD = Infinity;
   ctx.hash.query(e.x, e.y, e.z, baseRadius, (o, d2) => {
     if (o === e || !isPredatorLike(o)) return;
+    // your own guardian is never a threat — Whiscash/Walrein/Jellicent are predator-primary
+    // species, and without this a guarded group lives permanently alarmed by its protector
+    if (o.role === 'guardian' && o.groupId === e.groupId) return;
     if (o.species.size <= e.species.size * 0.6) return; // tiny predators don't scare big fish
     const r = isHunting(o) ? baseRadius : baseRadius * 0.45;
     if (d2 < r * r && d2 < bestD) { bestD = d2; best = o.id; }
@@ -203,7 +206,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  depthPreference(e, 0.8);
+  depthPreference(e, e.state === 'feed' ? 0.15 : 0.8); // the band pull must not fight the feed site
   floorAndSurface(e, s.size * 0.6 + 0.8);
   if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
   containWorld(e);
@@ -244,8 +247,11 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   // Feeding windows: only a calm, independent group grazes — any alarm cancels instantly.
   if (g.alarm > 0.05 || lured) g.feedUntil = 0;
   else if (g.followId < 0 && ctx.time >= g.nextFeedAt && g.feedUntil <= 0) {
-    g.feedUntil = ctx.time + GAME.FEED_DURATION[0] + ctx.rng() * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
-    g.nextFeedAt = g.feedUntil + GAME.FEED_PERIOD[0] + ctx.rng() * (GAME.FEED_PERIOD[1] - GAME.FEED_PERIOD[0]);
+    // deterministic jitter (never touches the shared seeded RNG stream)
+    const j1 = (Math.sin(g.id * 127.1 + ctx.time * 0.73) + 1) * 0.5;
+    const j2 = (Math.sin(g.id * 311.7 + ctx.time * 0.41) + 1) * 0.5;
+    g.feedUntil = ctx.time + GAME.FEED_DURATION[0] + j1 * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
+    g.nextFeedAt = g.feedUntil + GAME.FEED_PERIOD[0] + j2 * (GAME.FEED_PERIOD[1] - GAME.FEED_PERIOD[0]);
     // aim the anchor at the feed site, clamped inside the species' depth band:
     // schools graze down along the floor, drifters tip up to sip at their band's ceiling
     const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
@@ -284,7 +290,7 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   // Move anchor toward target
   const dx = g.anchorTarget.x - g.anchor.x, dy = g.anchorTarget.y - g.anchor.y, dz = g.anchorTarget.z - g.anchor.z;
   const d = len3(dx, dy, dz);
-  const sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1);
+  const sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1) * (g.feedUntil > ctx.time ? GAME.FEED_ANCHOR_SPEED_MULT : 1);
   if (d > 0.5) {
     const step = Math.min(d, sp * dt);
     g.anchor.x += (dx / d) * step; g.anchor.y += (dy / d) * step; g.anchor.z += (dz / d) * step;

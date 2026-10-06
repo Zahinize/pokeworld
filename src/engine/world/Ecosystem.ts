@@ -87,7 +87,7 @@ export class Ecosystem {
       const g: Group = {
         id: i, kind: gs.kind, speciesId: gs.speciesId, guardianSpeciesId: gs.guardianSpeciesId, guardianId: -1, memberIds: [],
         zone: gs.zone, anchor: { ...gs.anchor }, anchorTarget: { ...gs.anchor }, anchorSpeed: gs.kind === 'school' || gs.kind === 'ambientSchool' ? 0.55 + this.rng.next() * 0.35 : 0.3 + this.rng.next() * 0.2,
-        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, feedUntil: 0, nextFeedAt: GAME.FEED_PERIOD[0] * (0.3 + this.rng.next() * 0.7), followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20, initialSize: 0, avenging: false,
+        radius: gs.radius, alarm: 0, threatId: -1, nextAnchorChange: 4 + this.rng.next() * 10, feedUntil: 0, nextFeedAt: GAME.FEED_PERIOD[0] * (0.3 + ((this.groups.length * 0.618) % 1) * 0.7), followId: -1, objectiveId: gs.objectiveId, guardianNextPass: 15 + this.rng.next() * 20, initialSize: 0, avenging: false,
       };
       this.groups.push(g);
     });
