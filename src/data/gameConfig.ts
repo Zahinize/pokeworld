@@ -28,9 +28,12 @@ export const GAME = {
   CATCH_LOW_HP_BONUS: 0.45,
   /** FEED: calm groups graze in synchronized windows — schools dip to the floor,
    *  drifters sip at the surface. A threat cancels the window instantly. */
-  FEED_PERIOD: [45, 90] as [number, number],
+  FEED_PERIOD: [30, 60] as [number, number],
   FEED_DURATION: [12, 18] as [number, number],
   FEED_SPEED_MULT: 0.35,
+  /** Drifters sip AT the surface — this overrides their comfort depth band entirely
+   *  (surface feeding is precisely when animals leave their comfort zone). */
+  FEED_SURFACE_Y: -1.6,
   /** Anchor hustles to the feed site so the group arrives with time left to graze. */
   FEED_ANCHOR_SPEED_MULT: 3,
   FEED_WANDER_DAMP: 0.3,

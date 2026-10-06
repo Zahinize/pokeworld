@@ -206,14 +206,16 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  depthPreference(e, e.state === 'feed' ? 0.15 : 0.8); // the band pull must not fight the feed site
+  if (e.state !== 'feed') depthPreference(e, 0.8); // feeding suspends the comfort band entirely
   floorAndSurface(e, s.size * 0.6 + 0.8);
   if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
   containWorld(e);
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
 
   const act = activityFactor(e, ctx);
-  const feedMult = e.state === 'feed' ? GAME.FEED_SPEED_MULT : 1;
+  // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
+  const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
+  const feedMult = e.state === 'feed' ? (atTable ? GAME.FEED_SPEED_MULT : 1.15) : 1;
   const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }
@@ -250,17 +252,22 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     // deterministic jitter (never touches the shared seeded RNG stream)
     const j1 = (Math.sin(g.id * 127.1 + ctx.time * 0.73) + 1) * 0.5;
     const j2 = (Math.sin(g.id * 311.7 + ctx.time * 0.41) + 1) * 0.5;
-    g.feedUntil = ctx.time + GAME.FEED_DURATION[0] + j1 * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
+    const graze = GAME.FEED_DURATION[0] + j1 * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
+    g.feedUntil = ctx.time + graze; // travel allowance added below once the site is known
     g.nextFeedAt = g.feedUntil + GAME.FEED_PERIOD[0] + j2 * (GAME.FEED_PERIOD[1] - GAME.FEED_PERIOD[0]);
     // aim the anchor at the feed site, clamped inside the species' depth band:
     // schools graze down along the floor, drifters tip up to sip at their band's ceiling
     const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
     if (sp) {
       const school = g.kind === 'school' || g.kind === 'ambientSchool';
-      const bandTop = -sp.depth[0], bandBot = -sp.depth[1];
+      const bandBot = -sp.depth[1];
       g.anchorTarget.y = school
         ? Math.max(bandBot, floorY(g.anchor.x, g.anchor.z) + sp.size + 1.2)
-        : Math.min(-2.5, bandTop - 0.5);
+        : GAME.FEED_SURFACE_Y; // drifters leave their comfort band to sip at the waterline
+      // the clock starts when they ARRIVE: add the travel time (deep groups climb a long way)
+      const travel = Math.min(25, Math.abs(g.anchorTarget.y - g.anchor.y) / Math.max(0.3, g.anchorSpeed * GAME.FEED_ANCHOR_SPEED_MULT) + 4);
+      g.feedUntil += travel;
+      g.nextFeedAt += travel;
       g.nextAnchorChange = g.feedUntil + 1; // hold position while grazing
     }
   } else if (g.feedUntil > 0 && ctx.time >= g.feedUntil) {
@@ -298,7 +305,8 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   // keep anchor above the floor
   const fy = floorY(g.anchor.x, g.anchor.z) + 3;
   if (g.anchor.y < fy) g.anchor.y = fy;
-  if (g.anchor.y > -2.5) g.anchor.y = -2.5;
+  const ceiling = g.feedUntil > ctx.time ? GAME.FEED_SURFACE_Y : -2.5;
+  if (g.anchor.y > ceiling) g.anchor.y = ceiling;
 }
 
 // ---------------------------------------------------------------------------------------------

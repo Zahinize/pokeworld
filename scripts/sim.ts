@@ -63,11 +63,15 @@ for (const levelId of [1, 2]) {
   let speedSumFeed = 0, nFeed = 0, speedSumSwim = 0, nSwim = 0;
   let bandViolations = 0;
   let passiveRise = -999; // highest a passive group's anchor climbs during its feed windows
+  let feederRise = -999;  // highest an actual FEEDING MEMBER gets (the thing the player sees)
   for (let i = 0; i < 240 * 60; i++) {
     eco.update(1 / 60, p, 0); eco.drainEvents();
     if (i % 30 !== 0) continue;
     for (const gr of eco.groups) {
-      if (gr.feedUntil > eco.time && gr.kind !== 'school' && gr.kind !== 'ambientSchool') passiveRise = Math.max(passiveRise, gr.anchor.y);
+      if (gr.feedUntil > eco.time && gr.kind !== 'school' && gr.kind !== 'ambientSchool') {
+        passiveRise = Math.max(passiveRise, gr.anchor.y);
+        for (const id of gr.memberIds) { const m = eco.byId.get(id); if (m?.state === 'feed') feederRise = Math.max(feederRise, m.y); }
+      }
     }
     const feeding = eco.alive.some((e) => e.state === 'feed');
     if (feeding) feedTicks++;
@@ -87,15 +91,23 @@ for (const levelId of [1, 2]) {
   if (avgFeed < avgSwim * 0.75) ok(`feed: grazing crawl ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
   else fail(`feed: grazing not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
   if (bandViolations === 0) ok('feed: grazing stays inside depth bands'); else fail(`feed: ${bandViolations} depth-band violations`);
-  // the group must ARRIVE at the table: drifters reach the surface band inside the window
-  if (passiveRise > -3.6) ok(`feed: drifters rise to the surface band while grazing (anchor peak ${passiveRise.toFixed(1)}m)`);
-  else fail(`feed: drifters never reached the surface (anchor peak ${passiveRise.toFixed(1)}m) — window too short or anchor too slow`);
+  // the group must ARRIVE at the table: drifter anchors reach the actual waterline
+  if (passiveRise > -2.0) ok(`feed: drifter anchors reach the waterline (peak ${passiveRise.toFixed(1)}m)`);
+  else fail(`feed: drifter anchors never reached the surface (peak ${passiveRise.toFixed(1)}m)`);
+  if (feederRise > -3.2) ok(`feed: feeding MEMBERS visibly sip at the surface (member peak ${feederRise.toFixed(1)}m)`);
+  else fail(`feed: members lag below the surface (peak ${feederRise.toFixed(1)}m) — travel eats the window`);
 
   // threat preemption: force a window, then alarm the group — every feeder must scatter on the next think
-  const g = eco.groups.find((gr) => gr.memberIds.length >= 3)!;
-  g.alarm = 0; g.feedUntil = eco.time + 10; g.nextAnchorChange = eco.time + 10;
-  for (let i = 0; i < 120; i++) { eco.update(1 / 60, p, 0); eco.drainEvents(); }
-  const feedersBefore = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length;
+  const g = eco.groups.find((gr) => gr.memberIds.length >= 3 && gr.followId < 0)!;
+  // banish real predators so nothing cancels the forced window before we alarm it ourselves
+  for (const e2 of eco.alive) if (e2.behavior === 'predator') { e2.x = 120; e2.z = 120; e2.targetId = -1; }
+  g.alarm = 0; g.threatId = -1; g.feedUntil = eco.time + 10; g.nextAnchorChange = eco.time + 10;
+  let feedersBefore = 0;
+  for (let i = 0; i < 180; i++) {
+    eco.update(1 / 60, p, 0); eco.drainEvents();
+    g.alarm = 0; g.feedUntil = Math.max(g.feedUntil, eco.time + 5); // hold the window open against stray alarms
+    feedersBefore = Math.max(feedersBefore, g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length);
+  }
   g.alarm = 1; g.threatId = -2; // player as stand-in threat
   for (let i = 0; i < 90; i++) { eco.update(1 / 60, p, 0); eco.drainEvents(); }
   const stillFeeding = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length;
