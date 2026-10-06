@@ -215,7 +215,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const act = activityFactor(e, ctx);
   // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
   const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
-  const feedMult = e.state === 'feed' ? (atTable ? GAME.FEED_SPEED_MULT : 1.15) : 1;
+  const feedMult = e.state === 'feed' ? (atTable ? GAME.FEED_SPEED_MULT : 1.3) : 1;
   const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }
@@ -247,7 +247,13 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   }
 
   // Feeding windows: only a calm, independent group grazes — any alarm cancels instantly.
-  if (g.alarm > 0.05 || lured) g.feedUntil = 0;
+  if (g.alarm > 0.05 || lured) {
+    if (g.feedUntil > 0) {
+      // meal interrupted: come back and finish it soon, not a full period later
+      g.feedUntil = 0;
+      g.nextFeedAt = Math.min(g.nextFeedAt, ctx.time + 8 + (Math.sin(g.id * 53.7) + 1) * 2);
+    }
+  }
   else if (g.followId < 0 && ctx.time >= g.nextFeedAt && g.feedUntil <= 0) {
     // deterministic jitter (never touches the shared seeded RNG stream)
     const j1 = (Math.sin(g.id * 127.1 + ctx.time * 0.73) + 1) * 0.5;
@@ -263,7 +269,7 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
       const bandBot = -sp.depth[1];
       g.anchorTarget.y = school
         ? Math.max(bandBot, floorY(g.anchor.x, g.anchor.z) + sp.size + 1.2)
-        : GAME.FEED_SURFACE_Y; // drifters leave their comfort band to sip at the waterline
+        : Math.max(GAME.FEED_SURFACE_Y, g.anchor.y + GAME.FEED_MAX_CLIMB); // sip at the waterline, or migrate up as far as a deep dweller can
       // the clock starts when they ARRIVE: add the travel time (deep groups climb a long way)
       const travel = Math.min(25, Math.abs(g.anchorTarget.y - g.anchor.y) / Math.max(0.3, g.anchorSpeed * GAME.FEED_ANCHOR_SPEED_MULT) + 4);
       g.feedUntil += travel;

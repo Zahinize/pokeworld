@@ -34,6 +34,9 @@ export const GAME = {
   /** Drifters sip AT the surface — this overrides their comfort depth band entirely
    *  (surface feeding is precisely when animals leave their comfort zone). */
   FEED_SURFACE_Y: -1.6,
+  /** Deep drifters do a bounded vertical migration instead of an impossible full climb:
+   *  they rise at most this many meters toward the light and feed there. */
+  FEED_MAX_CLIMB: 14,
   /** Anchor hustles to the feed site so the group arrives with time left to graze. */
   FEED_ANCHOR_SPEED_MULT: 3,
   FEED_WANDER_DAMP: 0.3,
