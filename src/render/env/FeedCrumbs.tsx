@@ -1,8 +1,9 @@
 /**
  * Sea-food crumbs: when a schooling group opens a bottom-feeding window, a patch of tiny
- * plankton specks appears on the sand at the graze site. Fish eat the specks they peck
- * near — each winks out — and a fresh patch grows for the next meal. Purely cosmetic and
- * render-side: the sim never sees food, so headless behavior is untouched.
+ * plankton specks appears on the sand at the graze site. A speck disappears ONLY when a
+ * fish actually eats it — uneaten leftovers keep sitting on the sand after the meal ends
+ * (interrupted or not), and the spread relocates fresh when the next window opens.
+ * Purely cosmetic and render-side: the sim never sees food.
  */
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -13,7 +14,7 @@ import { floorY } from '@/engine/world/terrain';
 import { RNG } from '@/engine/rng';
 
 interface Crumb { x: number; y: number; z: number; eaten: number /* 0 alive → 1 gone */; seed: number }
-interface Patch { key: number; crumbs: Crumb[]; fading: boolean }
+interface Patch { key: number; crumbs: Crumb[] }
 
 const CAP = 200;
 
@@ -89,11 +90,12 @@ export function FeedCrumbs() {
               const x = g.anchorTarget.x + Math.cos(a) * r, z = g.anchorTarget.z + Math.sin(a) * r;
               crumbs.push({ x, y: floorY(x, z) + 0.12 + rng.next() * 0.18, z, eaten: 0, seed: rng.next() * 100 });
             }
-            patch = { key: g.feedUntil, crumbs, fading: false };
+            // a new meal: the spread re-appears at the new table (any old leftovers relocate)
+            patch = { key: g.feedUntil, crumbs };
             patches.current.set(g.id, patch);
           }
-          // feeding fish nibble the specks they hover over
-          if (patch && !patch.fading) {
+          // feeding fish nibble the specks they hover over — eating is the ONLY way a speck vanishes
+          if (patch) {
             for (const id of g.memberIds) {
               const e = eco.byId.get(id);
               if (!e || e.state !== 'feed') continue;
@@ -104,9 +106,8 @@ export function FeedCrumbs() {
               }
             }
           }
-        } else if (patch && !patch.fading) {
-          patch.fading = true; // meal over (or fled): leftovers dissolve
         }
+        // window closed: leftovers persist untouched until the next meal replaces the patch
       }
     }
 
@@ -115,8 +116,7 @@ export function FeedCrumbs() {
     for (const [gid, patch] of patches.current) {
       let alive = 0;
       for (const c of patch.crumbs) {
-        if (patch.fading && c.eaten === 0) c.eaten = 0.0001;
-        if (c.eaten > 0 && c.eaten < 1) c.eaten = Math.min(1, c.eaten + dt * (patch.fading ? 0.8 : 2.5));
+        if (c.eaten > 0 && c.eaten < 1) c.eaten = Math.min(1, c.eaten + dt * 2.5);
         if (c.eaten >= 1) continue;
         alive++;
         if (n >= CAP) continue;
