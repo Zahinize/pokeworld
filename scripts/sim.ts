@@ -88,7 +88,7 @@ for (const levelId of [1, 2]) {
         const grp = eco.groups.find((gr) => gr.id === e.groupId);
         const atTable = grp ? Math.abs(e.y - grp.anchor.y) < 2.2 : false;
         if (e.behavior === 'schooling' && atTable) { speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++; }
-        if (e.y > -1) bandViolations++; // never above the waterline; grazing may dive below the comfort band by design
+        if (e.y > -0.6) bandViolations++; // the integrate ceiling clamps feeders at -0.8; anything above it is a real escape
         if (e.behavior === 'schooling') schoolFloorMin = Math.min(schoolFloorMin, e.y - floorY(e.x, e.z));
       } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
     }

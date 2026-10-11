@@ -274,6 +274,8 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
     if (sp) {
       const school = g.kind === 'school' || g.kind === 'ambientSchool';
+      // the dinner table doesn't drift: feed where the group stands
+      g.anchorTarget.x = g.anchor.x; g.anchorTarget.z = g.anchor.z;
       g.anchorTarget.y = school
         ? Math.max(floorY(g.anchor.x, g.anchor.z) + sp.size * 0.55 + 0.25, g.anchor.y - GAME.FEED_MAX_CLIMB) // right down onto the sand
         : Math.max(GAME.FEED_SURFACE_Y, g.anchor.y + GAME.FEED_MAX_CLIMB); // sip at the waterline, or migrate up as far as a deep dweller can
