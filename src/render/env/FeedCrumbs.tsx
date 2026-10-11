@@ -29,7 +29,7 @@ export function FeedCrumbs() {
     geo.setAttribute('aSeed', aSeed); geo.setAttribute('aFade', aFade);
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(GAME.FEED_CRUMB_COLOR) }, uLight: { value: 1 } },
+      uniforms: { uTime: { value: 0 }, uColor: { value: new THREE.Color(GAME.FEED_CRUMB_COLOR) }, uColor2: { value: new THREE.Color(GAME.FEED_CRUMB_COLOR_DARK) }, uLight: { value: 1 } },
       vertexShader: /* glsl */ `
         attribute float aSeed; attribute float aFade;
         varying vec2 vUv; varying float vSeed; varying float vFade;
@@ -40,7 +40,7 @@ export function FeedCrumbs() {
           // soft billboard speck, drifting a whisker with the surge
           vec3 r = vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]);
           vec3 u = vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]);
-          float s = 0.1 + fract(aSeed * 7.31) * 0.1;
+          float s = 0.13 + fract(aSeed * 7.31) * 0.13;
           s *= aFade;
           vec3 w = c.xyz + r * (position.x * s) + u * (position.y * s);
           w.x += sin(uTime * 0.9 + aSeed * 21.0) * 0.05;
@@ -48,14 +48,15 @@ export function FeedCrumbs() {
           gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
         }`,
       fragmentShader: /* glsl */ `
-        uniform vec3 uColor; uniform float uTime, uLight;
+        uniform vec3 uColor, uColor2; uniform float uTime, uLight;
         varying vec2 vUv; varying float vSeed; varying float vFade;
         void main(){
           float d = length(vUv - 0.5) * 2.0;
-          float a = smoothstep(1.0, 0.25, d) * vFade;
+          float a = smoothstep(1.0, 0.3, d) * vFade;
           if (a < 0.02) discard;
-          float tw = 0.8 + 0.2 * sin(uTime * 2.0 + vSeed * 31.0);
-          gl_FragColor = vec4(uColor * uLight * tw, a * 0.85);
+          float tw = 0.85 + 0.15 * sin(uTime * 2.0 + vSeed * 31.0);
+          vec3 col = mix(uColor, uColor2, fract(vSeed * 3.7)); // light/dark green speck mix
+          gl_FragColor = vec4(col * uLight * tw, a * 0.95);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
