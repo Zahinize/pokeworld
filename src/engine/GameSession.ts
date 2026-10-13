@@ -390,9 +390,12 @@ export class GameSession {
     for (const b of wave.bosses) if (!this.sheets.has(b)) loadSpriteSheet(b, 'front').then((sh) => this.sheets.set(b, sh));
     const store = useStore.getState();
     const site = ZONES[wave.site];
-    // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it
+    // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it,
+    // and bringing a BOSS of your own provokes them: every boss rises SHINY for a fair fight
+    const partyHasBoss = this.party.some((t) => getSpecies(baseSpeciesId(t)).bossOnly);
+    if (partyHasBoss) store.pushToast({ kind: 'warn', title: 'Your boss companion stirs the deep…', body: 'The challengers answer in kind: every boss here will be SHINY.', ttl: 6 });
     this.bossIds = wave.bosses.map((b, i) => {
-      const shiny = !!wave.shiny || Math.random() < 0.2;
+      const shiny = !!wave.shiny || partyHasBoss || Math.random() < 0.2;
       if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
       return eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4, shiny).id;
     });
@@ -1013,12 +1016,17 @@ export class GameSession {
       if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt' || e.isBoss) return;
       if (d2 < bd) { bd = d2; best = e; }
     });
-    if (best && Math.random() < 0.75) { const b2 = best as Entity; tx = b2.x; ty = b2.y; tz = b2.z; }
+    const skyPrey = this.sky?.birds.filter((sb) => !sb.legendary && (sb.state === 'flying' || sb.state === 'swimming') && sb.fade > 0.5
+      && Math.hypot(sb.x - p.x, sb.z - p.z) < 45) ?? [];
+    if (skyPrey.length && Math.random() < 0.35) { // its own kin are not spared
+      const sb = skyPrey[Math.floor(Math.random() * skyPrey.length)];
+      tx = sb.x; ty = sb.y + sb.vis * 0.45; tz = sb.z;
+    } else if (best && Math.random() < 0.75) { const b2 = best as Entity; tx = b2.x; ty = b2.y; tz = b2.z; }
     else if (Math.random() < 0.35) { tx = p.x; ty = p.y; tz = p.z; } // sometimes it aims at YOU
     const dist = len3(tx - bx, ty - by, tz - bz);
     eco.moves.pushVisual('wave', move, bx, by - sp.size * 0.2, bz, tx, ty, tz, Math.max(0.16, dist / 30));
     eco.moves.pushVisual('impact', move, tx, ty, tz, tx, ty, tz, 0.6);
-    // area damage at the strike point
+    // area damage at the strike point — water Pokémon AND any sky Pokémon caught in it
     const R = SKY.RAMPAGE_BLAST_RADIUS;
     eco.hash.query(tx, ty, tz, R, (e) => {
       if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
@@ -1026,6 +1034,16 @@ export class GameSession {
       eco.damageAbs(e, dmg, -1);
       this.pushNumber(`-${dmg}`, '#ff8091', e.x, e.y + e.species.size * 0.5, e.z, true);
     });
+    if (this.sky) {
+      for (const sb of this.sky.birds) {
+        if (sb.legendary || (sb.state !== 'flying' && sb.state !== 'swimming') || sb.fade < 0.5) continue;
+        const cy2 = sb.y + sb.vis * 0.45;
+        if (len3(sb.x - tx, cy2 - ty, sb.z - tz) > R) continue;
+        const dmg = Math.max(1, Math.round(sb.maxHp * SKY.RAMPAGE_BLAST_DMG_FRAC));
+        this.sky.applyDamage(sb.id, dmg, false); // a storm kill is a death, not a catch
+        this.pushNumber(`-${dmg}`, '#ff8091', sb.x, cy2 + 0.6, sb.z, true);
+      }
+    }
     if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG);
     this.shakeT = Math.max(this.shakeT, 0.6);
     Audio.breach();

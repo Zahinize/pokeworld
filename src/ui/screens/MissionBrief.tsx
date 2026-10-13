@@ -93,7 +93,14 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                     <div className="eyebrow">Your Party</div>
                     <div className="muted small">Pick up to {COMBAT.PARTY_SIZE} from your collection — the first two swim at your side. Their moves weaken wild Pokémon for easier catches.</div>
                   </div>
-                  <span className={`badge ${party.length ? 'aqua' : 'red'}`}>{party.length} / {COMBAT.PARTY_SIZE}</span>
+                  <div className="row" style={{ gap: 8 }}>
+                    {party.length > 0 && (
+                      <button className="btn ghost" style={{ minHeight: 32, padding: '0 10px' }} onClick={() => { Audio.uiClick(); setParty([]); }}>
+                        Reset All
+                      </button>
+                    )}
+                    <span className={`badge ${party.length ? 'aqua' : 'red'}`}>{party.length} / {COMBAT.PARTY_SIZE}</span>
+                  </div>
                 </div>
                 {caught.length === 0 && bossTokens.length === 0 ? (
                   <p className="muted small" style={{ marginTop: 10 }}>You haven't caught any Pokémon yet — replay an earlier level to build a team.</p>

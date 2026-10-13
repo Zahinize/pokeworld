@@ -424,15 +424,16 @@ export class SkyLife {
   }
   private lastT = 0;
 
-  /** Companion move damage. A KO by your team is a catch — same rule as the reef. */
-  applyDamage(id: number, dmg: number) {
+  /** Move damage to a sky bird. A KO by your team is a catch (credit=true, the reef rule);
+   *  a kill by a rampaging legendary's storm is just a death — no collection entry. */
+  applyDamage(id: number, dmg: number, credit = true) {
     const b = this.birds.find((x) => x.id === id);
     if (!b || (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage')) return;
     b.hp -= dmg;
     if (b.hp <= 0) {
       b.hp = 0;
       b.state = 'caught'; b.stateT = 0; // the retirement pass fades it out
-      this.events.push({ type: 'skyKo', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y + b.vis * 0.45, z: b.z });
+      if (credit) this.events.push({ type: 'skyKo', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y + b.vis * 0.45, z: b.z });
     }
   }
 
