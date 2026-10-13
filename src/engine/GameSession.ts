@@ -350,7 +350,6 @@ export class GameSession {
   }
 
   private updateBossPhase(dt: number) {
-    if (this.shakeT > 0) this.shakeT -= dt;
     const eco = this.eco!;
     const wave = this.pendingWave;
     if (wave && this.mission && catchPhaseDoneUpTo(this.mission, this.bossWave)) {
@@ -686,6 +685,9 @@ export class GameSession {
     else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
     this.updateSurfaceCombat(dt);
     this.balls.update(dt, eco, this.sky);
+    // camera shake always decays (rampages shake on any level, not just boss waves)
+    // and is hard-capped so no event can ever leave the camera trembling for long
+    if (this.shakeT > 0) this.shakeT = Math.min(5, this.shakeT) - dt;
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
