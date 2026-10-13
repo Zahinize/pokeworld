@@ -9,7 +9,7 @@ import { SKY } from '@/data/sky';
 import { RNG } from '../rng';
 import type { LightingState } from '../world/lighting';
 
-export type SkyBirdState = 'flying' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'gone';
+export type SkyBirdState = 'flying' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'rampage' | 'gone';
 
 export interface SkyBird {
   id: number;
@@ -30,6 +30,8 @@ export interface SkyBird {
   fade: number;
   hp: number;
   maxHp: number;
+  /** Poke Balls this bird has broken out of (legendaries enrage past a threshold). */
+  failedBalls: number;
   // ducklett wander heading
   heading: number;
 }
@@ -53,7 +55,9 @@ export type SkyEvent =
   | { type: 'cry'; dexId: number; x: number; y: number; z: number }
   | { type: 'legendaryEnter'; speciesId: string }
   | { type: 'legendaryVanish'; speciesId: string }
-  | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number };
+  | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number }
+  | { type: 'legendaryRampage'; speciesId: string }
+  | { type: 'legendaryBlast'; speciesId: string; birdId: number; x: number; y: number; z: number };
 
 const LEGENDARY_POOL: Record<string, string[]> = { Day: ['articuno', 'lugia'], Evening: ['hooh'], Night: ['yveltal'], Dawn: [] };
 
@@ -74,6 +78,11 @@ export class SkyLife {
   private cx2 = 0; private cy2 = 0; private cz2 = 0;
   private legT = 0;
   private passesLeft = 0;
+  private rampageUntil = 0;
+  private nextBlastAt = 0;
+  private lastPx = 0;
+  private lastPz = 0;
+  private lastL: LightingState | null = null;
   private rollT = SKY.LEGENDARY_ROLL_PERIOD;
   private cooldownT = 0;
 
@@ -123,7 +132,7 @@ export class SkyLife {
       state: 'flying', stateT: 0, flockId, phase,
       r: rendered * 0.42 + 0.55, vis: rendered, legendary,
       fade: 0, heading: 0,
-      hp: this.hpOf(speciesId), maxHp: this.hpOf(speciesId),
+      hp: this.hpOf(speciesId), maxHp: this.hpOf(speciesId), failedBalls: 0,
     };
     this.birds.push(b);
     return this.birds.length - 1;
@@ -136,7 +145,7 @@ export class SkyLife {
         const b = this.birds[i];
         b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
-        b.hp = b.maxHp;
+        b.hp = b.maxHp; b.failedBalls = 0;
         return i;
       }
     }
@@ -144,6 +153,8 @@ export class SkyLife {
   }
 
   update(dt: number, L: LightingState, timeOfDay: number, px: number, pz: number) {
+    this.lastPx = px; this.lastPz = pz; this.lastL = L;
+    this.lastT += dt;
     const dayW = 1 - L.nightness;
     // retire caught birds after their ball's fade-out
     for (const b of this.birds) {
@@ -261,6 +272,30 @@ export class SkyLife {
             this.cooldownT = SKY.LEGENDARY_COOLDOWN;
           }
         }
+      } else if (b.state === 'rampage') {
+        b.stateT += dt;
+        // hover low over the waves near the trainer, circling with menace
+        const ha = this.lastT * 0.35 + b.phase;
+        const tx = px + Math.cos(ha) * 16;
+        const tz = pz + Math.sin(ha) * 16;
+        const ty = (SKY.RAMPAGE_ALT[0] + SKY.RAMPAGE_ALT[1]) / 2 + Math.sin(this.lastT * 1.3) * 2;
+        const k = Math.min(1, dt * 1.8);
+        b.vx += ((tx - b.x) * 1.4 - b.vx) * k;
+        b.vy += ((ty - b.y) * 1.4 - b.vy) * k;
+        b.vz += ((tz - b.z) * 1.4 - b.vz) * k;
+        b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+        b.fade = 1;
+        if (this.lastT >= this.nextBlastAt) {
+          this.nextBlastAt = this.lastT + SKY.RAMPAGE_CAST_PERIOD;
+          this.events.push({ type: 'legendaryBlast', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y, z: b.z });
+        }
+        if (this.lastT >= this.rampageUntil) {
+          // rage spent: one final sweep out to the horizon, then gone
+          b.state = 'flying'; b.stateT = 0;
+          this.passesLeft = 0;
+          this.aimPass(b, px, pz, L, true);
+          this.legT = 0;
+        }
       } else if (b.state === 'gone' || b.state === 'caught') {
         this.legendaryIdx = -1;
         this.cooldownT = SKY.LEGENDARY_COOLDOWN;
@@ -320,7 +355,7 @@ export class SkyLife {
   /** The first catchable bird whose hit sphere contains the point, or null. */
   hitTest(x: number, y: number, z: number): SkyBird | null {
     for (const b of this.birds) {
-      if (b.state !== 'flying' && b.state !== 'swimming') continue;
+      if (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') continue;
       if (b.fade < 0.5) continue; // half-materialized birds aren't solid yet
       // the sprite is drawn from b.y upward — test against the middle of the visible body
       const dx = b.x - x, dy = b.y + b.vis * 0.45 - y, dz = b.z - z;
@@ -353,18 +388,46 @@ export class SkyLife {
       // the render layer fades it out; a short timer below retires the slot
       b.state = 'caught'; b.stateT = 0;
     } else {
-      // burst free and flee to the horizon; the flock refills later via claim on dawn cycles
+      b.failedBalls++;
+      if (b.legendary) {
+        // a legendary never just hangs there: enough insults and it turns on the reef,
+        // otherwise it shakes off the ball and sweeps back into flight
+        if (b.failedBalls >= SKY.RAMPAGE_AFTER_FAILS) {
+          this.enterRampage(b);
+        } else if (this.lastL) {
+          b.state = 'flying'; b.stateT = 0; b.fade = 1; b.vy = 4;
+          this.aimPass(b, this.lastPx, this.lastPz, this.lastL, this.passesLeft === 0);
+          this.legT = 0;
+        } else {
+          b.state = 'gone'; b.fade = 0; // no context yet (never in practice)
+        }
+        return;
+      }
+      // regular birds burst free and flee to the horizon; flocks refill on dawn cycles
       b.state = 'fleeing'; b.stateT = 0;
       b.vy = 6; b.fade = 1;
-      if (b.flockId < 0 && b.legendary) { this.legendaryIdx = -1; this.cooldownT = SKY.LEGENDARY_COOLDOWN; }
       if (b.speciesId === 'ducklett') { b.state = 'gone'; b.fade = 0; }
     }
   }
 
+  /** True while a legendary rampages — the session turns it into weather. */
+  get rampaging(): boolean {
+    const b = this.legendaryIdx >= 0 ? this.birds[this.legendaryIdx] : null;
+    return !!b && b.state === 'rampage';
+  }
+
+  private enterRampage(b: SkyBird) {
+    b.state = 'rampage'; b.stateT = 0; b.fade = 1;
+    this.rampageUntil = this.lastT + SKY.RAMPAGE_DURATION;
+    this.nextBlastAt = this.lastT + 1.2;
+    this.events.push({ type: 'legendaryRampage', speciesId: b.speciesId });
+  }
+  private lastT = 0;
+
   /** Companion move damage. A KO by your team is a catch — same rule as the reef. */
   applyDamage(id: number, dmg: number) {
     const b = this.birds.find((x) => x.id === id);
-    if (!b || (b.state !== 'flying' && b.state !== 'swimming')) return;
+    if (!b || (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage')) return;
     b.hp -= dmg;
     if (b.hp <= 0) {
       b.hp = 0;

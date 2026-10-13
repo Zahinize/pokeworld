@@ -38,21 +38,26 @@ export function SceneLighting() {
   const fog = useMemo(() => new THREE.FogExp2('#1f8fd6', 0.018), []);
   const bg = useMemo(() => new THREE.Color(), []);
   useEffect(() => { scene.fog = fog; return () => { scene.fog = null; }; }, [scene, fog]);
-  useFrame((state) => {
+  const storm = useRef(0);
+  useFrame((state, dt) => {
     const L = session.lighting;
     // Crossing the waterline swaps the whole atmosphere: dense tinted water fog → thin air haze.
     const above = smoothstep01(-0.6, 0.3, state.camera.position.y);
-    fog.color.copy(L.sky).lerp(L.skyHorizon, above);
-    fog.density = L.fogDensity + (L.airFogDensity - L.fogDensity) * above;
-    scene.background = bg.copy(L.sky).lerp(L.skyHorizon, above);
+    // a rampaging legendary darkens the world: gloom eases in and out over ~1.5s
+    const stormTarget = session.sky?.rampaging ? 1 : 0;
+    storm.current += (stormTarget - storm.current) * Math.min(1, dt * 1.6);
+    const gloom = storm.current;
+    fog.color.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45);
+    fog.density = (L.fogDensity + (L.airFogDensity - L.fogDensity) * above) * (1 + gloom * 0.7);
+    scene.background = bg.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45);
     if (sun.current) {
-      sun.current.intensity = L.sunIntensity;
+      sun.current.intensity = L.sunIntensity * (1 - gloom * 0.5);
       sun.current.color.copy(L.sun);
       // above water the light tracks the analytic sun (moon at night) for coherent shading
       const d = L.sunElevation > -0.05 ? L.sunDir : L.moonDir;
       sun.current.position.set(30 + (d.x * 80 - 30) * above, 80 + (Math.max(0.15, d.y) * 80 - 80) * above, 10 + (d.z * 80 - 10) * above);
     }
-    if (amb.current) { amb.current.intensity = L.ambient; amb.current.color.copy(L.sky).lerp(WHITE, 0.5); }
+    if (amb.current) { amb.current.intensity = L.ambient * (1 - gloom * 0.35); amb.current.color.copy(L.sky).lerp(WHITE, 0.5); }
     if (hemi.current) { hemi.current.intensity = L.ambient * 0.8; hemi.current.color.copy(L.sky); hemi.current.groundColor.copy(L.deep); }
   });
   return (

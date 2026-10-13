@@ -59,6 +59,20 @@ export const SKY = {
   /** Extra reach on companion moves fired into the open air (nothing to attenuate them up there). */
   COMPANION_AIR_REACH_BONUS: 14,
 
+  // ---- legendary rampage: fail too many catches and the legend turns on the reef ----
+  /** Failed Poke Balls before the legendary enrages instead of flying on. */
+  RAMPAGE_AFTER_FAILS: 3,
+  RAMPAGE_DURATION: 22,
+  RAMPAGE_CAST_PERIOD: 2.4,
+  /** Hover band (feet) while rampaging — low over the waves, in full view. */
+  RAMPAGE_ALT: [10, 15] as [number, number],
+  RAMPAGE_BLAST_RADIUS: 7,
+  /** Blast damage to any Pokémon caught in it, as a fraction of their max HP. */
+  RAMPAGE_BLAST_DMG_FRAC: 0.4,
+  RAMPAGE_PLAYER_DMG: 34,
+  /** Storm strength while enraged (drives currents, gloom and shake). */
+  RAMPAGE_STORM: 0.9,
+
   // ---- sparkles ----
   SPARKLE_RATE: 26,
   SPARKLE_GOLD: '#ffd166',
@@ -70,7 +84,7 @@ export const SKY = {
   /** Members of a flock bunch into this arc (radians) of their orbit — a group, not a ring. */
   FLOCK_PHASE_SPREAD: 0.35,
   /** Legendaries draw enormous so a fly-by is unmissable. */
-  LEGENDARY_RENDER_SCALE: { articuno: 10, hooh: 6, lugia: 4.5, yveltal: 4 } as Record<string, number>,
+  LEGENDARY_RENDER_SCALE: { articuno: 10, hooh: 4.5, lugia: 4.5, yveltal: 3 } as Record<string, number>, // all ~17m-class presence, matched to Articuno
 
   // ---- rendering budgets ----
   /** The whole sky group hides when the camera sinks below this. */

@@ -21,7 +21,7 @@ import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
-import { getMove, isSupportive } from '@/data/moves';
+import { getMove, isSupportive, movesFor } from '@/data/moves';
 import { SPECIES, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
@@ -54,6 +54,7 @@ export class GameSession {
   private surfaceAtkReady = new Map<number, number>();
   private surfaceDrainAcc = new Map<number, number>();
   private surfaceHintShown = false;
+  private rampageSurge = false;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -680,6 +681,9 @@ export class GameSession {
     eco.playerYaw = p.yaw;
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
+    // legendary storm: heavy currents while a rampage lasts (cleared when calm returns)
+    if (this.sky?.rampaging) { eco.bossCurrent = Math.max(eco.bossCurrent, SKY.RAMPAGE_STORM); this.rampageSurge = true; }
+    else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
     this.updateSurfaceCombat(dt);
     this.balls.update(dt, eco, this.sky);
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
@@ -972,7 +976,7 @@ export class GameSession {
       const reach = effectiveRange(e, move) + SKY.COMPANION_AIR_REACH_BONUS; // attacks carry further in open air
       let best: (typeof sky.birds)[number] | null = null, bd = Infinity;
       for (const b of sky.birds) {
-        if ((b.state !== 'flying' && b.state !== 'swimming') || b.fade < 0.5) continue;
+        if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') || b.fade < 0.5) continue;
         const d = len3(b.x - e.x, b.y + b.vis * 0.45 - e.y, b.z - e.z);
         if (d < bd) { bd = d; best = b; }
       }
@@ -987,6 +991,42 @@ export class GameSession {
       this.statsOf(this.tok(e)).dealt += dmg;
       this.surfaceAtkReady.set(id, eco.time + move.cooldown);
     }
+  }
+
+  /**
+   * An enraged legendary fires its signature move into the reef: canonical VFX from the
+   * bird to the strike point, then an area blast that wounds or kills anything caught in
+   * it — wild Pokémon, companions, and the trainer alike.
+   */
+  private resolveLegendaryBlast(speciesId: string, bx: number, by: number, bz: number) {
+    const eco = this.eco;
+    if (!eco) return;
+    const sp = getSpecies(speciesId);
+    const move = movesFor(speciesId)[0]; // its signature move (Oblivion Wing, Sacred Fire, ...)
+    // strike point: a living Pokémon near the player if there is one, else the water near them
+    const p = this.player;
+    let tx = p.x + (Math.random() - 0.5) * 24, ty = -2 - Math.random() * 6, tz = p.z + (Math.random() - 0.5) * 24;
+    let best: Entity | null = null, bd = Infinity;
+    eco.hash.query(p.x, p.y, p.z, 38, (e, d2) => {
+      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt' || e.isBoss) return;
+      if (d2 < bd) { bd = d2; best = e; }
+    });
+    if (best && Math.random() < 0.75) { const b2 = best as Entity; tx = b2.x; ty = b2.y; tz = b2.z; }
+    else if (Math.random() < 0.35) { tx = p.x; ty = p.y; tz = p.z; } // sometimes it aims at YOU
+    const dist = len3(tx - bx, ty - by, tz - bz);
+    eco.moves.pushVisual('wave', move, bx, by - sp.size * 0.2, bz, tx, ty, tz, Math.max(0.16, dist / 30));
+    eco.moves.pushVisual('impact', move, tx, ty, tz, tx, ty, tz, 0.6);
+    // area damage at the strike point
+    const R = SKY.RAMPAGE_BLAST_RADIUS;
+    eco.hash.query(tx, ty, tz, R, (e) => {
+      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
+      const dmg = Math.max(1, Math.round(e.maxHp * SKY.RAMPAGE_BLAST_DMG_FRAC));
+      eco.damageAbs(e, dmg, -1);
+      this.pushNumber(`-${dmg}`, '#ff8091', e.x, e.y + e.species.size * 0.5, e.z, true);
+    });
+    if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG);
+    this.shakeT = Math.max(this.shakeT, 0.6);
+    Audio.breach();
   }
 
   private handleSkyEvents() {
@@ -1018,6 +1058,17 @@ export class GameSession {
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true);
+          break;
+        }
+        case 'legendaryRampage': {
+          const sp = getSpecies(ev.speciesId);
+          Audio.alarm(); Audio.playCry(sp.dexId, 0.85);
+          this.shakeT = Math.max(this.shakeT, 1.2);
+          store.pushToast({ kind: 'alert', title: `${sp.name} is ENRAGED!`, body: 'Its fury darkens the sky and churns the sea — take cover or finish the catch!', speciesId: sp.id, ttl: 6 });
+          break;
+        }
+        case 'legendaryBlast': {
+          this.resolveLegendaryBlast(ev.speciesId, ev.x, ev.y, ev.z);
           break;
         }
       }

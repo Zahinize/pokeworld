@@ -513,6 +513,70 @@ for (const levelId of [1, 2]) {
     }
   }
 
+  // legendary catch-fail escalation: no more frozen birds; three insults → RAMPAGE
+  {
+    const skyR = new SkyLife(21, (sid) => normalizeHp(SPECIES[sid].fallbackStats));
+    const L = lightingAt(0.95); // night: yveltal
+    skyR.forceNextLegendary = 'yveltal';
+    for (let i = 0; i < 60 * 45; i++) skyR.update(1 / 60, L, 0.95, 0, 0); // roll + fly in
+    const leg = skyR.birds[skyR.legendaryIdx];
+    // fail #1: the legendary must RESUME FLIGHT, not freeze in place
+    skyR.beginCapture(leg.id);
+    skyR.resolveCapture(leg.id, false);
+    const x0 = leg.x, z0 = leg.z;
+    for (let i = 0; i < 60 * 4; i++) skyR.update(1 / 60, L, 0.95, 0, 0);
+    const moved = Math.hypot(leg.x - x0, leg.z - z0);
+    if (leg.state === 'flying' && moved > 5) ok(`sky: legendary resumes flight after a failed catch (moved ${moved.toFixed(0)}m — no more freezing)`);
+    else fail(`sky: legendary stuck after failed catch (state=${leg.state} moved=${moved.toFixed(1)}m)`);
+    // fails #2 and #3 → rampage
+    skyR.beginCapture(leg.id); skyR.resolveCapture(leg.id, false);
+    skyR.beginCapture(leg.id); skyR.resolveCapture(leg.id, false);
+    let sawRampage = false, blasts = 0, vanished2 = false;
+    for (let i = 0; i < 60 * 240 && !vanished2; i++) {
+      skyR.update(1 / 60, L, 0.95, 0, 0);
+      for (const ev of skyR.drainEvents()) {
+        if (ev.type === 'legendaryRampage') sawRampage = true;
+        if (ev.type === 'legendaryBlast') blasts++;
+        if (ev.type === 'legendaryVanish') vanished2 = true;
+      }
+    }
+    if (sawRampage && blasts >= 5) ok(`sky: 3rd failed ball triggers rampage (${blasts} blasts unleashed)`);
+    else fail(`sky: rampage broken (rampage=${sawRampage} blasts=${blasts})`);
+    if (vanished2) ok('sky: spent rampage exits to the horizon and vanishes');
+    else fail('sky: rampaging legendary never left');
+  }
+
+  // heal on a rival deducts, heal on an ally mends
+  {
+    const gen2 = generateEcosystem(getLevel(1), 9);
+    const eco2 = new Ecosystem(gen2, hp);
+    const a = eco2.alive[0];
+    const rival = eco2.alive.find((e) => e.groupId !== a.groupId || e.groupId < 0)!;
+    const mate = eco2.alive.find((e) => e !== a && e.groupId >= 0 && e.groupId === a.groupId);
+    a.kitOverride = ['healPulse', 'healPulse'];
+    const p2 = { x: 500, y: -14, z: 500, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+    // rival: the Alomomola bug — heal pulse must DEDUCT 25%, never boost
+    rival.hp = rival.maxHp;
+    rival.x = a.x + 3; rival.y = a.y; rival.z = a.z; // in range
+    a.mcd[0] = 0;
+    eco2.moves.cast(a, 0, { kind: 'entity', id: rival.id });
+    for (let i = 0; i < 60; i++) { eco2.update(1 / 60, p2, 0); eco2.drainEvents(); }
+    const cut = Math.round(rival.maxHp * 0.25);
+    if (rival.hp <= rival.maxHp - cut + 1 && rival.hp < rival.maxHp) ok(`heal pulse on a RIVAL deducts 25% (${rival.maxHp} -> ${rival.hp})`);
+    else fail(`heal pulse on a rival did not deduct (hp=${rival.hp}/${rival.maxHp})`);
+    // ally: still mends
+    if (mate) {
+      mate.hp = Math.max(1, Math.round(mate.maxHp * 0.4));
+      mate.x = a.x + 3; mate.y = a.y; mate.z = a.z;
+      a.mcd[0] = 0;
+      const before = mate.hp;
+      eco2.moves.cast(a, 0, { kind: 'entity', id: mate.id });
+      for (let i = 0; i < 60; i++) { eco2.update(1 / 60, p2, 0); eco2.drainEvents(); }
+      if (mate.hp > before) ok(`heal pulse on an ALLY mends (${before} -> ${mate.hp}/${mate.maxHp})`);
+      else fail(`heal pulse stopped healing allies (${before} -> ${mate.hp})`);
+    }
+  }
+
   // companion surface combat: real HP from the injected source, damage → skyKo → retirement
   {
     const sky3 = new SkyLife(7, (sid) => normalizeHp(SPECIES[sid].fallbackStats));
