@@ -26,6 +26,34 @@ export const GAME = {
   /** Base catch probability and modifiers. */
   CATCH_BASE_PROB: 0.38,
   CATCH_LOW_HP_BONUS: 0.45,
+  /** FEED: calm groups graze in synchronized windows — schools dip to the floor,
+   *  drifters sip at the surface. A threat cancels the window instantly. */
+  FEED_PERIOD: [30, 60] as [number, number],
+  FEED_DURATION: [12, 18] as [number, number],
+  FEED_SPEED_MULT: 0.35,
+  /** Drifters sip AT the surface — this overrides their comfort depth band entirely
+   *  (surface feeding is precisely when animals leave their comfort zone). */
+  FEED_SURFACE_Y: -1.6,
+  /** Deep drifters do a bounded vertical migration instead of an impossible full climb:
+   *  they rise at most this many meters toward the light and feed there. */
+  FEED_MAX_CLIMB: 14,
+  /** Anchor hustles to the feed site so the group arrives with time left to graze. */
+  FEED_ANCHOR_SPEED_MULT: 3,
+  FEED_WANDER_DAMP: 0.3,
+  /** Sea-food crumbs sprinkled at the graze site: count per patch and speck color. */
+  FEED_CRUMB_COUNT: 30,
+  FEED_CRUMB_COLOR: '#8ee05a',       // light green — unmistakably fish food
+  FEED_CRUMB_COLOR_DARK: '#2f7a35',  // darker green mixed in per speck for depth
+  /** Schools only pitch nose-down within this height above the sea bottom. */
+  FEED_TILT_FLOOR_DIST: 3.0,
+  /** Grazing huddle tightness (fraction of group radius). */
+  FEED_HUDDLE: 0.5,
+  /** Soft feeding chatter: a quiet cry from the group every few seconds while grazing. */
+  FEED_CRY_PERIOD: [2.5, 6] as [number, number],
+  FEED_CRY_VOLUME: 0.14,
+  /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
+  FEED_CATCH_MULT: 1.15,
+
   CATCH_MIN: 0.06,
   CATCH_MAX: 0.96,
 

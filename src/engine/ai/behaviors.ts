@@ -67,6 +67,9 @@ function detectThreat(e: Entity, ctx: SimContext, baseRadius: number): number {
   let best = -1, bestD = Infinity;
   ctx.hash.query(e.x, e.y, e.z, baseRadius, (o, d2) => {
     if (o === e || !isPredatorLike(o)) return;
+    // your own guardian is never a threat — Whiscash/Walrein/Jellicent are predator-primary
+    // species, and without this a guarded group lives permanently alarmed by its protector
+    if (o.role === 'guardian' && o.groupId === e.groupId) return;
     if (o.species.size <= e.species.size * 0.6) return; // tiny predators don't scare big fish
     const r = isHunting(o) ? baseRadius : baseRadius * 0.45;
     if (d2 < r * r && d2 < bestD) { bestD = d2; best = o.id; }
@@ -120,10 +123,13 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
 
   // State transitions
   const baseState = isSchool ? 'school' : 'drift';
+  const feeding = g.feedUntil > ctx.time;
   if (e.lured) e.state = 'lured';
   else if (g.alarm > 0.05 && e.state !== 'scatter') { e.state = 'scatter'; e.stateT = 0; }
   else if (g.alarm <= 0.05 && e.state === 'scatter') { e.state = baseState; e.stateT = 0; }
   else if (e.state === 'lured') { e.state = baseState; e.stateT = 0; }
+  else if (feeding && e.state === baseState) { e.state = 'feed'; e.stateT = 0; }
+  else if (!feeding && e.state === 'feed') { e.state = baseState; e.stateT = 0; }
 
   const scattering = e.state === 'scatter';
   const energy = Math.min(1.6, s.speed / 1.4);
@@ -186,19 +192,39 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     seek(e, px, ctx.player.y + Math.sin(e.phase * 3) * 1.2, pz, 1.4, 2);
   }
 
+  // Grazing: settle onto a personal peck spot near the anchor and nibble in place
+  if (e.state === 'feed' && e.lod < 2) {
+    const fa = e.phase * 12.9898; // deterministic per-fish offset — no per-frame RNG
+    const fr = (0.25 + 0.45 * ((e.phase * 7.31) % 1)) * g.radius * GAME.FEED_HUDDLE; // packed in tight: dinner is a family affair
+    const sx = g.anchor.x + Math.cos(fa) * fr, sz = g.anchor.z + Math.sin(fa) * fr;
+    if (isSchool) {
+      seek(e, sx, g.anchor.y, sz, 1.1, 0.8);
+      // rhythmic peck lunges: schools stab down at the substrate
+      const peck = Math.sin(ctx.time * 2.0 + e.phase * 11.0);
+      acc.y += peck > 0.45 ? -1.7 : 0.45;
+    } else {
+      // passive drifters celebrate the surface: happy little circles around their spot
+      const sw = ctx.time * 1.7 + e.phase * 6.283;
+      seek(e, sx + Math.cos(sw) * 1.3, g.anchor.y + Math.sin(sw * 0.9 + e.phase * 3) * 0.35, sz + Math.sin(sw) * 1.3, 1.3, 0.4);
+    }
+  }
+
   // Noise, vertical life, current, habitat
-  const noiseW = (isSchool ? 0.55 : 0.7) * energy;
+  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1);
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  depthPreference(e, 0.8);
-  floorAndSurface(e, s.size * 0.6 + 0.8);
+  if (e.state !== 'feed') depthPreference(e, 0.8); // feeding suspends the comfort band entirely
+  floorAndSurface(e, e.state === 'feed' ? s.size * 0.35 : s.size * 0.6 + 0.8); // grazers press right down to the sand
   if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
   containWorld(e);
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
 
   const act = activityFactor(e, ctx);
-  const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1)) * act;
+  // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
+  const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
+  const feedMult = e.state === 'feed' ? (atTable ? (isSchool ? GAME.FEED_SPEED_MULT : 0.65) : 1.3) : 1;
+  const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }
 
@@ -228,6 +254,49 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     g.followId = -1; // leader gone: become an independent drifting group
   }
 
+  // Feeding windows: only a calm, independent group grazes — any alarm cancels instantly.
+  if (g.alarm > 0.05 || lured) {
+    if (g.feedUntil > 0) {
+      // meal interrupted: come back and finish it soon, not a full period later
+      g.feedUntil = 0;
+      g.nextFeedAt = Math.min(g.nextFeedAt, ctx.time + 8 + (Math.sin(g.id * 53.7) + 1) * 2);
+    }
+  }
+  else if (g.followId < 0 && ctx.time >= g.nextFeedAt && g.feedUntil <= 0) {
+    // deterministic jitter (never touches the shared seeded RNG stream)
+    const j1 = (Math.sin(g.id * 127.1 + ctx.time * 0.73) + 1) * 0.5;
+    const j2 = (Math.sin(g.id * 311.7 + ctx.time * 0.41) + 1) * 0.5;
+    const graze = GAME.FEED_DURATION[0] + j1 * (GAME.FEED_DURATION[1] - GAME.FEED_DURATION[0]);
+    g.feedUntil = ctx.time + graze; // travel allowance added below once the site is known
+    g.nextFeedAt = g.feedUntil + GAME.FEED_PERIOD[0] + j2 * (GAME.FEED_PERIOD[1] - GAME.FEED_PERIOD[0]);
+    // aim the anchor at the feed site, clamped inside the species' depth band:
+    // schools graze down along the floor, drifters tip up to sip at their band's ceiling
+    const sp = ctx.byId.get(g.memberIds[0] ?? -1)?.species;
+    if (sp) {
+      const school = g.kind === 'school' || g.kind === 'ambientSchool';
+      // the dinner table doesn't drift: feed where the group stands
+      g.anchorTarget.x = g.anchor.x; g.anchorTarget.z = g.anchor.z;
+      g.anchorTarget.y = school
+        ? Math.max(floorY(g.anchor.x, g.anchor.z) + sp.size * 0.55 + 0.25, g.anchor.y - GAME.FEED_MAX_CLIMB) // right down onto the sand
+        : Math.max(GAME.FEED_SURFACE_Y, g.anchor.y + GAME.FEED_MAX_CLIMB); // sip at the waterline, or migrate up as far as a deep dweller can
+      // the clock starts when they ARRIVE: add the travel time (deep groups climb a long way)
+      const travel = Math.min(25, Math.abs(g.anchorTarget.y - g.anchor.y) / Math.max(0.3, g.anchorSpeed * GAME.FEED_ANCHOR_SPEED_MULT) + 4);
+      g.feedUntil += travel;
+      g.nextFeedAt += travel;
+      g.nextAnchorChange = g.feedUntil + 1; // hold position while grazing
+    }
+  } else if (g.feedUntil > 0 && ctx.time >= g.feedUntil) {
+    g.feedUntil = 0; // window over: the next wander leg resumes naturally
+    g.nextAnchorChange = ctx.time;
+  }
+  // grazing chatter: quiet nibble-cries roll through the group while it feeds
+  if (g.feedUntil > ctx.time && ctx.time >= g.nextFeedCry && g.memberIds.length > 0) {
+    g.nextFeedCry = ctx.time + GAME.FEED_CRY_PERIOD[0]
+      + ((Math.sin(g.id * 73.3 + ctx.time * 0.61) + 1) * 0.5) * (GAME.FEED_CRY_PERIOD[1] - GAME.FEED_CRY_PERIOD[0]);
+    const m = ctx.byId.get(g.memberIds[Math.floor(ctx.time * 7.7) % g.memberIds.length]);
+    if (m && m.state === 'feed') ctx.events.push({ type: 'feedChatter', entityId: m.id });
+  }
+
   if (lured) {
     g.anchorTarget.x = ctx.player.x; g.anchorTarget.y = ctx.player.y; g.anchorTarget.z = ctx.player.z;
   } else if (g.alarm > 0.3 && g.threatId !== -1 && threatPos(ctx, g.threatId, tp)) {
@@ -250,15 +319,16 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   // Move anchor toward target
   const dx = g.anchorTarget.x - g.anchor.x, dy = g.anchorTarget.y - g.anchor.y, dz = g.anchorTarget.z - g.anchor.z;
   const d = len3(dx, dy, dz);
-  const sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1);
+  const sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1) * (g.feedUntil > ctx.time ? GAME.FEED_ANCHOR_SPEED_MULT : 1);
   if (d > 0.5) {
     const step = Math.min(d, sp * dt);
     g.anchor.x += (dx / d) * step; g.anchor.y += (dy / d) * step; g.anchor.z += (dz / d) * step;
   }
   // keep anchor above the floor
-  const fy = floorY(g.anchor.x, g.anchor.z) + 3;
+  const fy = floorY(g.anchor.x, g.anchor.z) + (g.feedUntil > ctx.time ? 1.0 : 3);
   if (g.anchor.y < fy) g.anchor.y = fy;
-  if (g.anchor.y > -2.5) g.anchor.y = -2.5;
+  const ceiling = g.feedUntil > ctx.time ? GAME.FEED_SURFACE_Y : -2.5;
+  if (g.anchor.y > ceiling) g.anchor.y = ceiling;
 }
 
 // ---------------------------------------------------------------------------------------------

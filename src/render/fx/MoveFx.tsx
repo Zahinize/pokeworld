@@ -547,6 +547,16 @@ function MoteLayer({ murky, cap }: { murky: boolean; cap: number }) {
               (Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.2, 0.12 + Math.random() * 0.14, 0.4 + Math.random() * 0.3, pr.color, 0.4);
           }
         }
+        // swirling surface-feeders fizz: small buoyant bubbles off passive drifters mid-meal
+        if (eco) {
+          for (const e of eco.alive) {
+            if (e.state !== 'feed' || e.species.primary !== 'passive') continue;
+            if (Math.random() > 0.28) continue;
+            spawn(e.x + (Math.random() - 0.5) * e.species.size, e.y + e.species.size * 0.25, e.z + (Math.random() - 0.5) * e.species.size,
+              (Math.random() - 0.5) * 0.5, 0.6 + Math.random() * 0.7, (Math.random() - 0.5) * 0.5,
+              0.05 + Math.random() * 0.08, 0.7 + Math.random() * 0.5, '#dff4ff', 1.5);
+          }
+        }
         // catches / generic session fx keep their celebration burst
         for (const f of session.fx) {
           if (f.t > 0.06 || seenFx.current.has(f) || f.type !== 'catch') continue;

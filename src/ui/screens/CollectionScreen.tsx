@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Ic, GROUP_ICONS, Zap, Timer, Target, Sparkles } from '../components/icons';
 import { SPECIES_LIST, SPECIES, makeToken, baseSpeciesId, isShinyToken } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
@@ -54,17 +54,13 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
   const selShiny = sel ? isShinyToken(sel) : false;
   const s = sel ? SPECIES[baseSpeciesId(sel)] : null;
   const entry = sel ? collection[sel] : null;
-  return (
-    <Panel className={embedded ? 'panel wide strong' : ''} style={{ padding: 22, maxHeight: embedded ? 'calc(100vh - 40px)' : undefined, overflow: 'auto', width: embedded ? undefined : '100%' }}>
-      <div className="row between wrap" style={{ marginBottom: 14 }}>
-        <div>
-          <div className="eyebrow">Field Guide</div>
-          <h1 className="title" style={{ fontSize: 'clamp(24px,4vw,38px)' }}>Collection</h1>
-          <div className="muted small">{caughtCount} / {list.length} caught · {seenCount} seen</div>
-        </div>
-        <button className="btn ghost" onClick={() => { Audio.uiClick(); onClose(); }}>{embedded ? '✕ Close' : '← Back'}</button>
-      </div>
-      {s && (
+  const detailRef = useRef<HTMLDivElement>(null);
+  // the detail opens INLINE right below the clicked Pokémon's row — no jump to the top
+  useEffect(() => {
+    if (sel) detailRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [sel]);
+  const detailCard = s ? (
+    <div ref={detailRef} key={`detail-${sel}`} style={{ gridColumn: '1 / -1' }}>
         <div className="card" style={{ marginBottom: 14, animation: 'fadeUp .3s ease both' }}>
           <div className="dex-detail">
             <SpriteImg id={s.id} shiny={selShiny} size={140} unseen={!entry?.seen && !selShiny} className={selShiny ? 'shiny-glow' : ''} />
@@ -129,7 +125,18 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
             </div>
           </div>
         </div>
-      )}
+    </div>
+  ) : null;
+  return (
+    <Panel className={embedded ? 'panel wide strong' : ''} style={{ padding: 22, maxHeight: embedded ? 'calc(100vh - 40px)' : undefined, overflow: 'auto', width: embedded ? undefined : '100%' }}>
+      <div className="row between wrap" style={{ marginBottom: 14 }}>
+        <div>
+          <div className="eyebrow">Field Guide</div>
+          <h1 className="title" style={{ fontSize: 'clamp(24px,4vw,38px)' }}>Collection</h1>
+          <div className="muted small">{caughtCount} / {list.length} caught · {seenCount} seen</div>
+        </div>
+        <button className="btn ghost" onClick={() => { Audio.uiClick(); onClose(); }}>{embedded ? '✕ Close' : '← Back'}</button>
+      </div>
       <div className="collection-grid">
         {list.flatMap((sp) => {
           const e = collection[sp.id];
@@ -151,6 +158,8 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
               <div className="c">×{se.caught}</div>
             </button>
           );
+          // the clicked Pokémon's detail expands right underneath its row
+          if (detailCard && sel && baseSpeciesId(sel) === sp.id) cards.push(detailCard);
           return cards;
         })}
       </div>

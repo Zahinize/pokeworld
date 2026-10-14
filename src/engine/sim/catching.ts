@@ -27,7 +27,10 @@ export function catchProbabilityFor(species: SpeciesConfig, hpFrac: number, ball
 /** Probability (0..1) that a hit with `ball` captures `e`. */
 export function catchProbability(e: Entity, ball: BallId): number {
   const hpFrac = e.maxHp > 0 ? e.hp / e.maxHp : 1;
-  return catchProbabilityFor(e.species, hpFrac, ball, e.state === 'faint');
+  let p = catchProbabilityFor(e.species, hpFrac, ball, e.state === 'faint');
+  // a grazing Pokémon is distracted — reward the patient observer
+  if (e.state === 'feed') p = Math.min(GAME.CATCH_MAX, p * GAME.FEED_CATCH_MULT);
+  return p;
 }
 
 function shakesFor(p: number, success: boolean, rand: () => number): number {

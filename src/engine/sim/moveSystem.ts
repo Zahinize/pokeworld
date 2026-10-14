@@ -5,7 +5,7 @@
  */
 import type { Entity, EcoEvent, Vec3 } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
-import { getMove, movesFor, type MoveConfig as MC } from '@/data/moves';
+import { getMove, isSupportive, movesFor, type MoveConfig as MC } from '@/data/moves';
 
 /** Contact styles keep their natural reach; everything that travels scales with the caster's stage. */
 const CONTACT_STYLES = new Set(['melee', 'dash']);
@@ -131,7 +131,7 @@ export class MoveSystem {
    */
   pickMove(e: Entity, dist: number, preferUtility = false, damageOnly = false): -1 | 0 | 1 {
     const kit = kitOf(e);
-    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && dist <= effectiveRange(e, kit[i]) + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
+    const usable = ([0, 1] as const).filter((i) => this.ready(e, i) && !isSupportive(kit[i]) && dist <= effectiveRange(e, kit[i]) + e.species.size * 0.5 + 0.5 && (!damageOnly || kit[i].kind === 'damage'));
     if (!usable.length) return -1;
     const util = usable.find((i) => kit[i].kind === 'utility');
     const dmg = usable.find((i) => kit[i].kind === 'damage');
@@ -275,6 +275,17 @@ export class MoveSystem {
       case 'defUp': target.defStage = 1 + fx.magnitude; target.defStageUntil = h.time + fx.duration; break;
       case 'speedUp': target.slowT = 0; target.speedMul = Math.min(1.6, target.speedMul * (1 + fx.magnitude * 0.5)); break;
       case 'heal': {
+        // healing energy only mends ALLIES — forced into a rival it disrupts, draining that
+        // same fraction of their health (so Heal Pulse aimed at a boss hurts, never helps)
+        const ally = caster.id === target.id
+          || (caster.role === 'partner' && target.role === 'partner')
+          || (caster.groupId >= 0 && caster.groupId === target.groupId);
+        if (!ally) {
+          const dmg = Math.round(target.maxHp * fx.magnitude);
+          h.events.push({ type: 'moveHit', casterId: caster.id, targetId: target.id, moveId: move.id, damage: dmg });
+          h.damageAbs(target, dmg, caster.id);
+          break;
+        }
         if (fx.duration <= 0.6) {
           const amt = Math.round(target.maxHp * fx.magnitude);
           target.hp = Math.min(target.maxHp, target.hp + amt);
@@ -287,6 +298,5 @@ export class MoveSystem {
       }
     }
     if (fx.type !== 'heal') h.events.push({ type: 'effect', targetId: target.id, effect: fx.type, magnitude: fx.magnitude });
-    void caster;
   }
 }

@@ -7,6 +7,7 @@ import { Ecosystem } from '@/engine/world/Ecosystem';
 import { getLevel } from '@/data/levels';
 import { normalizeHp } from '@/pokeapi/hp';
 import { SPECIES } from '@/data/species';
+import { floorY } from '@/engine/world/terrain';
 
 const hp = (id: string) => normalizeHp(SPECIES[id].fallbackStats);
 let failures = 0;
@@ -50,6 +51,92 @@ for (const levelId of [1, 2]) {
   if (msPerStep > 0.25) fail(`level ${levelId}: perf budget exceeded (${msPerStep.toFixed(3)} ms/step > 0.25)`);
   if (casts / n < hits / n) fail(`level ${levelId}: fewer casts than hits?`);
   ok(`level ${levelId} within budgets`);
+}
+
+// ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
+{
+  const { GAME } = await import('@/data/gameConfig');
+  const { catchProbability } = await import('@/engine/sim/catching');
+  const gen = generateEcosystem(getLevel(1), 11);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: 200, y: -14, z: 200, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false }; // far away: calm reef
+  let feedTicks = 0, feedWindows = 0, wasFeeding = false;
+  let speedSumFeed = 0, nFeed = 0, speedSumSwim = 0, nSwim = 0;
+  let bandViolations = 0;
+  let passiveRise = -999; // highest a passive group's anchor climbs during its feed windows
+  let feederRise = -999;  // highest an actual FEEDING MEMBER gets (the thing the player sees)
+  let chatter = 0;        // feeding cries emitted
+  let schoolFloorMin = 999; // closest a feeding school member presses to the sand
+  for (let i = 0; i < 240 * 60; i++) {
+    eco.update(1 / 60, p, 0);
+    for (const ev of eco.drainEvents()) if ((ev as any).type === 'feedChatter') chatter++;
+    if (i % 30 !== 0) continue;
+    for (const gr of eco.groups) {
+      if (gr.feedUntil > eco.time && gr.kind !== 'school' && gr.kind !== 'ambientSchool') {
+        passiveRise = Math.max(passiveRise, gr.anchor.y);
+        for (const id of gr.memberIds) { const m = eco.byId.get(id); if (m?.state === 'feed') feederRise = Math.max(feederRise, m.y); }
+      }
+    }
+    const feeding = eco.alive.some((e) => e.state === 'feed');
+    if (feeding) feedTicks++;
+    if (feeding && !wasFeeding) feedWindows++;
+    wasFeeding = feeding;
+    for (const e of eco.alive) {
+      const sp2 = Math.hypot(e.vx, e.vy, e.vz);
+      if (e.state === 'feed') {
+        // crawl is judged AT THE TABLE; the descent is a deliberate 1.3x hustle
+        const grp = eco.groups.find((gr) => gr.id === e.groupId);
+        const atTable = grp ? Math.abs(e.y - grp.anchor.y) < 2.2 : false;
+        if (e.behavior === 'schooling' && atTable) { speedSumFeed += sp2 / Math.max(0.1, e.species.speed); nFeed++; }
+        if (e.y > -0.6) bandViolations++; // the integrate ceiling clamps feeders at -0.8; anything above it is a real escape
+        if (e.behavior === 'schooling') schoolFloorMin = Math.min(schoolFloorMin, e.y - floorY(e.x, e.z));
+      } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
+    }
+  }
+  if (feedWindows >= 2) ok(`feed: ${feedWindows} grazing windows over 4 calm minutes (${feedTicks} sampled ticks)`);
+  else fail(`feed: only ${feedWindows} windows in 4 minutes`);
+  const avgFeed = speedSumFeed / Math.max(1, nFeed), avgSwim = speedSumSwim / Math.max(1, nSwim);
+  // schools crawl while pecking; drifters deliberately stay lively (the happy surface swirl)
+  if (avgFeed < avgSwim * 0.75) ok(`feed: pecking schools crawl at ${avgFeed.toFixed(2)}x vs swim ${avgSwim.toFixed(2)}x species speed`);
+  else fail(`feed: pecking schools not slower (feed ${avgFeed.toFixed(2)} vs swim ${avgSwim.toFixed(2)})`);
+  if (bandViolations === 0) ok('feed: grazing stays inside depth bands'); else fail(`feed: ${bandViolations} depth-band violations`);
+  // the group must ARRIVE at the table: drifter anchors reach the actual waterline
+  if (passiveRise > -2.0) ok(`feed: drifter anchors reach the waterline (peak ${passiveRise.toFixed(1)}m)`);
+  else fail(`feed: drifter anchors never reached the surface (peak ${passiveRise.toFixed(1)}m)`);
+  if (feederRise > -3.2) ok(`feed: feeding MEMBERS visibly sip at the surface (member peak ${feederRise.toFixed(1)}m)`);
+  else fail(`feed: members lag below the surface (peak ${feederRise.toFixed(1)}m) — travel eats the window`);
+  if (schoolFloorMin < 1.6) ok(`feed: schools press down onto the sand (closest ${schoolFloorMin.toFixed(2)}m off the floor)`);
+  else fail(`feed: schools hover too high while grazing (${schoolFloorMin.toFixed(2)}m off the floor)`);
+  if (chatter >= 6) ok(`feed: grazing chatter cries emitted (${chatter} over 4 minutes)`);
+  else fail(`feed: too little grazing chatter (${chatter})`);
+
+  // threat preemption: force a window, then alarm the group — every feeder must scatter on the next think
+  const g = eco.groups.find((gr) => gr.memberIds.length >= 3 && gr.followId < 0)!;
+  // banish real predators so nothing cancels the forced window before we alarm it ourselves
+  for (const e2 of eco.alive) if (e2.behavior === 'predator') { e2.x = 120; e2.z = 120; e2.targetId = -1; }
+  g.alarm = 0; g.threatId = -1; g.feedUntil = eco.time + 10; g.nextAnchorChange = eco.time + 10;
+  let feedersBefore = 0;
+  for (let i = 0; i < 180; i++) {
+    eco.update(1 / 60, p, 0); eco.drainEvents();
+    g.alarm = 0; g.feedUntil = Math.max(g.feedUntil, eco.time + 5); // hold the window open against stray alarms
+    feedersBefore = Math.max(feedersBefore, g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length);
+  }
+  g.alarm = 1; g.threatId = -2; // player as stand-in threat
+  for (let i = 0; i < 90; i++) { eco.update(1 / 60, p, 0); eco.drainEvents(); }
+  const stillFeeding = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'feed').length;
+  const scattered = g.memberIds.filter((id) => eco.byId.get(id)?.state === 'scatter').length;
+  if (feedersBefore > 0 && stillFeeding === 0 && g.feedUntil === 0) ok(`feed: alarm preempts grazing instantly (${feedersBefore} feeders -> ${scattered} scattered)`);
+  else fail(`feed: preemption broken (before=${feedersBefore} still=${stillFeeding} feedUntil=${g.feedUntil})`);
+
+  // catch bonus: exactly FEED_CATCH_MULT, inside the clamp
+  const target = eco.byId.get(g.memberIds[0])!;
+  target.state = 'school';
+  const pSwimState = catchProbability(target, 'pokeball');
+  target.state = 'feed';
+  const pFeedState = catchProbability(target, 'pokeball');
+  const expected = Math.min(GAME.CATCH_MAX, pSwimState * GAME.FEED_CATCH_MULT);
+  if (Math.abs(pFeedState - expected) < 1e-9) ok(`feed: catch bonus exact (${(pSwimState * 100).toFixed(1)}% -> ${(pFeedState * 100).toFixed(1)}%)`);
+  else fail(`feed: catch bonus wrong (${pFeedState} vs ${expected})`);
 }
 
 // ---- Guardian aggression + group revenge (synthetic scenario) ----
@@ -423,6 +510,74 @@ for (const levelId of [1, 2]) {
       const b2 = sky2.birds.find((b) => b.id === bird.id)!;
       if (b2.state === 'caught' || b2.state === 'gone') ok('sky: caught bird retired from the pool');
       else fail(`sky: caught bird still ${b2.state}`);
+    }
+  }
+
+  // legendary catch-fail escalation — EVERY sky legendary, at its native time of day:
+  // escapes 1-2 resume a catchable pass, the 3rd failed ball triggers a rampage
+  for (const [legId, t] of [['articuno', 0.4], ['lugia', 0.4], ['hooh', 0.72], ['yveltal', 0.95]] as [string, number][]) {
+    const skyR = new SkyLife(21, (sid) => normalizeHp(SPECIES[sid].fallbackStats));
+    const L = lightingAt(t);
+    skyR.forceNextLegendary = legId;
+    for (let i = 0; i < 60 * 45; i++) skyR.update(1 / 60, L, t, 0, 0); // roll + fly in
+    const leg = skyR.birds[skyR.legendaryIdx];
+    if (!leg || leg.speciesId !== legId) { fail(`sky: ${legId} never spawned for the rampage test`); continue; }
+    // fails #1 and #2: the legendary must RESUME FLIGHT each time, not freeze in place
+    let resumed = true, movedMin = Infinity;
+    for (let k = 0; k < 2; k++) {
+      skyR.beginCapture(leg.id);
+      skyR.resolveCapture(leg.id, false);
+      const x0 = leg.x, z0 = leg.z;
+      for (let i = 0; i < 60 * 4; i++) skyR.update(1 / 60, L, t, 0, 0);
+      const moved = Math.hypot(leg.x - x0, leg.z - z0);
+      movedMin = Math.min(movedMin, moved);
+      if (leg.state !== 'flying' || moved < 5) resumed = false;
+    }
+    if (resumed) ok(`sky: ${legId} resumes flight after fails 1-2 (min moved ${movedMin.toFixed(0)}m — no freezing)`);
+    else fail(`sky: ${legId} stuck after a failed catch (state=${leg.state} moved=${movedMin.toFixed(1)}m)`);
+    // fail #3 → rampage → blasts → spent → vanish
+    skyR.beginCapture(leg.id); skyR.resolveCapture(leg.id, false);
+    let sawRampage = false, blasts = 0, vanished2 = false;
+    for (let i = 0; i < 60 * 240 && !vanished2; i++) {
+      skyR.update(1 / 60, L, t, 0, 0);
+      for (const ev of skyR.drainEvents()) {
+        if (ev.type === 'legendaryRampage') sawRampage = true;
+        if (ev.type === 'legendaryBlast') blasts++;
+        if (ev.type === 'legendaryVanish') vanished2 = true;
+      }
+    }
+    if (sawRampage && blasts >= 5 && vanished2) ok(`sky: ${legId} rampages on the 3rd fail (${blasts} blasts) then vanishes`);
+    else fail(`sky: ${legId} escalation broken (rampage=${sawRampage} blasts=${blasts} vanished=${vanished2})`);
+  }
+
+  // heal on a rival deducts, heal on an ally mends
+  {
+    const gen2 = generateEcosystem(getLevel(1), 9);
+    const eco2 = new Ecosystem(gen2, hp);
+    const a = eco2.alive[0];
+    const rival = eco2.alive.find((e) => e.groupId !== a.groupId || e.groupId < 0)!;
+    const mate = eco2.alive.find((e) => e !== a && e.groupId >= 0 && e.groupId === a.groupId);
+    a.kitOverride = ['healPulse', 'healPulse'];
+    const p2 = { x: 500, y: -14, z: 500, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+    // rival: the Alomomola bug — heal pulse must DEDUCT 25%, never boost
+    rival.hp = rival.maxHp;
+    rival.x = a.x + 3; rival.y = a.y; rival.z = a.z; // in range
+    a.mcd[0] = 0;
+    eco2.moves.cast(a, 0, { kind: 'entity', id: rival.id });
+    for (let i = 0; i < 60; i++) { eco2.update(1 / 60, p2, 0); eco2.drainEvents(); }
+    const cut = Math.round(rival.maxHp * 0.25);
+    if (rival.hp <= rival.maxHp - cut + 1 && rival.hp < rival.maxHp) ok(`heal pulse on a RIVAL deducts 25% (${rival.maxHp} -> ${rival.hp})`);
+    else fail(`heal pulse on a rival did not deduct (hp=${rival.hp}/${rival.maxHp})`);
+    // ally: still mends
+    if (mate) {
+      mate.hp = Math.max(1, Math.round(mate.maxHp * 0.4));
+      mate.x = a.x + 3; mate.y = a.y; mate.z = a.z;
+      a.mcd[0] = 0;
+      const before = mate.hp;
+      eco2.moves.cast(a, 0, { kind: 'entity', id: mate.id });
+      for (let i = 0; i < 60; i++) { eco2.update(1 / 60, p2, 0); eco2.drainEvents(); }
+      if (mate.hp > before) ok(`heal pulse on an ALLY mends (${before} -> ${mate.hp}/${mate.maxHp})`);
+      else fail(`heal pulse stopped healing allies (${before} -> ${mate.hp})`);
     }
   }
 

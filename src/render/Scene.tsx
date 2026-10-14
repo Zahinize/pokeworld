@@ -14,6 +14,7 @@ import { CameraRig } from './player/CameraRig';
 import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
 import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
+import { FeedCrumbs } from './env/FeedCrumbs';
 import { SKY } from '@/data/sky';
 
 function GameLoop() {
@@ -84,6 +85,7 @@ export function Scene() {
         <Surface />
         <SkyWorld clouds={SKY.CLOUDS[resolveQuality(qualitySetting, isTouch)] ?? 3} />
         <SkyLifeLayer />
+        <FeedCrumbs />
         <PokemonLayer />
         <PartnerTags />
         <HealthBars />

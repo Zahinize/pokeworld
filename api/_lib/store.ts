@@ -30,6 +30,8 @@ function assertKey(key: string) {
   if (!KEY_RE.test(key) || key.includes('..')) throw new Error(`bad storage key: ${key}`);
 }
 
+let tmpSeq = 0;
+
 // write-through cache (per lambda instance / dev server process)
 const cache = new Map<string, unknown>();
 
@@ -73,7 +75,7 @@ export async function putJSON(key: string, doc: unknown): Promise<void> {
   } else {
     const file = path.join(dataDir(), `${key}.json`);
     await fs.mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    const tmp = `${file}.${process.pid}.${Date.now()}.${(tmpSeq++).toString(36)}.tmp`; // seq: two same-ms writes must not share a tmp name
     await fs.writeFile(tmp, body, 'utf8');
     await fs.rename(tmp, file);
   }
