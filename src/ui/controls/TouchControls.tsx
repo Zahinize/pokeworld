@@ -86,14 +86,18 @@ export function TouchControls() {
       clearSling();
     };
     const onSlingCancel = (e: PointerEvent) => { if (e.pointerId === slingId) clearSling(); };
+    // a careful aim is a long-press: the context menu must never steal it (Android)
+    const onSlingMenu = (e: Event) => e.preventDefault();
 
     joy.addEventListener('pointerdown', onJoyDown); joy.addEventListener('pointermove', onJoyMove); joy.addEventListener('pointerup', onJoyUp); joy.addEventListener('pointercancel', onJoyUp);
     look.addEventListener('pointerdown', onLookDown); look.addEventListener('pointermove', onLookMove); look.addEventListener('pointerup', onLookUp); look.addEventListener('pointercancel', onLookUp);
     sling.addEventListener('pointerdown', onSlingDown); sling.addEventListener('pointermove', onSlingMove); sling.addEventListener('pointerup', onSlingUp); sling.addEventListener('pointercancel', onSlingCancel);
+    sling.addEventListener('contextmenu', onSlingMenu);
     return () => {
       joy.removeEventListener('pointerdown', onJoyDown); joy.removeEventListener('pointermove', onJoyMove); joy.removeEventListener('pointerup', onJoyUp); joy.removeEventListener('pointercancel', onJoyUp);
       look.removeEventListener('pointerdown', onLookDown); look.removeEventListener('pointermove', onLookMove); look.removeEventListener('pointerup', onLookUp); look.removeEventListener('pointercancel', onLookUp);
       sling.removeEventListener('pointerdown', onSlingDown); sling.removeEventListener('pointermove', onSlingMove); sling.removeEventListener('pointerup', onSlingUp); sling.removeEventListener('pointercancel', onSlingCancel);
+      sling.removeEventListener('contextmenu', onSlingMenu);
       clearSling(); // unmount (pause / level end) must never leave a live aim behind
       session.input.strafe = 0; session.input.forward = 0;
     };

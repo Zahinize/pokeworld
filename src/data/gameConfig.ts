@@ -62,12 +62,22 @@ export const GAME = {
   SLING_POWER_MIN: 0.55,
   SLING_POWER_MAX: 1.25,
   SLING_FULL_POWER_PX: 140,
+  /** Touch throws launch from the "hand" — low and to the right, matching the on-screen
+   *  Poké Ball — and converge back onto the aim ray at THROW_FOCUS metres so accuracy
+   *  matches desktop. Desktop keeps the original small offset (byte-identical feel). */
+  HAND_RIGHT_TOUCH: 0.8,
+  HAND_DOWN_TOUCH: 0.4,
+  THROW_FOCUS: 26,
 
   /** Polite auto-sprint: speed ramps on its own, and caps below the spook threshold near wilds. */
   AUTO_SPRINT_AFTER: 1.2,
+  /** Hysteresis: once auto-sprint engages, brief joystick re-grips must not drop it. */
+  AUTO_SPRINT_OFF: 0.5,
   POLITE_SPEED: 2.4,
-  POLITE_RADIUS: 10,
+  POLITE_RADIUS: 16,
   SPEED_RAMP_TAU: 0.4,
+  /** Slowing down is never abrupt: cap drops (polite glide, sprint fading) ease with this slower tau. */
+  SPEED_RAMP_TAU_DOWN: 0.8,
 
   CATCH_MIN: 0.06,
   CATCH_MAX: 0.96,

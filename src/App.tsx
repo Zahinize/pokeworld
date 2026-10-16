@@ -25,6 +25,26 @@ import { Audio } from './audio/AudioManager';
 import type { CurrentRun } from './persistence';
 import { LEVELS } from './data/levels';
 
+/**
+ * Masks the reef's first frames (shader compile, texture upload) behind a deep-sea fade,
+ * so entering a level transitions as smoothly as every other screen. Mounted fresh on
+ * each dive; reveals after the canvas has had two frames to draw underneath.
+ */
+function SceneCurtain() {
+  const [off, setOff] = useState(false);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    let done = false; let raf2 = 0; let t: ReturnType<typeof setTimeout> | undefined;
+    const reveal = () => { if (done) return; done = true; setOff(true); t = setTimeout(() => setGone(true), 1000); };
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(reveal); });
+    // rAF stalls in backgrounded tabs — the curtain must lift on a clock, never trap the player
+    const fallback = setTimeout(reveal, 700);
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); clearTimeout(fallback); if (t) clearTimeout(t); };
+  }, []);
+  if (gone) return null;
+  return <div className={`scene-curtain ${off ? 'off' : ''}`} aria-hidden />;
+}
+
 export default function App() {
   const screen = useStore((s) => s.screen);
   const setScreen = useStore((s) => s.setScreen);
@@ -109,6 +129,7 @@ export default function App() {
       return (
         <>
           <Scene />
+          {screen === 'play' && <SceneCurtain />}
           {screen === 'play' && <HUD onQuit={quitToMenu} />}
           {screen === 'play' && isTouch && !paused && <TouchControls />}
           {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}

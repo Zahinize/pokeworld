@@ -19,6 +19,29 @@ export function computeThrowOrigin(
   return [p.x + rx * 0.35 + dirX * 0.6, p.y - 0.25 + dirY * 0.6, p.z + rz * 0.35 + dirZ * 0.6];
 }
 
+/**
+ * Full throw solution shared by the engine AND the trajectory preview. Desktop is the
+ * original math untouched (origin just off the shoulder, dir passed through). Touch
+ * launches from the "hand" — low-right, where the on-screen Poké Ball sits — and the
+ * direction converges back onto the aim ray at THROW_FOCUS metres, so what you aim at
+ * is what you hit, while the ball visibly flies out of the slingshot.
+ */
+export function computeThrow(
+  p: { x: number; y: number; z: number; yaw: number },
+  dirX: number, dirY: number, dirZ: number,
+  touch: boolean,
+): { origin: [number, number, number]; dir: [number, number, number] } {
+  if (!touch) return { origin: computeThrowOrigin(p, dirX, dirY, dirZ), dir: [dirX, dirY, dirZ] };
+  const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
+  const ox = p.x + rx * GAME.HAND_RIGHT_TOUCH + dirX * 0.6;
+  const oy = p.y - GAME.HAND_DOWN_TOUCH + dirY * 0.6;
+  const oz = p.z + rz * GAME.HAND_RIGHT_TOUCH + dirZ * 0.6;
+  const F = GAME.THROW_FOCUS;
+  let cx = p.x + dirX * F - ox, cy = p.y + dirY * F - oy, cz = p.z + dirZ * F - oz;
+  const L = Math.hypot(cx, cy, cz) || 1;
+  return { origin: [ox, oy, oz], dir: [cx / L, cy / L, cz / L] };
+}
+
 /** Aim direction for the slingshot: camera forward offset by the drag's yaw/pitch. */
 export function slingDir(
   player: { yaw: number; pitch: number },
@@ -70,20 +93,27 @@ export function previewBallPath(
       vx *= 0.35; vy *= 0.25; vz *= 0.35;
       if (Math.hypot(vx, vy, vz) < 2.2) { pts[n * 3] = x; pts[n * 3 + 1] = 0.05; pts[n * 3 + 2] = z; n++; break; }
     }
-    pts[n * 3] = x; pts[n * 3 + 1] = y; pts[n * 3 + 2] = z; n++;
-    // floor rest
-    if (y <= floorY(x, z) + 0.3) break;
-    // obstacle contact truncates the preview (the real ball bounces; a cut is honest enough)
+    // obstacle contact bounces EXACTLY like balls.ts does — a reef full of coral and kelp
+    // must still show the whole promised path, deflections included
     if (obstacles) {
-      let hit = false;
       for (let k = 0; k < obstacles.length; k++) {
         const o = obstacles[k];
         const dx = x - o.x, dy = y - o.y, dz = z - o.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
         const rr = o.r + 0.3;
-        if (dx * dx + dy * dy + dz * dz < rr * rr) { hit = true; break; }
+        if (d2 < rr * rr) {
+          const d = Math.sqrt(d2) || 0.01;
+          const nx = dx / d, ny = dy / d, nz = dz / d;
+          const vn = vx * nx + vy * ny + vz * nz;
+          vx -= 1.4 * vn * nx; vy -= 1.4 * vn * ny; vz -= 1.4 * vn * nz;
+          vx *= 0.5; vy *= 0.5; vz *= 0.5;
+          x = o.x + nx * (o.r + 0.31); y = o.y + ny * (o.r + 0.31); z = o.z + nz * (o.r + 0.31);
+        }
       }
-      if (hit) break;
     }
+    pts[n * 3] = x; pts[n * 3 + 1] = y; pts[n * 3 + 2] = z; n++;
+    // floor rest
+    if (y <= floorY(x, z) + 0.3) break;
     if (Math.hypot(x, z) > GAME.WORLD_RADIUS) break;
   }
   return { pts, n };

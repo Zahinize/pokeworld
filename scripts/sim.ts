@@ -105,15 +105,49 @@ for (const levelId of [1, 2]) {
   }
   if (early < GAME.SWIM_SPEED + 0.4 && late > GAME.SWIM_SPRINT - 0.6) ok(`sprint: auto-ramps ${early.toFixed(1)} -> ${late.toFixed(1)} m/s with no button`);
   else fail(`sprint: ramp wrong (early ${early.toFixed(1)}, late ${late.toFixed(1)})`);
+  // the polite cap glides in (slower down-tau): no frame may decelerate sharply
   pc.politeCap = true;
-  for (let i = 0; i < 60 * 3; i++) { pc.update(1 / 60, inp, []); jolt = Math.max(jolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
+  let capJolt = 0;
+  for (let i = 0; i < 60 * 4; i++) { pc.update(1 / 60, inp, []); capJolt = Math.max(capJolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
   const capped = pc.speed;
   pc.politeCap = false;
   for (let i = 0; i < 60 * 3; i++) pc.update(1 / 60, inp, []);
-  if (capped <= 2.5 && pc.speed > GAME.SWIM_SPRINT - 0.6) ok(`sprint: polite cap holds ${capped.toFixed(2)} <= 2.5 near wilds, releases smoothly after`);
+  if (capped <= 2.5 && pc.speed > GAME.SWIM_SPRINT - 0.6) ok(`sprint: polite cap glides to ${capped.toFixed(2)} <= 2.5 near wilds, releases smoothly after`);
   else fail(`sprint: polite cap broken (capped ${capped.toFixed(2)}, released ${pc.speed.toFixed(1)})`);
-  if (jolt < 0.5) ok(`sprint: no speed jolts (max frame delta ${jolt.toFixed(3)} m/s)`);
-  else fail(`sprint: jolt detected (${jolt.toFixed(2)} m/s in one frame)`);
+  if (jolt < 0.5 && capJolt < 0.2) ok(`sprint: no speed jolts (ramp ${jolt.toFixed(3)}, cap glide ${capJolt.toFixed(3)} m/s per frame)`);
+  else fail(`sprint: jolt detected (ramp ${jolt.toFixed(2)}, cap ${capJolt.toFixed(2)} m/s in one frame)`);
+
+  // hysteresis: joystick re-grips (brief input dips) must never sag the speed mid-swim
+  let low = Infinity;
+  for (let i = 0; i < 60 * 2; i++) {
+    const dip = (i % 12) < 3; // let go ~50ms of every 200ms, like a thumb re-centering
+    pc.update(1 / 60, { ...inp, forward: dip ? 0.2 : 1 }, []);
+    low = Math.min(low, pc.speed);
+  }
+  // (thrust dips still cost a little speed to water drag — that's physics; what hysteresis
+  //  guarantees is the sprint never UNLATCHES, which would re-ramp from cruise 5.5)
+  if (low > GAME.SWIM_SPEED + 1) ok(`sprint: joystick re-grips keep the sprint latched (lowest ${low.toFixed(1)} m/s, cruise is ${GAME.SWIM_SPEED})`);
+  else fail(`sprint: speed sagged to ${low.toFixed(1)} during input wiggles — hysteresis broken`);
+
+  // touch hand throw: launches low-right but converges EXACTLY onto the aim ray at THROW_FOCUS
+  const { computeThrow } = await import('@/engine/sim/ballPreview');
+  const pl = { x: 12, y: -8, z: -30, yaw: 0.7 };
+  for (const [adx, ady, adz] of [[0, 0, -1], [0.5, 0.6, -0.62], [-0.7, 0.1, -0.7]] as const) {
+    const L0 = Math.hypot(adx, ady, adz);
+    const [nx, ny, nz] = [adx / L0, ady / L0, adz / L0];
+    const t = computeThrow(pl, nx, ny, nz, true);
+    const fx = pl.x + nx * GAME.THROW_FOCUS, fy = pl.y + ny * GAME.THROW_FOCUS, fz = pl.z + nz * GAME.THROW_FOCUS;
+    const reach = Math.hypot(fx - t.origin[0], fy - t.origin[1], fz - t.origin[2]);
+    const hx = t.origin[0] + t.dir[0] * reach, hy = t.origin[1] + t.dir[1] * reach, hz = t.origin[2] + t.dir[2] * reach;
+    const miss = Math.hypot(hx - fx, hy - fy, hz - fz);
+    if (miss > 1e-6) fail(`sling: touch throw misses the focus point by ${miss}m`);
+    const d = computeThrow(pl, nx, ny, nz, false);
+    const [cox, coy, coz] = computeThrowOrigin(pl, nx, ny, nz);
+    if (Math.hypot(d.origin[0] - cox, d.origin[1] - coy, d.origin[2] - coz) > 0 || d.dir[0] !== nx || d.dir[1] !== ny || d.dir[2] !== nz) {
+      fail('sling: desktop computeThrow is not byte-identical to the original origin/dir');
+    }
+  }
+  ok(`sling: touch throws converge exactly on the aim ray at ${GAME.THROW_FOCUS}m; desktop path untouched`);
 }
 
 // ---- Auto ball selection: right tier for the target, Master Balls stay precious ----

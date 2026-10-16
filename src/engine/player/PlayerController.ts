@@ -25,6 +25,9 @@ export class PlayerController {
   swayT = 0;
   /** Sustained-movement timer driving auto-sprint (no sprint button needed). */
   sustainT = 0;
+  /** Auto-sprint latch with hysteresis: engages after AUTO_SPRINT_AFTER, and only lets go
+   *  once the timer has drained well below it — joystick re-grips never cause speed sags. */
+  private autoSprint = false;
   /** True when wild Pokémon are near: the game swims politely so you don't spook them. */
   politeCap = false;
   private maxCur: number = GAME.SWIM_SPEED;
@@ -33,7 +36,7 @@ export class PlayerController {
 
   reset(x: number, y: number, z: number, yaw = 0) {
     this.x = x; this.y = y; this.z = z; this.vx = this.vy = this.vz = 0; this.yaw = yaw; this.pitch = 0;
-    this.sustainT = 0; this.politeCap = false; this.maxCur = GAME.SWIM_SPEED;
+    this.sustainT = 0; this.autoSprint = false; this.politeCap = false; this.maxCur = GAME.SWIM_SPEED;
   }
 
   update(dt: number, input: InputState, obstacles: Obstacle[]) {
@@ -52,11 +55,17 @@ export class PlayerController {
     // Auto-sprint: sustained swimming ramps you up on its own; near wild Pokémon the
     // cap politely drops below their spook threshold so stalking needs no button either.
     const mag = Math.hypot(input.forward, input.strafe, input.up);
-    this.sustainT = mag > 0.5 ? this.sustainT + dt : Math.max(0, this.sustainT - 3 * dt);
-    const effSprint = input.sprint || this.sustainT > GAME.AUTO_SPRINT_AFTER;
+    this.sustainT = mag > 0.5
+      ? Math.min(GAME.AUTO_SPRINT_AFTER + 0.5, this.sustainT + dt)
+      : Math.max(0, this.sustainT - 1.5 * dt);
+    if (this.sustainT > GAME.AUTO_SPRINT_AFTER) this.autoSprint = true;
+    else if (this.sustainT < GAME.AUTO_SPRINT_OFF) this.autoSprint = false;
+    const effSprint = input.sprint || this.autoSprint;
     let targetMax: number = effSprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
     if (this.politeCap) targetMax = Math.min(targetMax, GAME.POLITE_SPEED);
-    this.maxCur += (targetMax - this.maxCur) * (1 - Math.exp(-dt / GAME.SPEED_RAMP_TAU));
+    // consistent feel: speeding up is eager; any automatic slow-down eases in gently
+    const tau = targetMax >= this.maxCur ? GAME.SPEED_RAMP_TAU : GAME.SPEED_RAMP_TAU_DOWN;
+    this.maxCur += (targetMax - this.maxCur) * (1 - Math.exp(-dt / tau));
     const max = this.maxCur;
     let ax = fx * input.forward + rx * input.strafe;
     let ay = fy * input.forward + input.up * 0.85;

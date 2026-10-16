@@ -7,7 +7,7 @@ import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
-import { computeThrowOrigin, THROW_LIFT } from './sim/ballPreview';
+import { computeThrow, THROW_LIFT } from './sim/ballPreview';
 import { pickBall } from './sim/autoBall';
 import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
 import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
@@ -324,8 +324,9 @@ export class GameSession {
     store.incBallsThrown();
     this.ballsUsed++;
     const p = this.player;
-    const [ox, oy, oz] = computeThrowOrigin(p, dirX, dirY, dirZ);
-    this.balls.throw(type, ox, oy, oz, dirX, dirY + THROW_LIFT, dirZ, speed);
+    // touch throws fly out of the on-screen Poké Ball (low-right) and converge onto the aim ray
+    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dirX, dirY, dirZ, store.isTouch);
+    this.balls.throw(type, ox, oy, oz, tdx, tdy + THROW_LIFT, tdz, speed);
     Audio.throwBall();
     if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw
     if (this.tutorial) { if (dirY > 0.3) this.tutObs.threwSky = true; else this.tutObs.threwWater = true; }
