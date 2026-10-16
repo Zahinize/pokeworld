@@ -53,6 +53,69 @@ for (const levelId of [1, 2]) {
   ok(`level ${levelId} within budgets`);
 }
 
+// ---- Slingshot preview must match the real ball EXACTLY; polite auto-sprint behaves ----
+{
+  const { previewBallPath, computeThrowOrigin, THROW_LIFT } = await import('@/engine/sim/ballPreview');
+  const { BallSystem } = await import('@/engine/sim/balls');
+  const { PlayerController } = await import('@/engine/player/PlayerController');
+  const { GAME } = await import('@/data/gameConfig');
+  const ecoStub = { hash: { query() {} }, obstacles: [], byId: new Map() } as any;
+
+  // preview vs real flight: identical integrator at the same dt
+  const cases: [string, number, number, number, number, number, number, number][] = [
+    ['air->water lob', 0, 0.3, 0, 0.4, 0.75, 0.2, 26],
+    ['underwater dart', 0, -10, 0, 0.8, 0.1, 0.4, 26],
+    ['soft short lob', 0, -4, 0, 0.6, 0.5, 0.2, 26 * 0.55],
+    ['max power sky shot', 0, 0.2, 0, 0.1, 0.9, 0.1, 26 * 1.25],
+  ];
+  let worstSame = 0, worstCoarse = 0;
+  for (const [, ox, oy, oz, dx, dy, dz, speed] of cases) {
+    const balls = new BallSystem();
+    const b = balls.throw('pokeball', ox, oy, oz, dx, dy + THROW_LIFT, dz, speed);
+    // the preview returns a view into a REUSED buffer — copy before calling it again
+    const fineRes = previewBallPath(ox, oy, oz, dx, dy, dz, speed, { steps: 90, dt: 1 / 60 });
+    const fine = { pts: fineRes.pts.slice(0, fineRes.n * 3), n: fineRes.n };
+    const coarse = previewBallPath(ox, oy, oz, dx, dy, dz, speed, { steps: 45, dt: 1 / 30 });
+    for (let i = 0; i < 90; i++) {
+      balls.update(1 / 60, ecoStub, null);
+      if (b.state !== 'flying') break;
+      if (i < fine.n) worstSame = Math.max(worstSame, Math.hypot(b.x - fine.pts[i * 3], b.y - fine.pts[i * 3 + 1], b.z - fine.pts[i * 3 + 2]));
+      if (i % 2 === 1 && (i - 1) / 2 < coarse.n) {
+        const j = (i - 1) / 2;
+        worstCoarse = Math.max(worstCoarse, Math.hypot(b.x - coarse.pts[j * 3], b.y - coarse.pts[j * 3 + 1], b.z - coarse.pts[j * 3 + 2]));
+      }
+    }
+  }
+  if (worstSame < 1e-4) ok(`sling: preview is exact at matched dt (worst ${worstSame.toExponential(1)}m — float noise only)`);
+  else fail(`sling: preview diverges at matched dt (${worstSame}m) — integrator mismatch`);
+  if (worstCoarse < 0.3) ok(`sling: 30hz preview within ${worstCoarse.toFixed(2)}m of the real flight (ball radius 0.3)`);
+  else fail(`sling: coarse preview off by ${worstCoarse.toFixed(2)}m (> 0.3) — more than step-size error`);
+
+  // polite auto-sprint: cruise -> auto sprint after 1.2s; capped to 2.4 near wilds; no jolts
+  const pc = new PlayerController();
+  pc.reset(0, -10, 0, 0);
+  const inp = { forward: 1, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
+  let early = 0, late = 0, jolt = 0, prevSpeed = 0;
+  for (let i = 0; i < 60 * 6; i++) {
+    pc.update(1 / 60, inp, []);
+    if (i === 54) early = pc.speed;              // 0.9s in: still cruising
+    if (i === 60 * 4) late = pc.speed;           // 4s in: fully auto-sprinting
+    jolt = Math.max(jolt, Math.abs(pc.speed - prevSpeed));
+    prevSpeed = pc.speed;
+  }
+  if (early < GAME.SWIM_SPEED + 0.4 && late > GAME.SWIM_SPRINT - 0.6) ok(`sprint: auto-ramps ${early.toFixed(1)} -> ${late.toFixed(1)} m/s with no button`);
+  else fail(`sprint: ramp wrong (early ${early.toFixed(1)}, late ${late.toFixed(1)})`);
+  pc.politeCap = true;
+  for (let i = 0; i < 60 * 3; i++) { pc.update(1 / 60, inp, []); jolt = Math.max(jolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
+  const capped = pc.speed;
+  pc.politeCap = false;
+  for (let i = 0; i < 60 * 3; i++) pc.update(1 / 60, inp, []);
+  if (capped <= 2.5 && pc.speed > GAME.SWIM_SPRINT - 0.6) ok(`sprint: polite cap holds ${capped.toFixed(2)} <= 2.5 near wilds, releases smoothly after`);
+  else fail(`sprint: polite cap broken (capped ${capped.toFixed(2)}, released ${pc.speed.toFixed(1)})`);
+  if (jolt < 0.5) ok(`sprint: no speed jolts (max frame delta ${jolt.toFixed(3)} m/s)`);
+  else fail(`sprint: jolt detected (${jolt.toFixed(2)} m/s in one frame)`);
+}
+
 // ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
 {
   const { GAME } = await import('@/data/gameConfig');

@@ -265,7 +265,7 @@ a { color: var(--aqua); }
 .swap-prompt .txt { text-align: left; }
 .swap-prompt .txt b { display: block; font-size: 13.5px; color: var(--gold); }
 .swap-prompt .txt span { font-size: 12px; color: var(--muted); }
-.hud.touch .swap-prompt { bottom: calc(200px + var(--safe-bottom)); }
+.hud.touch .swap-prompt { bottom: calc(150px + var(--safe-bottom)); }
 
 /* Trainer tag under companions */
 .partner-tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 5px; border-radius: 999px; background: rgba(5, 28, 52, .78); border: 2px solid rgba(255, 209, 102, .85); box-shadow: 0 0 14px rgba(255, 209, 102, .55), inset 0 0 8px rgba(255, 209, 102, .18); white-space: nowrap; transform: translateZ(0); animation: tagGlow 2.2s ease-in-out infinite; }
@@ -401,17 +401,26 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 .touch-controls .joy { position: absolute; left: calc(26px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,.06); border: 1px solid var(--line-strong); pointer-events: auto; touch-action: none; }
 .touch-controls .joy .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
 .touch-controls .tbtn { position: absolute; pointer-events: auto; touch-action: none; width: 58px; height: 58px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px); display: grid; place-items: center; font-size: 20px; color: var(--text); font-weight: 800; user-select: none; -webkit-user-select: none; }
-.touch-controls .tbtn.on { background: rgba(53,208,255,.3); border-color: var(--aqua); }
 .touch-controls .joy { left: calc(18px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
-.touch-controls .tbtn.throw { width: 78px; height: 78px; right: calc(16px + var(--safe-right)); bottom: calc(152px + var(--safe-bottom)); background: radial-gradient(circle at 50% 40%, #ff8a8a, #f43f5e 60%, #c81e3e); border-color: rgba(255,255,255,.4); font-size: 26px; box-shadow: 0 8px 24px rgba(244,63,94,.45); }
-.touch-controls .tbtn.up { right: calc(106px + var(--safe-right)); bottom: calc(198px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch-controls .tbtn.down { right: calc(106px + var(--safe-right)); bottom: calc(130px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch-controls .tbtn.sprint { left: calc(132px + var(--safe-left)); bottom: calc(232px + var(--safe-bottom)); width: 50px; height: 50px; font-size: 16px; }
+.touch-controls .sling-anchor {
+  position: absolute; pointer-events: auto; touch-action: none;
+  width: 78px; height: 78px; border-radius: 50%;
+  right: calc(16px + var(--safe-right)); bottom: calc(152px + var(--safe-bottom));
+  background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px);
+  display: grid; place-items: center; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 8px 24px rgba(4, 22, 43, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.touch-controls .sling-anchor.drawn { transform: scale(0.92); box-shadow: 0 0 0 4px rgba(53,208,255,.35), 0 8px 24px rgba(53,208,255,.3); border-color: var(--aqua); }
+.touch-controls .sling-anchor .sling-count { position: absolute; right: 4px; bottom: 4px; font: 800 12px var(--font-display); color: var(--text); background: rgba(4,22,43,.75); border-radius: 8px; padding: 0 5px; }
 /* HUD adjustments in touch mode */
 .hud.touch .hud-top-left { width: auto; max-width: 190px; }
-.hud.touch .mission-panel.compact { padding: 8px 12px; }
-.hud.touch .mission-panel.compact .head { margin-bottom: 6px; }
-.hud.touch .mission-panel.compact .head .tot { font-size: 16px; }
+.hud.touch .mission-panel.compact { padding: 6px 10px; }
+.hud.touch .mission-panel.compact .head { margin-bottom: 4px; }
+.hud.touch .mission-panel.compact .head .lvl { font-size: 10px; }
+.hud.touch .mission-panel.compact .head .tot { font-size: 13px; }
+.hud.touch .mission-panel.compact .head .tot small { font-size: 10px; }
+.hud.touch .mission-panel.compact .progress { height: 3px; }
 .hud.touch .hud-top-right { align-items: flex-end; }
 .hud.touch .hud-bottom { bottom: calc(10px + var(--safe-bottom)); gap: 8px; }
 .hud.touch .ball-tray { padding: 6px 8px; gap: 4px; border-radius: 16px; }
@@ -454,10 +463,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   /* joystick top aligns with the throw circle top (both 195px up); the centered tray keeps the strip below */
   .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
   /* arrows + throw sit above the centered ball tray; sprint beside the joystick's top edge */
-  .touch-controls .tbtn.up { bottom: calc(164px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.down { bottom: calc(100px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.throw { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
-  .touch-controls .tbtn.sprint { left: calc(122px + var(--safe-left)); bottom: calc(158px + var(--safe-bottom)); }
+  .touch-controls .sling-anchor { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
   /* party box: tiny but fully functional, floating clear above the joystick */
   .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
@@ -507,10 +513,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
   .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); }
-  .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); }
-  .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); }
-  .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); }
-  .touch-controls .tbtn.sprint { left: calc(126px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
+  .touch-controls .sling-anchor { bottom: calc(51px + var(--safe-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ocean-bg::before, .ocean-bg .ray, .ocean-bg .bubble { animation: none; }

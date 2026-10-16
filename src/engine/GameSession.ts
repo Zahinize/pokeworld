@@ -7,6 +7,7 @@ import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
+import { computeThrowOrigin, THROW_LIFT } from './sim/ballPreview';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
@@ -51,6 +52,8 @@ export class GameSession {
   eco: Ecosystem | null = null;
   balls = new BallSystem();
   sky: SkyLife | null = null;
+  /** Live slingshot aim (touch): written by TouchControls at pointer rate, read by ThrowArc. */
+  slingAim = { active: false, yawOff: 0, pitchOff: 0, power: 1, armed: false };
   private surfaceAtkReady = new Map<number, number>();
   private surfaceDrainAcc = new Map<number, number>();
   private surfaceHintShown = false;
@@ -249,12 +252,12 @@ export class GameSession {
     this.persistRun();
     this.emit();
   }
-  pause() { if (this.phase === 'playing') { this.phase = 'paused'; useStore.getState().setPaused(true); this.emit(); } }
+  pause() { if (this.phase === 'playing') { this.phase = 'paused'; this.clearSlingAim(); useStore.getState().setPaused(true); this.emit(); } }
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
-    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null;
+    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
@@ -281,8 +284,10 @@ export class GameSession {
     }
   }
 
+  clearSlingAim() { this.slingAim.active = false; this.slingAim.armed = false; }
+
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
-  throwBall(dirX: number, dirY: number, dirZ: number): boolean {
+  throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
@@ -297,8 +302,8 @@ export class GameSession {
     store.incBallsThrown();
     this.ballsUsed++;
     const p = this.player;
-    const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
-    this.balls.throw(type, p.x + rx * 0.35 + dirX * 0.6, p.y - 0.25 + dirY * 0.6, p.z + rz * 0.35 + dirZ * 0.6, dirX, dirY + 0.04, dirZ);
+    const [ox, oy, oz] = computeThrowOrigin(p, dirX, dirY, dirZ);
+    this.balls.throw(type, ox, oy, oz, dirX, dirY + THROW_LIFT, dirZ, speed);
     Audio.throwBall();
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
@@ -322,6 +327,7 @@ export class GameSession {
   }
 
   private beginRecovery() {
+    this.clearSlingAim();
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
@@ -708,7 +714,7 @@ export class GameSession {
     this.handleBallEvents();
     this.handleSkyEvents();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updatePoliteCap(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -719,6 +725,22 @@ export class GameSession {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
     }
+  }
+
+  /** Manners only when safe: cap swim speed near catchable wilds, never while hunted or in a boss fight. */
+  private updatePoliteCap() {
+    const eco = this.eco;
+    if (!eco) { this.player.politeCap = false; return; }
+    if (this.bossPhaseActive || this.regenGrace > 0 || eco.huntingNear(45)) { this.player.politeCap = false; return; }
+    const p = this.player;
+    let near = false;
+    eco.hash.query(p.x, p.y, p.z, GAME.POLITE_RADIUS, (e) => {
+      if (near || e.isBoss || e.role === 'partner') return;
+      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
+      if (e.behavior === 'predator') return; // you don't tiptoe around sharks
+      near = true;
+    });
+    this.player.politeCap = near;
   }
 
   private handleEcoEvents() {
@@ -1238,8 +1260,8 @@ export class GameSession {
     this.hintTimer += dt;
     const isTouch = store.isTouch;
     let hint: string | null = null;
-    if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Tap the throw button to catch the Pokémon in front of you' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
-    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Tap a ball in the tray to switch balls · Better balls catch better' : 'Press 1–4 or right-click to switch balls · E for a lure · Tab for the mission';
+    if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Touch the Poké Ball and drag to aim — release to throw' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
+    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Pull further to throw harder · drag up to reach the sky' : 'Balls pick themselves — press 1–4 to override · Tab for the mission';
     else if (this.hintStep === 1) { this.hintStep = 2; }
     if (hint !== store.hud.hint) store.setHud({ hint });
   }

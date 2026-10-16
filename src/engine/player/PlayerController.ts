@@ -23,11 +23,17 @@ export class PlayerController {
   pitch = 0;      // radians
   speed = 0;
   swayT = 0;
+  /** Sustained-movement timer driving auto-sprint (no sprint button needed). */
+  sustainT = 0;
+  /** True when wild Pokémon are near: the game swims politely so you don't spook them. */
+  politeCap = false;
+  private maxCur: number = GAME.SWIM_SPEED;
   sensitivity = 0.0022;
   invertY = false;
 
   reset(x: number, y: number, z: number, yaw = 0) {
     this.x = x; this.y = y; this.z = z; this.vx = this.vy = this.vz = 0; this.yaw = yaw; this.pitch = 0;
+    this.sustainT = 0; this.politeCap = false; this.maxCur = GAME.SWIM_SPEED;
   }
 
   update(dt: number, input: InputState, obstacles: Obstacle[]) {
@@ -43,13 +49,21 @@ export class PlayerController {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const fx = -sy * cp, fy = sp, fz = -cy * cp;
     const rx = cy, rz = -sy;
-    const max = input.sprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
+    // Auto-sprint: sustained swimming ramps you up on its own; near wild Pokémon the
+    // cap politely drops below their spook threshold so stalking needs no button either.
+    const mag = Math.hypot(input.forward, input.strafe, input.up);
+    this.sustainT = mag > 0.5 ? this.sustainT + dt : Math.max(0, this.sustainT - 3 * dt);
+    const effSprint = input.sprint || this.sustainT > GAME.AUTO_SPRINT_AFTER;
+    let targetMax: number = effSprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
+    if (this.politeCap) targetMax = Math.min(targetMax, GAME.POLITE_SPEED);
+    this.maxCur += (targetMax - this.maxCur) * (1 - Math.exp(-dt / GAME.SPEED_RAMP_TAU));
+    const max = this.maxCur;
     let ax = fx * input.forward + rx * input.strafe;
     let ay = fy * input.forward + input.up * 0.85;
     let az = fz * input.forward + rz * input.strafe;
     const al = Math.hypot(ax, ay, az);
     if (al > 1) { ax /= al; ay /= al; az /= al; }
-    const accel = input.sprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
+    const accel = effSprint && !this.politeCap ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
     this.vx += ax * accel * dt; this.vy += ay * accel * dt; this.vz += az * accel * dt;
     // Damping (water resistance)
     const damp = Math.exp(-GAME.SWIM_DAMPING * dt);

@@ -54,6 +54,21 @@ export const GAME = {
   /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
   FEED_CATCH_MULT: 1.15,
 
+  /** Slingshot (touch throw): gesture thresholds, aim mapping, power curve. */
+  SLING_MIN_DRAG_PX: 24,
+  SLING_TAP_MS: 250,
+  SLING_DEG_PER_PX: 0.22,
+  SLING_MAX_DEG: 35,
+  SLING_POWER_MIN: 0.55,
+  SLING_POWER_MAX: 1.25,
+  SLING_FULL_POWER_PX: 140,
+
+  /** Polite auto-sprint: speed ramps on its own, and caps below the spook threshold near wilds. */
+  AUTO_SPRINT_AFTER: 1.2,
+  POLITE_SPEED: 2.4,
+  POLITE_RADIUS: 10,
+  SPEED_RAMP_TAU: 0.4,
+
   CATCH_MIN: 0.06,
   CATCH_MAX: 0.96,
 
