@@ -104,6 +104,21 @@ function BallChip() {
   );
 }
 
+/** First-run tutorial: one instruction at a time, progress dots, always skippable. */
+function TutorialBanner() {
+  const tut = useStore((s) => s.hud.tutorial);
+  if (!tut) return null;
+  return (
+    <div className={`tutorial-banner glass interactive ${tut.step === 'done' ? 'done' : ''}`}>
+      <div className="dots" aria-hidden>
+        {Array.from({ length: tut.n }, (_, i) => <i key={i} className={i < tut.i ? 'past' : i === tut.i ? 'cur' : ''} />)}
+      </div>
+      <div className="txt">{tut.text}</div>
+      {tut.step !== 'done' && <button className="skip" onClick={() => { Audio.uiClick(); session.skipTutorial(); }}>Skip</button>}
+    </div>
+  );
+}
+
 const MOVE_KEYS: [string, string][] = [['5', '6'], ['7', '8']];
 
 function PartyBar() {
@@ -413,6 +428,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
         </div>
         <StatusChips />
+        <TutorialBanner />
         <BossBar />
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}

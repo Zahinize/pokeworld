@@ -9,6 +9,8 @@ import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
 import { computeThrowOrigin, THROW_LIFT } from './sim/ballPreview';
 import { pickBall } from './sim/autoBall';
+import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
+import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
@@ -61,6 +63,12 @@ export class GameSession {
   private rampageSurge = false;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
+  /** First-run tutorial (level 1, until settings.tutorialDone). Null once finished/skipped. */
+  private tutorial: TutorialState | null = null;
+  private tutObs = { threwWater: false, threwSky: false, caughtWater: 0, caughtSky: 0 };
+  private tutScan = { wildNearDist: Infinity, skyBirdNear: false };
+  private tutScanAcc = 0;
+  private tutDoneT = 0;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -198,7 +206,11 @@ export class GameSession {
     const store = useStore.getState();
     store.setLevel(levelId, this.seed);
     store.setMission(this.mission);
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
+    // first-run tutorial: level 1 only, until completed or skipped (replayable from Settings)
+    this.tutorial = levelId === 1 && !store.save.settings.tutorialDone ? createTutorial() : null;
+    this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
+    this.tutScan.wildNearDist = Infinity; this.tutScan.skyBirdNear = false; this.tutScanAcc = 0; this.tutDoneT = 0;
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -261,6 +273,7 @@ export class GameSession {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
+    this.tutorial = null; useStore.getState().setHud({ tutorial: null });
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
@@ -315,6 +328,7 @@ export class GameSession {
     this.balls.throw(type, ox, oy, oz, dirX, dirY + THROW_LIFT, dirZ, speed);
     Audio.throwBall();
     if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw
+    if (this.tutorial) { if (dirY > 0.3) this.tutObs.threwSky = true; else this.tutObs.threwWater = true; }
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
     if (total === 0 && !store.save.restoration.endsAt) {
@@ -723,6 +737,7 @@ export class GameSession {
     this.handleEcoEvents();
     this.handleBallEvents();
     this.handleSkyEvents();
+    this.updateTutorial(dt);
     // Throttled UI / audio / persistence
     this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updatePoliteCap(); this.updateAutoBall(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
@@ -735,6 +750,77 @@ export class GameSession {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
     }
+  }
+
+  /** Feed the pure tutorial step machine its observations; publish the banner on change. */
+  private updateTutorial(dt: number) {
+    if (!this.tutorial) return;
+    const store = useStore.getState();
+    if (this.tutDoneT > 0) { // 'done': the banner lingers briefly, then the tutorial retires
+      this.tutDoneT -= dt;
+      if (this.tutDoneT <= 0) { this.tutorial = null; store.setHud({ tutorial: null }); }
+      return;
+    }
+    const p = this.player;
+    // proximity scans are throttled — the step machine itself runs every frame
+    this.tutScanAcc += dt;
+    if (this.tutScanAcc > 0.15) {
+      this.tutScanAcc = 0;
+      let near = Infinity;
+      this.eco?.hash.query(p.x, p.y, p.z, TUTORIAL.APPROACH_DIST + 4, (e) => {
+        if (e.isBoss || e.role === 'partner') return;
+        if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'removed') return;
+        const d = Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z);
+        if (d < near) near = d;
+      });
+      this.tutScan.wildNearDist = near;
+      let birdNear = false;
+      if (this.sky) for (const b of this.sky.birds) {
+        if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') || b.fade < 0.5) continue;
+        if (Math.hypot(b.x - p.x, b.y - p.y, b.z - p.z) <= TUTORIAL.SKY_RANGE) { birdNear = true; break; }
+      }
+      this.tutScan.skyBirdNear = birdNear;
+    }
+    const obs: TutorialObs = {
+      moved: p.speed * dt,
+      wildNearDist: this.tutScan.wildNearDist,
+      playerY: p.y,
+      pitch: p.pitch,
+      skyBirdNear: this.tutScan.skyBirdNear,
+      threwWater: this.tutObs.threwWater,
+      threwSky: this.tutObs.threwSky,
+      caughtWater: this.tutObs.caughtWater,
+      caughtSky: this.tutObs.caughtSky,
+    };
+    this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
+    const changed = advanceTutorial(this.tutorial, obs, dt);
+    this.syncTutorialHud();
+    if (changed && this.tutorial.step === 'done') {
+      this.tutDoneT = TUTORIAL.DONE_LINGER;
+      store.setSettings({ tutorialDone: true });
+      store.pushToast({ kind: 'event', title: 'Tutorial complete!', body: 'The reef is yours — good luck, trainer.', ttl: 5 });
+      Audio.uiConfirm();
+    }
+  }
+
+  private syncTutorialHud() {
+    const store = useStore.getState();
+    if (!this.tutorial) { if (store.hud.tutorial) store.setHud({ tutorial: null }); return; }
+    const t = this.tutorial;
+    const text = tutorialText(t.step, store.isTouch, Math.min(t.catches, TUTORIAL.CATCH_COUNT));
+    const cur = store.hud.tutorial;
+    if (!cur || cur.step !== t.step || cur.text !== text) {
+      store.setHud({ tutorial: { step: t.step, text, i: TUTORIAL_STEPS.indexOf(t.step), n: TUTORIAL_STEPS.length - 1 } });
+    }
+  }
+
+  /** Skip stays skipped: the flag persists, and Settings offers a replay. */
+  skipTutorial() {
+    if (!this.tutorial) return;
+    this.tutorial = null;
+    const store = useStore.getState();
+    store.setSettings({ tutorialDone: true });
+    store.setHud({ tutorial: null });
   }
 
   /** What is the crosshair on? Cone test over reef AND sky — then let the ball pick itself. */
@@ -995,6 +1081,7 @@ export class GameSession {
   /** A sky Pokémon joins the Collection — never the reef party, never mission credit. */
   private onSkyCaught(speciesId: string, at: { x: number; y: number; z: number }, byCompanion = false) {
     const store = useStore.getState();
+    this.tutObs.caughtSky++;
     const sp = getSpecies(speciesId);
     Audio.catchSuccess();
     Audio.playCry(sp.dexId, 0.5, 0.25);
@@ -1160,6 +1247,7 @@ export class GameSession {
 
   private onCaught(e: Entity, byCompanion = false) {
     const store = useStore.getState();
+    this.tutObs.caughtWater++;
     Audio.catchSuccess();
     Audio.playCry(e.species.dexId, 0.5, 0.25); // every catch is greeted by the Pokémon's own cry
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
@@ -1297,6 +1385,8 @@ export class GameSession {
 
   private updateHints(dt: number) {
     const store = useStore.getState();
+    // the tutorial banner IS the hint while it runs — never two instructions at once
+    if (this.tutorial) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     if (!store.save.settings.showHints) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     this.hintTimer += dt;
     const isTouch = store.isTouch;

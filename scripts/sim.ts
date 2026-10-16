@@ -143,6 +143,40 @@ for (const levelId of [1, 2]) {
   if (!bad) ok(`autoBall: all ${cases.length + 1} pick cases correct (legendary→master, stock-walk skips master, null→poke)`);
 }
 
+// ---- First-run tutorial: full walk, both sky fallbacks, water-catch emphasis ----
+{
+  const { createTutorial, advanceTutorial } = await import('@/engine/sim/tutorial');
+  const { TUTORIAL } = await import('@/data/tutorial');
+  const base = { moved: 0, wildNearDist: Infinity, playerY: -20, pitch: 0, skyBirdNear: false, threwWater: false, threwSky: false, caughtWater: 0, caughtSky: 0 };
+  const run = (t: any, o: object, frames = 1) => { for (let i = 0; i < frames; i++) advanceTutorial(t, { ...base, ...o } as any, 1 / 30); };
+  // happy path — the emphasis: TWO water catches before the sky is even mentioned
+  const t = createTutorial();
+  const got: string[] = [];
+  run(t, { moved: 0.3 }, 40); got.push(t.step);                       // 12m swum
+  run(t, { wildNearDist: 8 }); got.push(t.step);                      // wild spotted
+  run(t, { threwWater: true }); got.push(t.step);                     // first throw
+  run(t, { caughtWater: 1 }); got.push(t.step);                       // 1/2 — still catching
+  run(t, { caughtWater: 1 }); got.push(t.step);                       // 2/2
+  run(t, { playerY: -1 }); got.push(t.step);                          // surfaced
+  run(t, { skyBirdNear: true, pitch: 0.4 }, 60); got.push(t.step);    // 2s of sky-watching
+  run(t, { threwSky: true }); got.push(t.step);                       // the discovery throw
+  const want = ['spotWater', 'throwWater', 'catchWater', 'catchWater', 'surface', 'spotSky', 'skyThrow', 'done'];
+  if (got.join() === want.join()) ok(`tutorial: happy path walks all 8 transitions (${TUTORIAL.CATCH_COUNT} water catches required)`);
+  else fail(`tutorial: happy path broke — ${got.join(' → ')}`);
+  // fallbacks: an empty sky and an ignored optional throw both advance on their own
+  const t2 = createTutorial(); t2.step = 'spotSky';
+  run(t2, {}, Math.ceil((TUTORIAL.SKY_TIMEOUT + 1) * 30));
+  const afterEmptySky = t2.step;
+  run(t2, {}, Math.ceil((TUTORIAL.SKY_THROW_TIMEOUT + 1) * 30));
+  if (afterEmptySky === 'skyThrow' && t2.step === 'done') ok(`tutorial: empty-sky (${TUTORIAL.SKY_TIMEOUT}s) and optional-throw (${TUTORIAL.SKY_THROW_TIMEOUT}s) fallbacks advance`);
+  else fail(`tutorial: fallbacks broken (${afterEmptySky}, then ${t2.step})`);
+  // overachiever: catches before/at the throw step count — never nag a player who already caught
+  const t3 = createTutorial(); t3.step = 'throwWater';
+  run(t3, { caughtWater: 2 });
+  if (t3.step === 'surface') ok('tutorial: early catches skip straight past catchWater');
+  else fail(`tutorial: early catches mishandled (${t3.step})`);
+}
+
 // ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
 {
   const { GAME } = await import('@/data/gameConfig');
