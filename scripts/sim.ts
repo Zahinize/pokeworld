@@ -166,6 +166,18 @@ for (const levelId of [1, 2]) {
   const rested = landY <= floorY(dots.pts[li], dots.pts[li + 2]) + 0.35 || Math.abs(landY - 0.05) < 1e-6;
   if (dots.n > 15 && gapErr < 0.01 && rested) ok(`sling: ${dots.n} aiming dots, even ${GAME.SLING_DOT_SPACING}m apart (err ${gapErr.toFixed(3)}), last dot IS the landing`);
   else fail(`sling: dot chain wrong (n ${dots.n}, gap err ${gapErr.toFixed(3)}, rested ${rested})`);
+
+  // screen-proportional mode: gaps grow with eye distance (dense out of the hand), all clamped
+  const ad = previewDots(0.8, -10.4, -0.5, 0.74, 0.1, 0.66, 26, { eye: [0, -10, 0] });
+  let firstGap = 0, maxGap = 0, outOfClamp = 0;
+  for (let i = 1; i < ad.n - 1; i++) {
+    const g = Math.hypot(ad.pts[i * 3] - ad.pts[(i - 1) * 3], ad.pts[i * 3 + 1] - ad.pts[(i - 1) * 3 + 1], ad.pts[i * 3 + 2] - ad.pts[(i - 1) * 3 + 2]);
+    if (i === 1) firstGap = g;
+    maxGap = Math.max(maxGap, g);
+    if (g < GAME.SLING_DOT_GAP_MIN - 0.02 || g > GAME.SLING_DOT_GAP_MAX + 0.02) outOfClamp++;
+  }
+  if (firstGap < 0.45 && maxGap > 1.3 && outOfClamp === 0) ok(`sling: screen-even dots — ${firstGap.toFixed(2)}m gaps out of the hand growing to ${maxGap.toFixed(2)}m far out, all clamped`);
+  else fail(`sling: adaptive spacing wrong (first ${firstGap.toFixed(2)}, max ${maxGap.toFixed(2)}, out-of-clamp ${outOfClamp})`);
 }
 
 // ---- Auto ball selection: right tier for the target, Master Balls stay precious ----

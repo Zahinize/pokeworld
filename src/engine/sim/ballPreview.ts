@@ -33,9 +33,12 @@ export function computeThrow(
 ): { origin: [number, number, number]; dir: [number, number, number] } {
   if (!touch) return { origin: computeThrowOrigin(p, dirX, dirY, dirZ), dir: [dirX, dirY, dirZ] };
   const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
-  const ox = p.x + rx * GAME.HAND_RIGHT_TOUCH + dirX * 0.6;
-  const oy = p.y - GAME.HAND_DOWN_TOUCH + dirY * 0.6;
-  const oz = p.z + rz * GAME.HAND_RIGHT_TOUCH + dirZ * 0.6;
+  const ox = p.x + rx * GAME.HAND_RIGHT_TOUCH + dirX * GAME.HAND_FWD_TOUCH;
+  let oy = p.y - GAME.HAND_DOWN_TOUCH + dirY * GAME.HAND_FWD_TOUCH;
+  const oz = p.z + rz * GAME.HAND_RIGHT_TOUCH + dirZ * GAME.HAND_FWD_TOUCH;
+  // steep downward throws while hugging the sea floor must not spawn the ball under the sand
+  const fy = floorY(ox, oz) + 0.35;
+  if (oy < fy) oy = fy;
   const F = GAME.THROW_FOCUS;
   let cx = p.x + dirX * F - ox, cy = p.y + dirY * F - oy, cz = p.z + dirZ * F - oz;
   const L = Math.hypot(cx, cy, cz) || 1;
@@ -131,17 +134,21 @@ export function previewBallPath(
 const nearObs: Obstacle[] = []; // reused scratch for the per-frame obstacle prefilter
 
 export interface DotsOpts {
-  spacing?: number;  // metres between dots
+  spacing?: number;  // metres between dots (fixed mode)
+  /** Eye/camera position: gaps then scale with distance (clamped), so the chain LOOKS
+   *  evenly spaced on screen — dense where it leaves the hand, calm in the distance. */
+  eye?: [number, number, number];
   maxDots?: number;
   obstacles?: Obstacle[];
 }
 
 /**
  * The slingshot's aiming dots, Angry Birds style: simulate the WHOLE flight (same
- * integrator the real ball uses) to its landing, then emit dots at even distances
- * along the path — never per time step, which bunches up as drag slows the ball.
- * The last point is always the landing/rest spot. Reuses the same buffer as
- * previewBallPath — consume synchronously.
+ * integrator the real ball uses) to its landing, then emit dots spaced along the
+ * path — never per time step, which bunches up as drag slows the ball. With an eye
+ * given, spacing is screen-proportional; otherwise fixed. The last point is always
+ * the landing/rest spot. Reuses the same buffer as previewBallPath — consume
+ * synchronously.
  */
 export function previewDots(
   ox: number, oy: number, oz: number,
@@ -149,7 +156,11 @@ export function previewDots(
   speed: number,
   opts: DotsOpts = {},
 ): { pts: Float32Array; n: number } {
-  const spacing = opts.spacing ?? GAME.SLING_DOT_SPACING;
+  const fixed = opts.spacing ?? GAME.SLING_DOT_SPACING;
+  const eye = opts.eye;
+  const gapAt = (x: number, y: number, z: number) => eye
+    ? Math.max(GAME.SLING_DOT_GAP_MIN, Math.min(GAME.SLING_DOT_GAP_MAX, GAME.SLING_DOT_ANGLE * Math.hypot(x - eye[0], y - eye[1], z - eye[2])))
+    : fixed;
   const maxDots = Math.min(MAX_PTS - 1, opts.maxDots ?? GAME.SLING_DOT_MAX);
   // obstacles the flight could plausibly reach — one coarse pass, then cheap per-step checks
   nearObs.length = 0;
@@ -165,7 +176,7 @@ export function previewDots(
   let n = 0;
   pts[0] = ox; pts[1] = oy; pts[2] = oz; n++; // the path starts in the hand
   let px = ox, py = oy, pz = oz;
-  let carry = spacing;
+  let carry = gapAt(ox, oy, oz);
   let ended = false;
   for (let i = 0; i < 300 && n < maxDots; i++) {
     const r = stepBall(s, dt, nearObs);
@@ -173,13 +184,14 @@ export function previewDots(
     const seg = Math.hypot(sx, sy, sz);
     while (carry <= seg && n < maxDots) {
       const t = carry / seg;
-      pts[n * 3] = px + sx * t; pts[n * 3 + 1] = py + sy * t; pts[n * 3 + 2] = pz + sz * t; n++;
-      carry += spacing;
+      const ex = px + sx * t, ey = py + sy * t, ez = pz + sz * t;
+      pts[n * 3] = ex; pts[n * 3 + 1] = ey; pts[n * 3 + 2] = ez; n++;
+      carry += gapAt(ex, ey, ez);
     }
     carry -= seg;
     px = s.x; py = s.y; pz = s.z;
     if (r !== 'fly') { ended = true; break; }
-    if (seg < spacing * 0.02) { ended = true; break; } // drifting to a stall: that's the landing
+    if (seg < 0.02) { ended = true; break; } // drifting to a stall: that's the landing
   }
   // the landing marker: always end the promise where the ball comes to rest
   if (ended || n >= maxDots) { pts[n * 3] = px; pts[n * 3 + 1] = py; pts[n * 3 + 2] = pz; n++; }

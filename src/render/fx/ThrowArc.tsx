@@ -37,6 +37,7 @@ export function ThrowArc() {
     const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dx, dy, dz, true);
     const { pts, n } = previewDots(ox, oy, oz, tdx, tdy, tdz, GAME.THROW_SPEED * power, {
       obstacles: session.eco?.obstacles,
+      eye: [camera.position.x, camera.position.y, camera.position.z], // screen-even gaps: dense out of the hand
     });
     const count = Math.min(n, MAX_DOTS);
     const cam = camera.position;
@@ -46,9 +47,10 @@ export function ThrowArc() {
       // slightly toward the end, then the final dot pops as the landing marker
       const dist = Math.max(0.4, Math.hypot(px - cam.x, py - cam.y, pz - cam.z));
       const k = i / Math.max(1, count - 1);
-      const taper = 1 - 0.45 * k;
+      const taper = k > 0.85 ? 1 - (k - 0.85) * 1.3 : 1; // gentle fade right before the landing
       const landing = i === count - 1 ? 2.1 : 1;
-      const s = dist * GAME.SLING_DOT_SCREEN * taper * landing;
+      // chunky out of the hand, gradually smaller with depth — reads as a receding parabola
+      const s = GAME.SLING_DOT_SIZE * Math.pow(dist, GAME.SLING_DOT_FALLOFF) * taper * landing;
       m.makeScale(s, s, s).setPosition(px, py, pz);
       mesh.setMatrixAt(i, m);
     }

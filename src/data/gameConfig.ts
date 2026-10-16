@@ -65,15 +65,27 @@ export const GAME = {
   /** Touch throws launch from the "hand" — low and to the right, matching the on-screen
    *  Poké Ball — and converge back onto the aim ray at THROW_FOCUS metres so accuracy
    *  matches desktop. Desktop keeps the original small offset (byte-identical feel). */
-  HAND_RIGHT_TOUCH: 0.8,
-  HAND_DOWN_TOUCH: 0.4,
+  /** Tuned so the launch point PROJECTS onto the on-screen Poké Ball on a portrait phone
+   *  (fov 70, ball at ~86%/80% of the screen): right/fwd ≈ 0.233, down/fwd ≈ 0.425. */
+  HAND_RIGHT_TOUCH: 0.26,
+  HAND_DOWN_TOUCH: 0.47,
+  HAND_FWD_TOUCH: 1.1,
   THROW_FOCUS: 26,
-  /** Aiming dots (Angry Birds style): even distance apart along the WHOLE simulated
-   *  flight, constant on-screen size, ending in a landing marker. */
-  SLING_DOT_SPACING: 1.2,
+  /** Aiming dots (Angry Birds style): spaced along the WHOLE simulated flight, constant
+   *  on-screen size, ending in a landing marker. Spacing is screen-proportional — the gap
+   *  grows with camera distance (clamped), so the chain LOOKS evenly spaced and a dense
+   *  run of dots visibly climbs out of the on-screen Poké Ball. */
+  SLING_DOT_SPACING: 1.2,   // fixed fallback when no eye is given (headless sim)
+  SLING_DOT_ANGLE: 0.085,   // gap in metres per metre of eye distance ≈ constant screen gap
+  SLING_DOT_GAP_MIN: 0.3,
+  SLING_DOT_GAP_MAX: 2.2,
   SLING_DOT_MAX: 64,
-  /** Dot world-radius per metre of camera distance ≈ constant screen size. */
-  SLING_DOT_SCREEN: 0.0095,
+  /** Dot size = SIZE · dist^FALLOFF (world radius). FALLOFF between 0 (fixed world size,
+   *  far dots vanish) and 1 (fixed screen size, no depth cue): chunky dots leave the hand
+   *  and gradually shrink along the path — the Angry Birds taper, and what makes the
+   *  receding arc READ as a parabola from behind the throw. */
+  SLING_DOT_SIZE: 0.022,
+  SLING_DOT_FALLOFF: 0.6,
 
   /** Auto-sprint, simple and consistent: keep moving this long and speed ramps up —
    *  exactly like holding the old sprint button. Stop, and water drag slows you down.
@@ -106,8 +118,11 @@ export const GAME = {
 
   /** Ball throw. */
   THROW_SPEED: 26,
-  BALL_GRAVITY: 3.2,
-  BALL_DRAG: 0.9,
+  /** Tuned as a pair for a clean parabolic lob: low drag keeps the ball moving past the
+   *  apex (no stall-and-sink tail), higher gravity brings it down in a real arc. Drop at
+   *  20m is ~2.0m — almost exactly the old feel — but the curve now reads as a parabola. */
+  BALL_GRAVITY: 5.2,
+  BALL_DRAG: 0.45,
   BALL_HIT_RADIUS: 0.55,
 
   /** Minimum time in a level before a predator first hunts (s) — protects the 30-second hook. */
