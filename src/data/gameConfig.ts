@@ -68,15 +68,21 @@ export const GAME = {
   HAND_RIGHT_TOUCH: 0.8,
   HAND_DOWN_TOUCH: 0.4,
   THROW_FOCUS: 26,
+  /** Aiming dots (Angry Birds style): even distance apart along the WHOLE simulated
+   *  flight, constant on-screen size, ending in a landing marker. */
+  SLING_DOT_SPACING: 1.2,
+  SLING_DOT_MAX: 64,
+  /** Dot world-radius per metre of camera distance ≈ constant screen size. */
+  SLING_DOT_SCREEN: 0.0095,
 
-  /** Polite auto-sprint: speed ramps on its own, and caps below the spook threshold near wilds. */
-  AUTO_SPRINT_AFTER: 1.2,
+  /** Auto-sprint, simple and consistent: keep moving this long and speed ramps up —
+   *  exactly like holding the old sprint button. Stop, and water drag slows you down.
+   *  No other condition (wild Pokémon nearby or not) ever touches your speed. */
+  AUTO_SPRINT_AFTER: 2,
   /** Hysteresis: once auto-sprint engages, brief joystick re-grips must not drop it. */
   AUTO_SPRINT_OFF: 0.5,
-  POLITE_SPEED: 2.4,
-  POLITE_RADIUS: 16,
   SPEED_RAMP_TAU: 0.4,
-  /** Slowing down is never abrupt: cap drops (polite glide, sprint fading) ease with this slower tau. */
+  /** The sprint cap never snaps down mid-swim; when it does fall it eases with this slower tau. */
   SPEED_RAMP_TAU_DOWN: 0.8,
 
   CATCH_MIN: 0.06,

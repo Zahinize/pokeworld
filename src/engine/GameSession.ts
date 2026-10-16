@@ -740,7 +740,7 @@ export class GameSession {
     this.handleSkyEvents();
     this.updateTutorial(dt);
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updatePoliteCap(); this.updateAutoBall(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -853,22 +853,6 @@ export class GameSession {
       const desired = pickBall(best, store.save.inventory);
       if (desired !== store.hud.ballType) store.setHud({ ballType: desired }); // silent — no click
     }
-  }
-
-  /** Manners only when safe: cap swim speed near catchable wilds, never while hunted or in a boss fight. */
-  private updatePoliteCap() {
-    const eco = this.eco;
-    if (!eco) { this.player.politeCap = false; return; }
-    if (this.bossPhaseActive || this.regenGrace > 0 || eco.huntingNear(45)) { this.player.politeCap = false; return; }
-    const p = this.player;
-    let near = false;
-    eco.hash.query(p.x, p.y, p.z, GAME.POLITE_RADIUS, (e) => {
-      if (near || e.isBoss || e.role === 'partner') return;
-      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
-      if (e.behavior === 'predator') return; // you don't tiptoe around sharks
-      near = true;
-    });
-    this.player.politeCap = near;
   }
 
   private handleEcoEvents() {

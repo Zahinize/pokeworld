@@ -53,7 +53,7 @@ for (const levelId of [1, 2]) {
   ok(`level ${levelId} within budgets`);
 }
 
-// ---- Slingshot preview must match the real ball EXACTLY; polite auto-sprint behaves ----
+// ---- Slingshot preview must match the real ball EXACTLY; auto-sprint stays simple ----
 {
   const { previewBallPath, computeThrowOrigin, THROW_LIFT } = await import('@/engine/sim/ballPreview');
   const { BallSystem } = await import('@/engine/sim/balls');
@@ -91,31 +91,30 @@ for (const levelId of [1, 2]) {
   if (worstCoarse < 0.3) ok(`sling: 30hz preview within ${worstCoarse.toFixed(2)}m of the real flight (ball radius 0.3)`);
   else fail(`sling: coarse preview off by ${worstCoarse.toFixed(2)}m (> 0.3) — more than step-size error`);
 
-  // polite auto-sprint: cruise -> auto sprint after 1.2s; capped to 2.4 near wilds; no jolts
+  // auto-sprint, one rule: cruise for the first 2s of movement, then sprint — nothing else
+  // (no wild-Pokémon condition) ever touches the speed; stopping decays through water drag
   const pc = new PlayerController();
   pc.reset(0, -10, 0, 0);
   const inp = { forward: 1, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   let early = 0, late = 0, jolt = 0, prevSpeed = 0;
   for (let i = 0; i < 60 * 6; i++) {
     pc.update(1 / 60, inp, []);
-    if (i === 54) early = pc.speed;              // 0.9s in: still cruising
-    if (i === 60 * 4) late = pc.speed;           // 4s in: fully auto-sprinting
+    if (i === 60 * 1.7) early = pc.speed;        // 1.7s in: still cruising
+    if (i === 60 * 5) late = pc.speed;           // 5s in: fully auto-sprinting
     jolt = Math.max(jolt, Math.abs(pc.speed - prevSpeed));
     prevSpeed = pc.speed;
   }
-  if (early < GAME.SWIM_SPEED + 0.4 && late > GAME.SWIM_SPRINT - 0.6) ok(`sprint: auto-ramps ${early.toFixed(1)} -> ${late.toFixed(1)} m/s with no button`);
+  if (early < GAME.SWIM_SPEED + 0.4 && late > GAME.SWIM_SPRINT - 0.6) ok(`sprint: auto-ramps ${early.toFixed(1)} -> ${late.toFixed(1)} m/s after ${GAME.AUTO_SPRINT_AFTER}s of movement`);
   else fail(`sprint: ramp wrong (early ${early.toFixed(1)}, late ${late.toFixed(1)})`);
-  // the polite cap glides in (slower down-tau): no frame may decelerate sharply
-  pc.politeCap = true;
-  let capJolt = 0;
-  for (let i = 0; i < 60 * 4; i++) { pc.update(1 / 60, inp, []); capJolt = Math.max(capJolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
-  const capped = pc.speed;
-  pc.politeCap = false;
-  for (let i = 0; i < 60 * 3; i++) pc.update(1 / 60, inp, []);
-  if (capped <= 2.5 && pc.speed > GAME.SWIM_SPRINT - 0.6) ok(`sprint: polite cap glides to ${capped.toFixed(2)} <= 2.5 near wilds, releases smoothly after`);
-  else fail(`sprint: polite cap broken (capped ${capped.toFixed(2)}, released ${pc.speed.toFixed(1)})`);
-  if (jolt < 0.5 && capJolt < 0.2) ok(`sprint: no speed jolts (ramp ${jolt.toFixed(3)}, cap glide ${capJolt.toFixed(3)} m/s per frame)`);
-  else fail(`sprint: jolt detected (ramp ${jolt.toFixed(2)}, cap ${capJolt.toFixed(2)} m/s in one frame)`);
+  if (jolt < 0.5) ok(`sprint: no speed jolts (max frame delta ${jolt.toFixed(3)} m/s)`);
+  else fail(`sprint: jolt detected (${jolt.toFixed(2)} m/s in one frame)`);
+  // stopping decays smoothly through water drag (the feel the design keeps)
+  const still = { ...inp, forward: 0 };
+  let stopJolt = 0;
+  for (let i = 0; i < 60 * 2; i++) { pc.update(1 / 60, still, []); stopJolt = Math.max(stopJolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
+  if (pc.speed < 0.3 && stopJolt < 0.5) ok(`sprint: stopping drifts to rest (${pc.speed.toFixed(2)} m/s after 2s, max delta ${stopJolt.toFixed(2)})`);
+  else fail(`sprint: stop feel broken (speed ${pc.speed.toFixed(2)}, jolt ${stopJolt.toFixed(2)})`);
+  for (let i = 0; i < 60 * 4; i++) pc.update(1 / 60, inp, []); // back to sprint for the wiggle test
 
   // hysteresis: joystick re-grips (brief input dips) must never sag the speed mid-swim
   let low = Infinity;
@@ -148,6 +147,25 @@ for (const levelId of [1, 2]) {
     }
   }
   ok(`sling: touch throws converge exactly on the aim ray at ${GAME.THROW_FOCUS}m; desktop path untouched`);
+
+  // Angry-Birds dots: evenly spaced along the WHOLE flight, ending at the landing spot
+  const { previewDots } = await import('@/engine/sim/ballPreview');
+  const { floorY } = await import('@/engine/world/terrain');
+  const dots = previewDots(0, -10, 0, 0.74, 0.1, 0.66, 26, {});
+  let gapErr = 0;
+  for (let i = 1; i < dots.n - 1; i++) {
+    const g = Math.hypot(
+      dots.pts[i * 3] - dots.pts[(i - 1) * 3],
+      dots.pts[i * 3 + 1] - dots.pts[(i - 1) * 3 + 1],
+      dots.pts[i * 3 + 2] - dots.pts[(i - 1) * 3 + 2],
+    );
+    gapErr = Math.max(gapErr, Math.abs(g - GAME.SLING_DOT_SPACING));
+  }
+  const li = (dots.n - 1) * 3;
+  const landY = dots.pts[li + 1];
+  const rested = landY <= floorY(dots.pts[li], dots.pts[li + 2]) + 0.35 || Math.abs(landY - 0.05) < 1e-6;
+  if (dots.n > 15 && gapErr < 0.01 && rested) ok(`sling: ${dots.n} aiming dots, even ${GAME.SLING_DOT_SPACING}m apart (err ${gapErr.toFixed(3)}), last dot IS the landing`);
+  else fail(`sling: dot chain wrong (n ${dots.n}, gap err ${gapErr.toFixed(3)}, rested ${rested})`);
 }
 
 // ---- Auto ball selection: right tier for the target, Master Balls stay precious ----
