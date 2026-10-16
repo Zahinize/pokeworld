@@ -116,6 +116,33 @@ for (const levelId of [1, 2]) {
   else fail(`sprint: jolt detected (${jolt.toFixed(2)} m/s in one frame)`);
 }
 
+// ---- Auto ball selection: right tier for the target, Master Balls stay precious ----
+{
+  const { pickBall, idealBall } = await import('@/engine/sim/autoBall');
+  const sp = (over: Record<string, unknown>) => ({ rarity: 'common', stage: 0, skyOnly: false, ...over }) as any;
+  const skyLegend = sp({ skyOnly: true, rarity: 'legendary' });
+  const rare = sp({ rarity: 'rare' });
+  const stage1 = sp({ stage: 1 });
+  const full = { pokeball: 8, greatball: 4, ultraball: 3, masterball: 2 };
+  const cases: [string, any, Record<string, number>, string][] = [
+    ['no target → pokeball', null, full, 'pokeball'],
+    ['sky legendary → masterball', skyLegend, full, 'masterball'],
+    ['sky legendary, masters gone → walks DOWN to ultra', skyLegend, { ...full, masterball: 0 }, 'ultraball'],
+    ['rare → ultraball', rare, full, 'ultraball'],
+    ['rare, ultras gone → SKIPS master, walks down to great', rare, { ...full, ultraball: 0 }, 'greatball'],
+    ['stage1 → greatball', stage1, full, 'greatball'],
+    ['common, pokeballs gone → walks UP to great', sp({}), { ...full, pokeball: 0 }, 'greatball'],
+    ['only masters left → last resort master', sp({}), { pokeball: 0, greatball: 0, ultraball: 0, masterball: 1 }, 'masterball'],
+  ];
+  let bad = 0;
+  for (const [label, species, inv, want] of cases) {
+    const got = pickBall(species, inv as any);
+    if (got !== want) { bad++; fail(`autoBall: ${label} — got ${got}, wanted ${want}`); }
+  }
+  if (idealBall(sp({ stage: 2 })) !== 'ultraball') { bad++; fail('autoBall: stage2 ideal should be ultraball'); }
+  if (!bad) ok(`autoBall: all ${cases.length + 1} pick cases correct (legendary→master, stock-walk skips master, null→poke)`);
+}
+
 // ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
 {
   const { GAME } = await import('@/data/gameConfig');

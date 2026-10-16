@@ -8,6 +8,7 @@ import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generato
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
 import { computeThrowOrigin, THROW_LIFT } from './sim/ballPreview';
+import { pickBall } from './sim/autoBall';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
@@ -58,6 +59,8 @@ export class GameSession {
   private surfaceDrainAcc = new Map<number, number>();
   private surfaceHintShown = false;
   private rampageSurge = false;
+  /** What the crosshair is on (species only) — drives auto ball selection. */
+  private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -195,7 +198,7 @@ export class GameSession {
     const store = useStore.getState();
     store.setLevel(levelId, this.seed);
     store.setMission(this.mission);
-    store.setHud({ ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -271,7 +274,13 @@ export class GameSession {
 
   selectBall(type: BallId) {
     const store = useStore.getState();
-    store.setHud({ ballType: type });
+    store.setHud({ ballType: type, ballMode: 'pinned' });
+    Audio.uiClick();
+  }
+
+  /** Back to automatic ball selection. */
+  clearBallPin() {
+    useStore.getState().setHud({ ballMode: 'auto' });
     Audio.uiClick();
   }
   cycleBall(dir: 1 | -1) {
@@ -305,6 +314,7 @@ export class GameSession {
     const [ox, oy, oz] = computeThrowOrigin(p, dirX, dirY, dirZ);
     this.balls.throw(type, ox, oy, oz, dirX, dirY + THROW_LIFT, dirZ, speed);
     Audio.throwBall();
+    if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
     if (total === 0 && !store.save.restoration.endsAt) {
@@ -714,7 +724,7 @@ export class GameSession {
     this.handleBallEvents();
     this.handleSkyEvents();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updatePoliteCap(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updatePoliteCap(); this.updateAutoBall(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -724,6 +734,37 @@ export class GameSession {
     if (this.phase === 'completing') {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
+    }
+  }
+
+  /** What is the crosshair on? Cone test over reef AND sky — then let the ball pick itself. */
+  private updateAutoBall() {
+    const store = useStore.getState();
+    const eco = this.eco;
+    if (!eco) return;
+    const p = this.player;
+    const [fx, fy, fz] = p.forward();
+    let best: ReturnType<typeof getSpecies> | null = null, bestDot = 0.92;
+    const consider = (x: number, y: number, z: number, speciesId: string) => {
+      const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < 1.5 || d > 60) return;
+      const dot = (dx * fx + dy * fy + dz * fz) / d;
+      if (dot > bestDot) { bestDot = dot; best = getSpecies(speciesId); }
+    };
+    eco.hash.query(p.x + fx * 25, p.y + fy * 25, p.z + fz * 25, 35, (e) => {
+      if (e.isBoss || e.role === 'partner') return;
+      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
+      consider(e.x, e.y, e.z, e.species.id);
+    });
+    if (this.sky) for (const b of this.sky.birds) {
+      if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') || b.fade < 0.5) continue;
+      consider(b.x, b.y + b.vis * 0.45, b.z, b.speciesId);
+    }
+    this.aimSpecies = best;
+    if (store.hud.ballMode === 'auto') {
+      const desired = pickBall(best, store.save.inventory);
+      if (desired !== store.hud.ballType) store.setHud({ ballType: desired }); // silent — no click
     }
   }
 

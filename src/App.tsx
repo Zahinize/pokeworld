@@ -78,9 +78,12 @@ export default function App() {
   }, [setScreen, setOverlay]);
 
   const enterReef = useCallback(() => {
+    // Unlock WebAudio here, inside the "Dive in" click — returning touch players skip the
+    // controls prompt entirely, so this is the last guaranteed user gesture before play.
+    Audio.init();
     setScreen('play');
     setOverlay('none');
-    // Show the controls first on every platform; the game starts on "Dive in".
+    // Veterans dive straight in (ControlsPrompt auto-skips); first-timers read the controls.
     session.start(); session.pause(); setDived(false);
   }, [setScreen, setOverlay]);
 

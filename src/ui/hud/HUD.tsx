@@ -1,6 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
-import { useEffect, useMemo, useState } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Wand2, Hourglass, Swords, Wind, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, Wind, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -84,38 +84,22 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
   );
 }
 
-function BallTray() {
+function BallChip() {
   const inv = useStore((s) => s.save.inventory);
   const ballType = useStore((s) => s.hud.ballType);
+  const ballMode = useStore((s) => s.hud.ballMode);
   const isTouch = useStore((s) => s.isTouch);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // tap cycles (and pins) the ball; holding half a second hands control back to AUTO
+  const down = () => { holdTimer.current = setTimeout(() => { holdTimer.current = null; session.clearBallPin(); }, 500); };
+  const up = () => { if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; session.cycleBall(1); } };
   return (
-    <Panel className="ball-tray interactive">
-      {BALL_ORDER.map((b, i) => (
-        <button key={b} className={`ball-btn ${ballType === b ? 'selected' : ''} ${inv[b] === 0 ? 'empty' : ''}`} onClick={() => session.selectBall(b)} aria-label={`${BALLS[b].name}, ${inv[b]} left`} aria-pressed={ballType === b}>
-          <PokeballIcon ball={b} />
-          <span className="count">{inv[b]}</span>
-          <span>{BALLS[b].short}</span>
-          {!isTouch && <span className="key">{i + 1}</span>}
-        </button>
-      ))}
-    </Panel>
-  );
-}
-
-function LureButton() {
-  const rem = useStore((s) => s.hud.lureRemaining);
-  const cd = useStore((s) => s.hud.lureCooldown);
-  const isTouch = useStore((s) => s.isTouch);
-  const active = rem > 0;
-  const ready = cd <= 0 && !active;
-  const total = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
-  const p = active ? (rem / GAME.LURE_DURATION) * 100 : cd > 0 ? (1 - cd / total) * 100 : 0;
-  const mmss = (t: number) => { const s0 = Math.ceil(t); return s0 >= 60 ? `${Math.floor(s0 / 60)}:${(s0 % 60).toString().padStart(2, '0')}` : `${s0}s`; };
-  return (
-    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure (available every 5 minutes)" title="Lure — once every 5 minutes" style={{ ['--p' as any]: `${p}%` }}>
-      <span className="ring" />
-      <span className="ic">{active ? <Ic icon={Sparkles} size={15} /> : ready ? <Ic icon={Wand2} size={15} /> : <Ic icon={Hourglass} size={15} />}</span>
-      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? mmss(cd) : isTouch ? 'Lure' : 'Lure · E'}</span>
+    <button className="glass ball-chip interactive" onPointerDown={down} onPointerUp={up} onPointerCancel={up}
+      aria-label={`${BALLS[ballType].name}, ${inv[ballType]} left — ${ballMode === 'auto' ? 'picked automatically' : 'pinned'}`}
+      title={isTouch ? undefined : 'Auto-picked for your target · 1–4 or Q to pin · hold to return to auto'}>
+      <PokeballIcon ball={ballType} size={26} />
+      <span className="count">{inv[ballType]}</span>
+      <span className={`mode ${ballMode === 'pinned' ? 'pinned' : ''}`}>{ballMode === 'auto' ? 'AUTO' : BALLS[ballType].short}</span>
     </button>
   );
 }
@@ -351,32 +335,36 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
   const Row = ({ keys, children }: { keys: React.ReactNode; children: React.ReactNode }) => (
     <div className="ctl"><span className="ctl-keys">{keys}</span><span className="ctl-desc">{children}</span></div>
   );
+  // Two things to learn: move and throw. Speed, vertical swim and ball choice are automatic;
+  // everything else lives behind "Veteran shortcuts" so the first screen stays tiny.
   return isTouch ? (
     <div className="controls-grid">
-      <Row keys={<b>Left stick</b>}>swim</Row>
+      <Row keys={<b>Left stick</b>}><b>swim</b> — you swim where you look</Row>
       <Row keys={<b>Drag anywhere</b>}>look around</Row>
-      <Row keys={<b><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: 'var(--red)', verticalAlign: '-1px' }} /> Red button</b>}>throw the selected ball</Row>
-      <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
-      <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
-      <Row keys={<b><Ic icon={Wand2} size={13} /> Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
-      <Row keys={<b>»</b>}>toggle fast swim</Row>
-      <Row keys={<b><Ic icon={Pause} size={13} /></b>}>pause · mission in the top-left pill</Row>
+      <Row keys={<b>Poké Ball</b>}><b>drag to aim, release to throw</b> · tap = quick throw</Row>
     </div>
   ) : (
-    <div className="controls-grid">
-      <Row keys={<><K k="W" /><K k="A" /><K k="S" /><K k="D" /></>}><b>swim</b> · you swim where you look</Row>
-      <Row keys={<><b>Mouse</b> · <b>Left click</b></>}>look · throw ball</Row>
-      <Row keys={<K k="Shift" />}><b>swim faster</b></Row>
-      <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
-      <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
-      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
-      <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
-      <Row keys={<K k="C" />}>collection</Row>
-      <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
-      {session.companionsEnabled && <Row keys={<b>Right click</b>}><b>quick attack</b> — best ready companion move at your crosshair</Row>}
-      {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
-      {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
-    </div>
+    <>
+      <div className="controls-grid">
+        <Row keys={<><K k="W" /><K k="A" /><K k="S" /><K k="D" /></>}><b>swim</b> · you swim where you look</Row>
+        <Row keys={<><b>Mouse</b> · <b>Left click</b></>}>look · <b>throw ball</b></Row>
+        <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
+        <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
+      </div>
+      <details className="vet">
+        <summary>Veteran shortcuts</summary>
+        <div className="controls-grid">
+          <Row keys={<K k="Shift" />}>sprint — speed also ramps up on its own</Row>
+          <Row keys={<><K k="1" />–<K k="4" /> · <K k="Q" /></>}>pin a ball — otherwise they pick themselves</Row>
+          <Row keys={<K k="E" />}>lure nearby Pokémon · once every 5 min</Row>
+          <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
+          <Row keys={<K k="C" />}>collection</Row>
+          {session.companionsEnabled && <Row keys={<b>Right click</b>}>quick attack — best ready companion move at your crosshair</Row>}
+          {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
+          {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
+        </div>
+      </details>
+    </>
   );
 }
 
@@ -417,7 +405,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   const [compact, setCompact] = useState(() => isTouch || small());
   useEffect(() => { const f = () => setCompact(isTouch || small()); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, [isTouch]);
   const missionExpanded = overlay === 'mission';
-  const tray = useMemo(() => <BallTray />, []);
+
   return (
     <>
       <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
@@ -429,8 +417,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
-          {tray}
-          <LureButton />
+          <BallChip />
         </div>
         <PlayerVitals />
         <PartyBar />
@@ -456,19 +443,35 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
 }
 
 export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouch: boolean }) {
+  const seen = useStore((s) => s.save.settings.controlsSeen);
+  const setSettings = useStore((s) => s.setSettings);
+  const dive = () => { Audio.init(); if (!seen) setSettings({ controlsSeen: true }); onDive(); };
+  // Returning touch players dive straight in — the "Dive in" tap on the mission brief was the
+  // gesture (Audio.init already ran there), and there's no pointer lock to request on touch.
+  useEffect(() => { if (seen && isTouch) onDive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); Audio.init(); onDive(); } };
+    if (seen && isTouch) return;
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); dive(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onDive]);
+  }, [onDive, seen, isTouch]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (seen && isTouch) return null;
+  if (seen) {
+    // Desktop veterans: pointer lock still needs a click, but not a wall of text.
+    return (
+      <div className="overlay controls-prompt minimal" style={{ zIndex: 30 }} onClick={dive}>
+        <button className="glass dive-bar" autoFocus><Ic icon={Play} size={15} /> Click to dive <span className="kbd">Enter</span></button>
+      </div>
+    );
+  }
   return (
     <div className="overlay controls-prompt" style={{ zIndex: 30 }}>
       <Panel className="panel strong">
         <div className="eyebrow">Before you dive</div>
         <h2 className="title" style={{ fontSize: 28, margin: '4px 0 12px' }}>Controls</h2>
         <ControlsLegend isTouch={isTouch} />
-        <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
-        <button className="btn primary big block" onClick={() => { Audio.init(); Audio.uiConfirm(); onDive(); }} autoFocus><Ic icon={Play} size={16} /> Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
+        <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Balls pick themselves for whatever you aim at. Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
+        <button className="btn primary big block" onClick={() => { Audio.uiConfirm(); dive(); }} autoFocus><Ic icon={Play} size={16} /> Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
       </Panel>
     </div>
   );
