@@ -54,16 +54,14 @@ export function WorldsScreen() {
               {WORLDS.map((w) => {
                 const open = w.status === 'playable';
                 return (
-                  <button key={w.id} className={`card level-card ${open ? 'clickable' : 'locked'}`} disabled={!open}
+                  <button key={w.id} className={`card world-card ${open ? 'clickable open' : 'locked'}`} disabled={!open}
+                    title={w.blurb} aria-label={`${w.name} — ${w.blurb}`}
                     onClick={() => { if (!open) return; Audio.uiConfirm(); setScreen('menu'); }}>
-                    <div style={{ lineHeight: 1 }}><Ic icon={w.icon} size={30} color="var(--aqua)" /></div>
-                    <div className="row between" style={{ width: '100%' }}>
-                      <b style={{ fontFamily: 'var(--font-display)' }}>{w.name}</b>
-                      {open
-                        ? <span className="badge green">Level {save.progression.unlockedLevel} unlocked</span>
-                        : <span className="badge">Coming soon</span>}
-                    </div>
-                    <p className="muted small" style={{ margin: 0, textAlign: 'left' }}>{w.blurb}</p>
+                    <span className="wicon"><Ic icon={w.icon} size={26} /></span>
+                    <b>{w.name}</b>
+                    {open
+                      ? <span className="badge green">Level {save.progression.unlockedLevel} unlocked</span>
+                      : <span className="badge">Coming soon</span>}
                   </button>
                 );
               })}

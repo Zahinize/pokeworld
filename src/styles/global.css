@@ -141,6 +141,15 @@ a { color: var(--aqua); }
 
 /* ---------- Level cards ---------- */
 .level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+/* World picker: minimal cards — an icon medallion, the name, one status pill. The blurb lives in the tooltip. */
+.world-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 16px 20px; text-align: center; }
+.world-card .wicon { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: rgba(53,208,255,.1); border: 1px solid rgba(53,208,255,.28); color: var(--aqua); transition: box-shadow .2s, transform .15s ease; }
+.world-card b { font-family: var(--font-display); font-size: 16.5px; color: var(--text); letter-spacing: .01em; }
+.world-card.open { border-color: rgba(53,208,255,.4); box-shadow: 0 0 22px rgba(53,208,255,.1); }
+.world-card.open:hover { border-color: rgba(53,208,255,.6); box-shadow: 0 0 30px rgba(53,208,255,.22); }
+.world-card.open:hover .wicon { box-shadow: 0 0 18px rgba(53,208,255,.4); transform: scale(1.06); }
+.world-card.locked .wicon { background: rgba(255,255,255,.05); border-color: var(--line); color: var(--dim); }
+.world-card.locked b { color: var(--muted); }
 .level-num { font-family: var(--font-display); font-weight: 900; font-size: 42px; line-height: 1; color: var(--aqua); }
 .level-card h3 { font-family: var(--font-display); font-size: 17px; margin: 6px 0 2px; }
 
