@@ -60,6 +60,17 @@ export default function App() {
   const [dived, setDived] = useState(false);
   const demoLive = useStore((s) => s.demoLive);
   const reducedMotion = save.settings.reducedMotion;
+  // The reef canvas mounts as soon as the brief's prepare() finishes (hidden behind the
+  // brief screen). That gives the "Enter Reef" click a live canvas to point-lock
+  // SYNCHRONOUSLY — browsers only trust a lock request made inside the click itself.
+  const [briefReady, setBriefReady] = useState(false);
+  useEffect(() => {
+    if (screen !== 'brief') { setBriefReady(false); return; }
+    const check = () => { if (session.phase === 'ready') setBriefReady(true); };
+    check();
+    const off = session.onChange(check);
+    return () => { off(); };
+  }, [screen]);
 
   // Attract mode: the live reef behind the menu. It loads once, keeps simulating only
   // while its canvas is mounted, and is torn down the moment a real dive begins.
@@ -107,9 +118,13 @@ export default function App() {
   }, [setScreen, setOverlay]);
 
   const enterReef = useCallback(() => {
-    // Unlock WebAudio here, inside the "Dive in" click — returning touch players skip the
+    // Unlock WebAudio here, inside the "Enter Reef" click — returning players skip the
     // controls prompt entirely, so this is the last guaranteed user gesture before play.
     Audio.init();
+    // Capture the mouse NOW, synchronously in the click: the reef canvas already sits
+    // behind the brief, so the lock has a target and the browser has its gesture.
+    // First-timers keep their cursor for the controls screen; its Dive-in click locks.
+    if (useStore.getState().save.settings.controlsSeen) requestPointerLock();
     setScreen('play');
     setOverlay('none');
     // Veterans dive straight in (ControlsPrompt auto-skips); first-timers read the controls.
@@ -138,7 +153,6 @@ export default function App() {
       case 'defeat':
         return (
           <>
-            <Scene />
             {screen === 'play' && <SceneCurtain />}
             {screen === 'play' && <HUD onQuit={quitToMenu} />}
             {screen === 'play' && isTouch && !paused && <TouchControls />}
@@ -162,8 +176,12 @@ export default function App() {
   // The living menu: the real reef idles behind the home screens (PokeSurvivor-style).
   // Only mounted on screens that show it — on brief/play the real Scene takes over.
   const demoScreens = screen === 'start' || screen === 'login' || screen === 'worlds' || screen === 'menu' || screen === 'levels' || screen === 'trainer' || screen === 'leaderboard';
+  const playish = screen === 'play' || screen === 'complete' || screen === 'defeat';
   return (
     <>
+      {/* one persistent canvas from "reef ready" on the brief all the way through play —
+          no remount between Enter Reef and the dive, so the click's pointer lock holds */}
+      {(playish || (screen === 'brief' && briefReady)) && <Scene />}
       {demoLive && demoScreens && (
         <div className="demo-scene" aria-hidden>
           <Scene />
