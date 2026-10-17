@@ -311,7 +311,11 @@ function makeIslands(): { geo: THREE.BufferGeometry } {
 
 function Islands() {
   const { geo } = useMemo(makeIslands, []);
-  const mat = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0, fog: true }), []);
+  // fog: false — the exp² air fog washes these fixed landmasses whiter the further the
+  // player swims (hundreds of metres of extra path length), which reads as a rendering
+  // bug, not atmosphere. The sky dome they sit against is fog-free too, so they stay
+  // crisp at any distance and are tinted by the day cycle's lighting alone.
+  const mat = useMemo(() => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, metalness: 0, fog: false }), []);
   useEffect(() => () => { geo.dispose(); mat.dispose(); }, [geo, mat]);
   return <mesh geometry={geo} material={mat} frustumCulled={false} renderOrder={-9} />;
 }
