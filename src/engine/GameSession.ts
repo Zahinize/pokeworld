@@ -7,6 +7,12 @@ import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
+import { computeThrow, previewBallPath, slingDir, THROW_LIFT } from './sim/ballPreview';
+import { pickBall } from './sim/autoBall';
+import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
+import { buildDemoPath, demoPose, buildArcLUT, arcT, type DemoPath } from './sim/demoPath';
+import { DEMO, DEMO_LEVEL } from '@/data/demo';
+import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
@@ -51,10 +57,30 @@ export class GameSession {
   eco: Ecosystem | null = null;
   balls = new BallSystem();
   sky: SkyLife | null = null;
+  /** Live slingshot aim (touch): written by TouchControls at pointer rate, read by ThrowArc. */
+  slingAim = { active: false, yawOff: 0, pitchOff: 0, power: 1, armed: false };
+  /** The on-screen Poké Ball's center in NDC, measured by TouchControls on layout. */
+  slingNdc = { x: 0.72, y: -0.6 };
+  /** Live camera projection (written by CameraRig) — the hand offsets track orientation. */
+  camFov = 70;
+  camAspect = 0.46;
   private surfaceAtkReady = new Map<number, number>();
   private surfaceDrainAcc = new Map<number, number>();
-  private surfaceHintShown = false;
   private rampageSurge = false;
+  /** What the crosshair is on (species only) — drives auto ball selection. */
+  private aimSpecies: ReturnType<typeof getSpecies> | null = null;
+  /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
+  demo = false;
+  private demoPath: DemoPath | null = null;
+  private demoLUT: Float32Array | null = null;
+  private demoT = 0;
+  private demoLoopS: number = DEMO.MIN_LOOP_S;
+  /** First-run tutorial (level 1, until settings.tutorialDone). Null once finished/skipped. */
+  private tutorial: TutorialState | null = null;
+  private tutObs = { threwWater: false, threwSky: false, caughtWater: 0, caughtSky: 0 };
+  private tutScan = { wildNearDist: Infinity, skyBirdNear: false };
+  private tutScanAcc = 0;
+  private tutDoneT = 0;
   player = new PlayerController();
   input: InputState = { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
   mission: MissionState | null = null;
@@ -147,6 +173,7 @@ export class GameSession {
 
   /** Generate the ecosystem + preload species HP and sprites. Resolves when the level can start. */
   async prepare(levelId: number, seed?: number, resume?: CurrentRun | null): Promise<void> {
+    if (this.demo) this.endDemo(); // a real dive always wins over the menu backdrop
     this.phase = 'preparing';
     this.level = getLevel(levelId);
     this.seed = seed ?? randomSeed();
@@ -176,7 +203,7 @@ export class GameSession {
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
     this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
-    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear(); this.surfaceHintShown = false;
+    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear();
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
     this.timeOfDay = this.level.timeOfDay;
@@ -192,7 +219,11 @@ export class GameSession {
     const store = useStore.getState();
     store.setLevel(levelId, this.seed);
     store.setMission(this.mission);
-    store.setHud({ ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
+    // first-run tutorial: level 1 only, until completed or skipped (replayable from Settings)
+    this.tutorial = levelId === 1 && !store.save.settings.tutorialDone ? createTutorial() : null;
+    this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
+    this.tutScan.wildNearDist = Infinity; this.tutScan.skyBirdNear = false; this.tutScanAcc = 0; this.tutDoneT = 0;
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -249,12 +280,13 @@ export class GameSession {
     this.persistRun();
     this.emit();
   }
-  pause() { if (this.phase === 'playing') { this.phase = 'paused'; useStore.getState().setPaused(true); this.emit(); } }
+  pause() { if (this.phase === 'playing') { this.phase = 'paused'; this.clearSlingAim(); useStore.getState().setPaused(true); this.emit(); } }
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
-    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null;
+    this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
+    this.tutorial = null; useStore.getState().setHud({ tutorial: null });
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
@@ -268,7 +300,13 @@ export class GameSession {
 
   selectBall(type: BallId) {
     const store = useStore.getState();
-    store.setHud({ ballType: type });
+    store.setHud({ ballType: type, ballMode: 'pinned' });
+    Audio.uiClick();
+  }
+
+  /** Back to automatic ball selection. */
+  clearBallPin() {
+    useStore.getState().setHud({ ballMode: 'auto' });
     Audio.uiClick();
   }
   cycleBall(dir: 1 | -1) {
@@ -281,8 +319,105 @@ export class GameSession {
     }
   }
 
+  clearSlingAim() { this.slingAim.active = false; this.slingAim.armed = false; }
+
+  /** Camera-space launch offsets so a touch throw starts exactly ON the on-screen Poké
+   *  Ball — derived from the live fov/aspect and the ball's measured NDC position, which
+   *  is what makes it hold in portrait AND landscape alike. */
+  handOffsets() {
+    const fwd = GAME.HAND_FWD_TOUCH;
+    const tv = Math.tan(((this.camFov * Math.PI) / 180) / 2);
+    const th = tv * this.camAspect;
+    return { right: this.slingNdc.x * th * fwd, down: -this.slingNdc.y * tv * fwd, fwd };
+  }
+
+  /**
+   * Attract mode: load a real level-1 reef and let it live behind the menu — schools,
+   * feeding, guardians, predators, the surface and the sky — while a slow cinematic
+   * camera laps it. No HUD, no mission, no audio, no collection side effects: every
+   * event the ecosystem emits is discarded unseen.
+   */
+  async startDemo(): Promise<void> {
+    if (this.demo || this.phase !== 'idle') return;
+    this.demo = true;
+    try {
+      this.level = DEMO_LEVEL; // the showcase cast: a packed reef, not the mission roster
+      this.seed = randomSeed();
+      const gen = generateEcosystem(this.level, this.seed);
+      const ids = Array.from(new Set([...gen.spawns.map((s) => s.speciesId), ...SKY_SPECIES_IDS]));
+      const keep = new Set<string>(ids);
+      for (const t of this.party) { const b = baseSpeciesId(t); for (const v of ['front', 'back', 'shiny', 'shinyback'] as const) keep.add(sheetKey(b, v)); }
+      disposeSheetsExcept(keep);
+      for (const k of [...this.sheets.keys()]) if (!keep.has(k)) this.sheets.delete(k);
+      await Promise.all([
+        preloadSpeciesData(ids),
+        preloadSprites(ids).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
+      ]);
+      if (!this.demo) return; // the player headed into a real dive while we loaded
+      this.gen = gen;
+      this.eco = new Ecosystem(gen, maxHpOf);
+      this.eco.onPlayerDamage = () => {}; // nothing hurts the camera
+      this.eco.time = GAME.PREDATOR_GRACE; // the menu reef appears mid-life: no quiet opening
+      this.balls = new BallSystem();
+      this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
+      this.timeOfDay = DEMO.TIME_OF_DAY;
+      this.lighting = lightingAt(this.timeOfDay, this.lighting);
+      this.demoPath = buildDemoPath(gen);
+      this.demoLUT = buildArcLUT(this.demoPath);
+      const lapLen = this.demoLUT[this.demoLUT.length - 1];
+      this.demoLoopS = Math.max(DEMO.MIN_LOOP_S, Math.min(DEMO.MAX_LOOP_S, lapLen / DEMO.CRUISE));
+      this.demoT = 0;
+      const pose = demoPose(this.demoPath, 0);
+      this.player.reset(pose.x, pose.y, pose.z, pose.yaw);
+      this.shakeT = 0;
+      useStore.getState().setDemoLive(true);
+      this.emit();
+    } catch (e) {
+      console.error('attract mode failed to start — menu keeps its static backdrop', e);
+      this.demo = false;
+    }
+  }
+
+  endDemo() {
+    if (!this.demo) return;
+    this.demo = false;
+    this.demoPath = null; this.demoLUT = null;
+    this.eco = null; this.sky = null; this.gen = null;
+    useStore.getState().setDemoLive(false);
+  }
+
+  private updateDemo(dt: number) {
+    const eco = this.eco;
+    if (!eco || !this.demoPath || !this.demoLUT) return;
+    dt = Math.min(dt, 0.05);
+    this.demoT = (this.demoT + dt) % this.demoLoopS;
+    this.timeOfDay = (this.timeOfDay + (dt * DEMO.DAY_DRIFT) / (this.level.dayCycleMinutes * 60)) % 1;
+    lightingAt(this.timeOfDay, this.lighting);
+    const p = this.player;
+    const px = p.x, py = p.y, pz = p.z;
+    const pose = demoPose(this.demoPath, arcT(this.demoLUT, this.demoT / this.demoLoopS));
+    p.x = pose.x; p.y = pose.y; p.z = pose.z; p.yaw = pose.yaw; p.pitch = pose.pitch;
+    p.vx = (p.x - px) / dt; p.vy = (p.y - py) / dt; p.vz = (p.z - pz) / dt;
+    p.speed = Math.hypot(p.vx, p.vy, p.vz);
+    p.swayT += dt * 0.7; // gentle breathing
+    eco.playerYaw = p.yaw;
+    // menu drama: predators (and ambushing bottom dwellers) shake off their rest between
+    // hunts much faster than in a real dive — and the ones near the camera are hungrier
+    // still, so chases and guardian stand-offs happen where the viewer is looking
+    for (const e of eco.alive) {
+      if (e.huntCooldown > 3 && (e.behavior === 'predator' || e.species.secondary.includes('predator'))) {
+        const near = Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < DEMO.HUNT_NEAR_R;
+        e.huntCooldown -= ((near ? DEMO.HUNT_HASTE_NEAR : DEMO.HUNT_HASTE) - 1) * dt;
+      }
+    }
+    eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: false }, this.lighting.nightness);
+    this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
+    // a display, not a play session: drain and discard everything
+    eco.drainEvents(); this.sky?.drainEvents(); this.balls.drainEvents();
+  }
+
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
-  throwBall(dirX: number, dirY: number, dirZ: number): boolean {
+  throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
@@ -297,9 +432,12 @@ export class GameSession {
     store.incBallsThrown();
     this.ballsUsed++;
     const p = this.player;
-    const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
-    this.balls.throw(type, p.x + rx * 0.35 + dirX * 0.6, p.y - 0.25 + dirY * 0.6, p.z + rz * 0.35 + dirZ * 0.6, dirX, dirY + 0.04, dirZ);
+    // touch throws fly out of the on-screen Poké Ball (low-right) and converge onto the aim ray
+    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
+    this.balls.throw(type, ox, oy, oz, tdx, tdy + THROW_LIFT, tdz, speed);
     Audio.throwBall();
+    if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw
+    if (this.tutorial) { if (dirY > 0.3) this.tutObs.threwSky = true; else this.tutObs.threwWater = true; }
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
     const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
     if (total === 0 && !store.save.restoration.endsAt) {
@@ -322,6 +460,7 @@ export class GameSession {
   }
 
   private beginRecovery() {
+    this.clearSlingAim();
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
@@ -338,7 +477,6 @@ export class GameSession {
     Audio.restore();
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, recovering: 0 });
-    store.pushToast({ kind: 'info', title: 'You recovered', body: 'The current carried you somewhere calmer. Catch your breath.', ttl: 4 });
   }
 
   // ------------------------------------------------------------------ Boss phases
@@ -393,7 +531,6 @@ export class GameSession {
     // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it,
     // and bringing a BOSS of your own provokes them: every boss rises SHINY for a fair fight
     const partyHasBoss = this.party.some((t) => getSpecies(baseSpeciesId(t)).bossOnly);
-    if (partyHasBoss) store.pushToast({ kind: 'warn', title: 'Your boss companion stirs the deep…', body: 'The challengers answer in kind: every boss here will be SHINY.', ttl: 6 });
     this.bossIds = wave.bosses.map((b, i) => {
       const shiny = !!wave.shiny || partyHasBoss || Math.random() < 0.2;
       if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
@@ -405,7 +542,6 @@ export class GameSession {
     this.bossEncounter = 'dormant';
     this.pendingWaveConfig = wave;
     eco.bossesActive = false; // they wait, glowing in their lair, until challenged
-    store.pushToast({ kind: 'event', title: `Something waits in the ${ZONES[wave.site].label}…`, body: 'Follow the golden arrow when you are ready to face it.', ttl: 6 });
     this.emit();
   }
 
@@ -436,7 +572,6 @@ export class GameSession {
     this.bossIds.forEach((id, i) => { const e = eco.byId.get(id); if (e) Audio.playCry(e.species.dexId, 1, i * 0.7); });
     const store = useStore.getState();
     store.setHud({ bossIntro: null });
-    store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 6 });
     this.resume();
     this.emit();
   }
@@ -482,7 +617,6 @@ export class GameSession {
     const next = this.party.find((t) => !this.downedSpecies.includes(t) && !activeTokens.includes(t));
     if (!next) return null;
     if (!this.swapPartner(slot, next)) return null;
-    useStore.getState().pushToast({ kind: 'info', title: `Go, ${tokenLabel(next)}!`, speciesId: baseSpeciesId(next), shiny: isShinyToken(next), ttl: 3 });
     return next;
   }
 
@@ -565,12 +699,10 @@ export class GameSession {
     if (!best) {
       // nothing ready: send out a reserve if a slot is empty, otherwise brief feedback
       if (this.activePartners.some((id) => id < 0) && this.party.length > 0) { this.sendNextReserve(this.activePartners[0] < 0 ? 0 : 1); return false; }
-      if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 3; useStore.getState().pushToast({ kind: 'info', title: 'Moves are recharging…', ttl: 2 }); }
       return false;
     }
     return this.orderCast(best.partner, best.slot, target);
   }
-  private attackFeedbackT = 0;
   private swapCooldownT = 0;
 
   /** 9/0 keys and the low-HP banner: swap `slot` for the healthiest reserve. */
@@ -584,7 +716,6 @@ export class GameSession {
     const out = activeTokens[slot];
     if (!this.swapPartner(slot, best)) return false;
     this.swapCooldownT = 2;
-    useStore.getState().pushToast({ kind: 'info', title: `${tokenLabel(best)}, you're up!`, body: out ? `${tokenLabel(out)} returns to rest.` : undefined, speciesId: baseSpeciesId(best), shiny: isShinyToken(best), ttl: 3 });
     return true;
   }
 
@@ -649,13 +780,13 @@ export class GameSession {
     this.lureCooldown = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
     Audio.lure();
     this.pushFx('lure', this.player.x, this.player.y, this.player.z, 1);
-    useStore.getState().pushToast({ kind: 'info', title: 'Lure activated', body: 'Nearby Pokémon are curious about you… Next lure in 5 minutes.', ttl: 4 });
     return true;
   }
 
   // ------------------------------------------------------------------ Frame update
 
   update(dt: number) {
+    if (this.demo) { this.updateDemo(dt); return; }
     if (this.phase !== 'playing' && this.phase !== 'completing') { this.input.lookDX = 0; this.input.lookDY = 0; return; }
     const eco = this.eco!;
     dt = Math.min(dt, 0.05);
@@ -692,7 +823,6 @@ export class GameSession {
     // and is hard-capped so no event can ever leave the camera trembling for long
     if (this.shakeT > 0) this.shakeT = Math.min(5, this.shakeT) - dt;
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
-    if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
@@ -707,8 +837,9 @@ export class GameSession {
     this.handleEcoEvents();
     this.handleBallEvents();
     this.handleSkyEvents();
+    this.updateTutorial(dt);
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -718,6 +849,135 @@ export class GameSession {
     if (this.phase === 'completing') {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
+    }
+  }
+
+  /** Feed the pure tutorial step machine its observations; publish the banner on change. */
+  private updateTutorial(dt: number) {
+    if (!this.tutorial) return;
+    const store = useStore.getState();
+    if (this.tutDoneT > 0) { // 'done': the banner lingers briefly, then the tutorial retires
+      this.tutDoneT -= dt;
+      if (this.tutDoneT <= 0) { this.tutorial = null; store.setHud({ tutorial: null }); }
+      return;
+    }
+    const p = this.player;
+    // proximity scans are throttled — the step machine itself runs every frame
+    this.tutScanAcc += dt;
+    if (this.tutScanAcc > 0.15) {
+      this.tutScanAcc = 0;
+      let near = Infinity;
+      this.eco?.hash.query(p.x, p.y, p.z, TUTORIAL.APPROACH_DIST + 4, (e) => {
+        if (e.isBoss || e.role === 'partner') return;
+        if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'removed') return;
+        const d = Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z);
+        if (d < near) near = d;
+      });
+      this.tutScan.wildNearDist = near;
+      let birdNear = false;
+      if (this.sky) for (const b of this.sky.birds) {
+        if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') || b.fade < 0.5) continue;
+        if (Math.hypot(b.x - p.x, b.y - p.y, b.z - p.z) <= TUTORIAL.SKY_RANGE) { birdNear = true; break; }
+      }
+      this.tutScan.skyBirdNear = birdNear;
+    }
+    const obs: TutorialObs = {
+      moved: p.speed * dt,
+      wildNearDist: this.tutScan.wildNearDist,
+      playerY: p.y,
+      pitch: p.pitch,
+      skyBirdNear: this.tutScan.skyBirdNear,
+      threwWater: this.tutObs.threwWater,
+      threwSky: this.tutObs.threwSky,
+      caughtWater: this.tutObs.caughtWater,
+      caughtSky: this.tutObs.caughtSky,
+    };
+    this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
+    const changed = advanceTutorial(this.tutorial, obs, dt);
+    this.syncTutorialHud();
+    if (changed && this.tutorial.step === 'done') {
+      this.tutDoneT = TUTORIAL.DONE_LINGER;
+      store.setSettings({ tutorialDone: true });
+      Audio.uiConfirm();
+    }
+  }
+
+  private syncTutorialHud() {
+    const store = useStore.getState();
+    if (!this.tutorial) { if (store.hud.tutorial) store.setHud({ tutorial: null }); return; }
+    const t = this.tutorial;
+    const text = tutorialText(t.step, store.isTouch, Math.min(t.catches, TUTORIAL.CATCH_COUNT));
+    const cur = store.hud.tutorial;
+    if (!cur || cur.step !== t.step || cur.text !== text) {
+      store.setHud({ tutorial: { step: t.step, text, i: TUTORIAL_STEPS.indexOf(t.step), n: TUTORIAL_STEPS.length - 1 } });
+    }
+  }
+
+  /** Skip stays skipped: the flag persists, and Settings offers a replay. */
+  skipTutorial() {
+    if (!this.tutorial) return;
+    this.tutorial = null;
+    const store = useStore.getState();
+    store.setSettings({ tutorialDone: true });
+    store.setHud({ tutorial: null });
+  }
+
+  /** While the slingshot is drawn: would the predicted flight HIT a wild right now?
+   *  Uses the exact same contact test as the real ball (balls.ts), walked along the
+   *  previewed path, so the red "locked on" state never lies. Published at hud cadence. */
+  private updateSlingHot() {
+    const store = useStore.getState();
+    const aim = this.slingAim;
+    const eco = this.eco;
+    if (!store.isTouch || !aim.active || !eco) { if (store.hud.slingHot) store.setHud({ slingHot: false }); return; }
+    const p = this.player;
+    const [adx, ady, adz] = aim.armed ? slingDir(p, aim) : p.forward();
+    const power = aim.armed ? aim.power : 1;
+    const { origin, dir } = computeThrow(p, adx, ady, adz, true, this.handOffsets());
+    const { pts, n } = previewBallPath(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2], GAME.THROW_SPEED * power, { steps: 64, dt: 1 / 30, obstacles: eco.obstacles });
+    let hot = false;
+    for (let i = 0; i < n && !hot; i++) {
+      const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
+      eco.hash.query(x, y, z, 6, (e, d2) => {
+        if (hot) return;
+        if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
+        if (e.role === 'partner' || e.isBoss) return; // bosses deflect balls: no false confidence
+        const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
+        if (d2 < r * r) hot = true;
+      });
+      if (!hot && this.sky?.hitTest(x, y, z)) hot = true;
+    }
+    if (hot !== store.hud.slingHot) store.setHud({ slingHot: hot });
+  }
+
+  /** What is the crosshair on? Cone test over reef AND sky — then let the ball pick itself. */
+  private updateAutoBall() {
+    const store = useStore.getState();
+    const eco = this.eco;
+    if (!eco) return;
+    const p = this.player;
+    const [fx, fy, fz] = p.forward();
+    let best: ReturnType<typeof getSpecies> | null = null, bestDot = 0.92;
+    const consider = (x: number, y: number, z: number, speciesId: string) => {
+      const dx = x - p.x, dy = y - p.y, dz = z - p.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d < 1.5 || d > 60) return;
+      const dot = (dx * fx + dy * fy + dz * fz) / d;
+      if (dot > bestDot) { bestDot = dot; best = getSpecies(speciesId); }
+    };
+    eco.hash.query(p.x + fx * 25, p.y + fy * 25, p.z + fz * 25, 35, (e) => {
+      if (e.isBoss || e.role === 'partner') return;
+      if (e.state === 'ko' || e.state === 'caught' || e.state === 'captureAttempt') return;
+      consider(e.x, e.y, e.z, e.species.id);
+    });
+    if (this.sky) for (const b of this.sky.birds) {
+      if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') || b.fade < 0.5) continue;
+      consider(b.x, b.y + b.vis * 0.45, b.z, b.speciesId);
+    }
+    this.aimSpecies = best;
+    if (store.hud.ballMode === 'auto') {
+      const desired = pickBall(best, store.save.inventory);
+      if (desired !== store.hud.ballType) store.setHud({ ballType: desired }); // silent — no click
     }
   }
 
@@ -778,11 +1038,6 @@ export class GameSession {
           if (e?.role !== 'partner') this.creditTakedown(ev.entityId);
           if (near(e, 60)) Audio.ko();
           if (e) this.pushFx('ko', e.x, e.y, e.z, e.species.size);
-          const victim = getSpecies(ev.speciesId);
-          const pred = ev.bySpeciesId ? getSpecies(ev.bySpeciesId) : null;
-          const o = e?.objectiveId && this.mission ? this.mission.objectives.find((x) => x.id === e.objectiveId) : undefined;
-          const missionHit = !!o && !objectiveDone(o);
-          store.pushToast({ kind: 'alert', title: pred ? `${pred.name} KOed ${victim.name}` : `${victim.name} was KOed`, body: missionHit ? 'A mission target was lost — the reef will send more.' : undefined, speciesId: pred?.id ?? victim.id, ttl: 5 });
           break;
         }
         case 'alarm': {
@@ -798,24 +1053,15 @@ export class GameSession {
           }
           break;
         }
-        case 'reinforce': {
-          const s = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'info', title: `${s.name} have drifted into the reef`, body: ev.count > 1 ? 'A new group arrived from the open water.' : 'Another one has appeared.', speciesId: s.id, ttl: 4 });
-          break;
-        }
-        case 'respawn': {
-          const s = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'event', title: `${s.name} has returned`, body: 'The reef restores its balance.', speciesId: s.id, ttl: 4 });
-          break;
-        }
+        case 'reinforce': break;
+        case 'respawn': break;
         case 'legendary': {
           Audio.legendary();
-          store.pushToast({ kind: 'event', title: 'Something massive is moving in the deep…', body: 'The water is trembling.', ttl: 6 });
           break;
         }
         case 'breach': {
           const e = eco.byId.get(ev.entityId);
-          if (near(e, 70)) { Audio.breach(); if (near(e, 45)) store.pushToast({ kind: 'event', title: `${e!.species.name} is rising to the surface`, speciesId: e!.species.id, ttl: 3 }); }
+          if (near(e, 70)) Audio.breach();
           break;
         }
         case 'inflate': { if (near(eco.byId.get(ev.entityId), 30)) Audio.inflate(); break; }
@@ -829,16 +1075,10 @@ export class GameSession {
             this.autoSend.push([slot, (this.eco?.time ?? 0) + 2.5]); // a reserve dives in on its own
           }
           Audio.ko();
-          const hasReserve = this.party.some((t) => !this.downedSpecies.includes(t) && !this.activePartners.some((pid) => { const pe = pid >= 0 ? eco.byId.get(pid) : undefined; return pe && this.tok(pe) === t; }));
-          store.pushToast({ kind: 'warn', title: `${tokenLabel(token)} is exhausted!`, body: hasReserve ? 'A reserve is diving in…' : 'No reserves left — fight carefully.', speciesId: ev.speciesId, shiny: isShinyToken(token), ttl: 4 });
           this.syncPartyHud();
           break;
         }
-        case 'duelStart': {
-          const w = eco.byId.get(ev.wildId);
-          if (w) store.pushToast({ kind: 'event', title: `Locked on ${w.species.name}!`, body: 'Your companion is dueling it — finish it with a well-timed ball.', speciesId: w.species.id, ttl: 3 });
-          break;
-        }
+        case 'duelStart': break;
         case 'faint': break;
         case 'autoCaught': {
           const e = eco.byId.get(ev.entityId);
@@ -846,11 +1086,7 @@ export class GameSession {
           if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, true); }
           break;
         }
-        case 'guardianDefends': {
-          const sp = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'warn', title: `${sp.name} defends its group!`, body: 'Guardians strike back when you catch their kin — stay alert.', speciesId: sp.id, ttl: 4 });
-          break;
-        }
+        case 'guardianDefends': break;
         case 'recovered': break;
         case 'feedChatter': {
           // soft nibble-cries from a grazing school, carrying only a short distance
@@ -900,14 +1136,12 @@ export class GameSession {
         case 'bossDeflect': {
           Audio.escape();
           this.pushFx('hit', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size);
-          if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 6; store.pushToast({ kind: 'warn', title: `The ball glanced off ${ev.entity.species.name}!`, body: 'Bosses can only be defeated by your companions\' moves.', speciesId: ev.entity.species.id, ttl: 4 }); }
           break;
         }
         case 'shake': Audio.ballShake(ev.index); break;
         case 'miss': Audio.miss(); break;
         case 'escaped': {
           Audio.escape(); this.pushFx('escape', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size);
-          store.pushToast({ kind: 'miss', title: `${ev.entity.species.name} broke free!`, body: `Catch chance was ${Math.round(ev.p * 100)}%`, speciesId: ev.entity.species.id, ttl: 3 });
           break;
         }
         case 'caught': this.onCaught(ev.entity); break;
@@ -922,7 +1156,6 @@ export class GameSession {
         case 'skyEscaped': {
           const sp = getSpecies(ev.speciesId);
           Audio.escape(); this.pushFx('escape', ev.ball.x, ev.ball.y, ev.ball.z, sp.size);
-          store.pushToast({ kind: 'miss', title: `${sp.name} broke free and fled!`, body: `Catch chance was ${Math.round(ev.p * 100)}%`, speciesId: sp.id, ttl: 3 });
           break;
         }
       }
@@ -932,6 +1165,7 @@ export class GameSession {
   /** A sky Pokémon joins the Collection — never the reef party, never mission credit. */
   private onSkyCaught(speciesId: string, at: { x: number; y: number; z: number }, byCompanion = false) {
     const store = useStore.getState();
+    this.tutObs.caughtSky++;
     const sp = getSpecies(speciesId);
     Audio.catchSuccess();
     Audio.playCry(sp.dexId, 0.5, 0.25);
@@ -962,10 +1196,6 @@ export class GameSession {
       if (!e || e.state === 'ko' || e.state === 'removed') continue;
       const atSurface = e.y > -Math.max(0.8, e.species.size * 0.5);
       if (!atSurface) { this.surfaceDrainAcc.set(id, 0); continue; }
-      if (!this.surfaceHintShown) {
-        this.surfaceHintShown = true;
-        useStore.getState().pushToast({ kind: 'warn', title: 'Your companions can\'t breathe air!', body: `They lose ${SKY.COMPANION_SURFACE_HP_DRAIN} HP/s above the waves — pick your sky battles wisely.`, ttl: 6 });
-      }
       // suffocation drain, applied in whole-HP chunks
       let acc = (this.surfaceDrainAcc.get(id) ?? 0) + SKY.COMPANION_SURFACE_HP_DRAIN * dt;
       if (acc >= 1) { const chunk = Math.floor(acc); acc -= chunk; eco.damageAbs(e, chunk, -1); }
@@ -1070,11 +1300,7 @@ export class GameSession {
           store.pushToast({ kind: 'event', title: `A wild ${sp.name} crosses the sky!`, body: "Surface and look up — it won't stay long…", speciesId: sp.id, ttl: 6 });
           break;
         }
-        case 'legendaryVanish': {
-          const sp = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'info', title: `${sp.name} vanished beyond the horizon`, body: 'Legends never linger.', speciesId: sp.id, ttl: 4 });
-          break;
-        }
+        case 'legendaryVanish': break;
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true);
@@ -1097,6 +1323,7 @@ export class GameSession {
 
   private onCaught(e: Entity, byCompanion = false) {
     const store = useStore.getState();
+    this.tutObs.caughtWater++;
     Audio.catchSuccess();
     Audio.playCry(e.species.dexId, 0.5, 0.25); // every catch is greeted by the Pokémon's own cry
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
@@ -1234,12 +1461,16 @@ export class GameSession {
 
   private updateHints(dt: number) {
     const store = useStore.getState();
+    // the tutorial banner IS the hint while it runs — never two instructions at once.
+    // And once the tutorial has been completed (or skipped), the hints retire for good:
+    // the tutorial covers every control a player needs.
+    if (this.tutorial || store.save.settings.tutorialDone) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     if (!store.save.settings.showHints) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     this.hintTimer += dt;
     const isTouch = store.isTouch;
     let hint: string | null = null;
-    if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Tap the throw button to catch the Pokémon in front of you' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
-    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Tap a ball in the tray to switch balls · Better balls catch better' : 'Press 1–4 or right-click to switch balls · E for a lure · Tab for the mission';
+    if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Touch the Poké Ball and drag to aim — release to throw' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
+    else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Pull further to throw harder · drag up to reach the sky' : 'Balls pick themselves — press 1–4 to override · Tab for the mission';
     else if (this.hintStep === 1) { this.hintStep = 2; }
     if (hint !== store.hud.hint) store.setHud({ hint });
   }

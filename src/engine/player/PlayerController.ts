@@ -23,11 +23,18 @@ export class PlayerController {
   pitch = 0;      // radians
   speed = 0;
   swayT = 0;
+  /** Sustained-movement timer driving auto-sprint (no sprint button needed). */
+  sustainT = 0;
+  /** Auto-sprint latch with hysteresis: engages after AUTO_SPRINT_AFTER, and only lets go
+   *  once the timer has drained well below it — joystick re-grips never cause speed sags. */
+  private autoSprint = false;
+  private maxCur: number = GAME.SWIM_SPEED;
   sensitivity = 0.0022;
   invertY = false;
 
   reset(x: number, y: number, z: number, yaw = 0) {
     this.x = x; this.y = y; this.z = z; this.vx = this.vy = this.vz = 0; this.yaw = yaw; this.pitch = 0;
+    this.sustainT = 0; this.autoSprint = false; this.maxCur = GAME.SWIM_SPEED;
   }
 
   update(dt: number, input: InputState, obstacles: Obstacle[]) {
@@ -43,13 +50,26 @@ export class PlayerController {
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     const fx = -sy * cp, fy = sp, fz = -cy * cp;
     const rx = cy, rz = -sy;
-    const max = input.sprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
+    // Auto-sprint, one rule only: keep swimming for AUTO_SPRINT_AFTER seconds and you speed
+    // up — exactly like the old sprint button, just held for you. Stop, and drag slows you.
+    const mag = Math.hypot(input.forward, input.strafe, input.up);
+    this.sustainT = mag > 0.5
+      ? Math.min(GAME.AUTO_SPRINT_AFTER + 0.5, this.sustainT + dt)
+      : Math.max(0, this.sustainT - 1.5 * dt);
+    if (this.sustainT > GAME.AUTO_SPRINT_AFTER) this.autoSprint = true;
+    else if (this.sustainT < GAME.AUTO_SPRINT_OFF) this.autoSprint = false;
+    const effSprint = input.sprint || this.autoSprint;
+    const targetMax: number = effSprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
+    // speeding up is eager; the cap never snaps down mid-swim
+    const tau = targetMax >= this.maxCur ? GAME.SPEED_RAMP_TAU : GAME.SPEED_RAMP_TAU_DOWN;
+    this.maxCur += (targetMax - this.maxCur) * (1 - Math.exp(-dt / tau));
+    const max = this.maxCur;
     let ax = fx * input.forward + rx * input.strafe;
     let ay = fy * input.forward + input.up * 0.85;
     let az = fz * input.forward + rz * input.strafe;
     const al = Math.hypot(ax, ay, az);
     if (al > 1) { ax /= al; ay /= al; az /= al; }
-    const accel = input.sprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
+    const accel = effSprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
     this.vx += ax * accel * dt; this.vy += ay * accel * dt; this.vz += az * accel * dt;
     // Damping (water resistance)
     const damp = Math.exp(-GAME.SWIM_DAMPING * dt);

@@ -54,7 +54,7 @@ export class BallSystem {
   events: BallEvent[] = [];
   private nextId = 1;
 
-  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed = GAME.THROW_SPEED): Ball {
+  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED): Ball {
     const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '' };
     this.balls.push(b);
     this.events.push({ type: 'thrown', ball: b });

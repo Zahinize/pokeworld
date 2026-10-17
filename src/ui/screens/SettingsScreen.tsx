@@ -24,6 +24,10 @@ export function SettingsView({ onClose, embedded = false }: { onClose: () => voi
       <div className="setting"><div className="l"><b>Invert look Y</b><span>Flip vertical mouse / touch look</span></div><Switch on={settings.invertY} label="Invert Y" onChange={(v) => setSettings({ invertY: v })} /></div>
       <div className="setting"><div className="l"><b>Graphics quality</b><span>Particles, kelp and coral density · Auto picks by device</span></div><Segmented value={settings.quality} options={[{ value: 'auto', label: 'Auto' }, { value: 'high', label: 'High' }, { value: 'medium', label: 'Med' }, { value: 'low', label: 'Low' }]} onChange={(v) => setSettings({ quality: v })} /></div>
       <div className="setting"><div className="l"><b>Hints</b><span>Short on-screen tips for new trainers</span></div><Switch on={settings.showHints} label="Hints" onChange={(v) => setSettings({ showHints: v })} /></div>
+      <div className="setting">
+        <div className="l"><b>Tutorial</b><span>{settings.tutorialDone ? 'Replay the first-dive walkthrough' : 'Plays on your next Level 1 dive'}</span></div>
+        <button className="btn ghost" style={{ minHeight: 36 }} disabled={!settings.tutorialDone} onClick={() => { Audio.uiClick(); setSettings({ tutorialDone: false }); }}>Replay tutorial</button>
+      </div>
       <div className="setting"><div className="l"><b>Reduced motion</b><span>Disable camera sway</span></div><Switch on={settings.reducedMotion} label="Reduced motion" onChange={(v) => setSettings({ reducedMotion: v })} /></div>
       <div className="setting"><div className="l"><b>Trainer</b><span>Your avatar across the game</span></div><Segmented value={trainerId ?? 'ash'} options={TRAINERS.map((t) => ({ value: t.id, label: `${t.avatar} ${t.name}` }))} onChange={(v) => selectTrainer(v)} /></div>
       <div className="setting">

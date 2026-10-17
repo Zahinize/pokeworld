@@ -53,6 +53,250 @@ for (const levelId of [1, 2]) {
   ok(`level ${levelId} within budgets`);
 }
 
+// ---- Slingshot preview must match the real ball EXACTLY; auto-sprint stays simple ----
+{
+  const { previewBallPath, computeThrowOrigin, THROW_LIFT } = await import('@/engine/sim/ballPreview');
+  const { BallSystem } = await import('@/engine/sim/balls');
+  const { PlayerController } = await import('@/engine/player/PlayerController');
+  const { GAME } = await import('@/data/gameConfig');
+  const ecoStub = { hash: { query() {} }, obstacles: [], byId: new Map() } as any;
+
+  // preview vs real flight: identical integrator at the same dt
+  const cases: [string, number, number, number, number, number, number, number][] = [
+    ['air->water lob', 0, 0.3, 0, 0.4, 0.75, 0.2, 26],
+    ['underwater dart', 0, -10, 0, 0.8, 0.1, 0.4, 26],
+    ['soft short lob', 0, -4, 0, 0.6, 0.5, 0.2, 26 * 0.55],
+    ['max power sky shot', 0, 0.2, 0, 0.1, 0.9, 0.1, 26 * 1.25],
+  ];
+  let worstSame = 0, worstCoarse = 0;
+  for (const [, ox, oy, oz, dx, dy, dz, speed] of cases) {
+    const balls = new BallSystem();
+    const b = balls.throw('pokeball', ox, oy, oz, dx, dy + THROW_LIFT, dz, speed);
+    // the preview returns a view into a REUSED buffer — copy before calling it again
+    const fineRes = previewBallPath(ox, oy, oz, dx, dy, dz, speed, { steps: 90, dt: 1 / 60 });
+    const fine = { pts: fineRes.pts.slice(0, fineRes.n * 3), n: fineRes.n };
+    const coarse = previewBallPath(ox, oy, oz, dx, dy, dz, speed, { steps: 45, dt: 1 / 30 });
+    for (let i = 0; i < 90; i++) {
+      balls.update(1 / 60, ecoStub, null);
+      if (b.state !== 'flying') break;
+      if (i < fine.n) worstSame = Math.max(worstSame, Math.hypot(b.x - fine.pts[i * 3], b.y - fine.pts[i * 3 + 1], b.z - fine.pts[i * 3 + 2]));
+      if (i % 2 === 1 && (i - 1) / 2 < coarse.n) {
+        const j = (i - 1) / 2;
+        worstCoarse = Math.max(worstCoarse, Math.hypot(b.x - coarse.pts[j * 3], b.y - coarse.pts[j * 3 + 1], b.z - coarse.pts[j * 3 + 2]));
+      }
+    }
+  }
+  if (worstSame < 1e-4) ok(`sling: preview is exact at matched dt (worst ${worstSame.toExponential(1)}m — float noise only)`);
+  else fail(`sling: preview diverges at matched dt (${worstSame}m) — integrator mismatch`);
+  if (worstCoarse < 0.3) ok(`sling: 30hz preview within ${worstCoarse.toFixed(2)}m of the real flight (ball radius 0.3)`);
+  else fail(`sling: coarse preview off by ${worstCoarse.toFixed(2)}m (> 0.3) — more than step-size error`);
+
+  // auto-sprint, one rule: cruise for the first 2s of movement, then sprint — nothing else
+  // (no wild-Pokémon condition) ever touches the speed; stopping decays through water drag
+  const pc = new PlayerController();
+  pc.reset(0, -10, 0, 0);
+  const inp = { forward: 1, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
+  let early = 0, late = 0, jolt = 0, prevSpeed = 0;
+  for (let i = 0; i < 60 * 6; i++) {
+    pc.update(1 / 60, inp, []);
+    if (i === 60 * 1.7) early = pc.speed;        // 1.7s in: still cruising
+    if (i === 60 * 5) late = pc.speed;           // 5s in: fully auto-sprinting
+    jolt = Math.max(jolt, Math.abs(pc.speed - prevSpeed));
+    prevSpeed = pc.speed;
+  }
+  if (early < GAME.SWIM_SPEED + 0.4 && late > GAME.SWIM_SPRINT - 0.6) ok(`sprint: auto-ramps ${early.toFixed(1)} -> ${late.toFixed(1)} m/s after ${GAME.AUTO_SPRINT_AFTER}s of movement`);
+  else fail(`sprint: ramp wrong (early ${early.toFixed(1)}, late ${late.toFixed(1)})`);
+  if (jolt < 0.5) ok(`sprint: no speed jolts (max frame delta ${jolt.toFixed(3)} m/s)`);
+  else fail(`sprint: jolt detected (${jolt.toFixed(2)} m/s in one frame)`);
+  // stopping decays smoothly through water drag (the feel the design keeps)
+  const still = { ...inp, forward: 0 };
+  let stopJolt = 0;
+  for (let i = 0; i < 60 * 2; i++) { pc.update(1 / 60, still, []); stopJolt = Math.max(stopJolt, Math.abs(pc.speed - prevSpeed)); prevSpeed = pc.speed; }
+  if (pc.speed < 0.3 && stopJolt < 0.5) ok(`sprint: stopping drifts to rest (${pc.speed.toFixed(2)} m/s after 2s, max delta ${stopJolt.toFixed(2)})`);
+  else fail(`sprint: stop feel broken (speed ${pc.speed.toFixed(2)}, jolt ${stopJolt.toFixed(2)})`);
+  for (let i = 0; i < 60 * 4; i++) pc.update(1 / 60, inp, []); // back to sprint for the wiggle test
+
+  // hysteresis: joystick re-grips (brief input dips) must never sag the speed mid-swim
+  let low = Infinity;
+  for (let i = 0; i < 60 * 2; i++) {
+    const dip = (i % 12) < 3; // let go ~50ms of every 200ms, like a thumb re-centering
+    pc.update(1 / 60, { ...inp, forward: dip ? 0.2 : 1 }, []);
+    low = Math.min(low, pc.speed);
+  }
+  // (thrust dips still cost a little speed to water drag — that's physics; what hysteresis
+  //  guarantees is the sprint never UNLATCHES, which would re-ramp from cruise 5.5)
+  if (low > GAME.SWIM_SPEED + 1) ok(`sprint: joystick re-grips keep the sprint latched (lowest ${low.toFixed(1)} m/s, cruise is ${GAME.SWIM_SPEED})`);
+  else fail(`sprint: speed sagged to ${low.toFixed(1)} during input wiggles — hysteresis broken`);
+
+  // touch hand throw: launches low-right but converges EXACTLY onto the aim ray at THROW_FOCUS
+  const { computeThrow } = await import('@/engine/sim/ballPreview');
+  const pl = { x: 12, y: -8, z: -30, yaw: 0.7 };
+  for (const [adx, ady, adz] of [[0, 0, -1], [0.5, 0.6, -0.62], [-0.7, 0.1, -0.7]] as const) {
+    const L0 = Math.hypot(adx, ady, adz);
+    const [nx, ny, nz] = [adx / L0, ady / L0, adz / L0];
+    const t = computeThrow(pl, nx, ny, nz, true);
+    const fx = pl.x + nx * GAME.THROW_FOCUS, fy = pl.y + ny * GAME.THROW_FOCUS, fz = pl.z + nz * GAME.THROW_FOCUS;
+    const reach = Math.hypot(fx - t.origin[0], fy - t.origin[1], fz - t.origin[2]);
+    const hx = t.origin[0] + t.dir[0] * reach, hy = t.origin[1] + t.dir[1] * reach, hz = t.origin[2] + t.dir[2] * reach;
+    const miss = Math.hypot(hx - fx, hy - fy, hz - fz);
+    if (miss > 1e-6) fail(`sling: touch throw misses the focus point by ${miss}m`);
+    const d = computeThrow(pl, nx, ny, nz, false);
+    const [cox, coy, coz] = computeThrowOrigin(pl, nx, ny, nz);
+    if (Math.hypot(d.origin[0] - cox, d.origin[1] - coy, d.origin[2] - coz) > 0 || d.dir[0] !== nx || d.dir[1] !== ny || d.dir[2] !== nz) {
+      fail('sling: desktop computeThrow is not byte-identical to the original origin/dir');
+    }
+  }
+  ok(`sling: touch throws converge exactly on the aim ray at ${GAME.THROW_FOCUS}m; desktop path untouched`);
+
+  // Angry-Birds dots: evenly spaced along the WHOLE flight, ending at the landing spot
+  const { previewDots } = await import('@/engine/sim/ballPreview');
+  const { floorY } = await import('@/engine/world/terrain');
+  const dots = previewDots(0, -10, 0, 0.74, 0.1, 0.66, 26, {});
+  let gapErr = 0;
+  for (let i = 1; i < dots.n - 1; i++) {
+    const g = Math.hypot(
+      dots.pts[i * 3] - dots.pts[(i - 1) * 3],
+      dots.pts[i * 3 + 1] - dots.pts[(i - 1) * 3 + 1],
+      dots.pts[i * 3 + 2] - dots.pts[(i - 1) * 3 + 2],
+    );
+    gapErr = Math.max(gapErr, Math.abs(g - GAME.SLING_DOT_SPACING));
+  }
+  const li = (dots.n - 1) * 3;
+  const landY = dots.pts[li + 1];
+  const rested = landY <= floorY(dots.pts[li], dots.pts[li + 2]) + 0.35 || Math.abs(landY - 0.05) < 1e-6;
+  if (dots.n > 15 && gapErr < 0.01 && rested) ok(`sling: ${dots.n} aiming dots, even ${GAME.SLING_DOT_SPACING}m apart (err ${gapErr.toFixed(3)}), last dot IS the landing`);
+  else fail(`sling: dot chain wrong (n ${dots.n}, gap err ${gapErr.toFixed(3)}, rested ${rested})`);
+
+  // screen-proportional mode: gaps grow with eye distance (dense out of the hand), all clamped
+  const ad = previewDots(0.8, -10.4, -0.5, 0.74, 0.1, 0.66, 26, { eye: [0, -10, 0] });
+  let firstGap = 0, maxGap = 0, outOfClamp = 0;
+  for (let i = 1; i < ad.n - 1; i++) {
+    const g = Math.hypot(ad.pts[i * 3] - ad.pts[(i - 1) * 3], ad.pts[i * 3 + 1] - ad.pts[(i - 1) * 3 + 1], ad.pts[i * 3 + 2] - ad.pts[(i - 1) * 3 + 2]);
+    if (i === 1) firstGap = g;
+    maxGap = Math.max(maxGap, g);
+    if (g < GAME.SLING_DOT_GAP_MIN - 0.02 || g > GAME.SLING_DOT_GAP_MAX + 0.02) outOfClamp++;
+  }
+  if (firstGap < 0.45 && maxGap > 1.3 && outOfClamp === 0) ok(`sling: screen-even dots — ${firstGap.toFixed(2)}m gaps out of the hand growing to ${maxGap.toFixed(2)}m far out, all clamped`);
+  else fail(`sling: adaptive spacing wrong (first ${firstGap.toFixed(2)}, max ${maxGap.toFixed(2)}, out-of-clamp ${outOfClamp})`);
+}
+
+// ---- Attract mode: the menu's cinematic lap is smooth, grounded, and shows reef AND sky ----
+{
+  const { buildDemoPath, demoPose, buildArcLUT, arcT } = await import('@/engine/sim/demoPath');
+  const { DEMO, DEMO_LEVEL } = await import('@/data/demo');
+  const { floorY } = await import('@/engine/world/terrain');
+  for (const seed of [11, 77, 1234]) {
+    const gen = generateEcosystem(DEMO_LEVEL, seed);
+    const path = buildDemoPath(gen);
+    const lut = buildArcLUT(path);
+    const loopS = Math.max(DEMO.MIN_LOOP_S, Math.min(DEMO.MAX_LOOP_S, lut[lut.length - 1] / DEMO.CRUISE));
+    const N = 600;
+    let minY = Infinity, maxY = -Infinity, maxSpeed = 0, clip = 0, bad = 0;
+    let prev = { ...demoPose(path, arcT(lut, 0)) };
+    const first = { ...prev };
+    for (let i = 1; i <= N; i++) {
+      const po = demoPose(path, arcT(lut, (i % N) / N));
+      if (![po.x, po.y, po.z, po.yaw, po.pitch].every(Number.isFinite)) bad++;
+      minY = Math.min(minY, po.y); maxY = Math.max(maxY, po.y);
+      if (po.y < 0 && po.y < floorY(po.x, po.z) + 1.2) clip++;
+      maxSpeed = Math.max(maxSpeed, Math.hypot(po.x - prev.x, po.y - prev.y, po.z - prev.z) / (loopS / N));
+      prev = { ...po };
+    }
+    const seam = Math.hypot(prev.x - first.x, prev.y - first.y, prev.z - first.z);
+    // arc-length pacing: never faster than cruise + the clamps' vertical adjustments
+    if (bad || clip || seam > 0.5 || maxSpeed > DEMO.CRUISE * 1.5 || minY > -8 || maxY < 1) {
+      fail(`demo seed ${seed}: path broken (NaN ${bad}, floor clips ${clip}, seam ${seam.toFixed(2)}m, vmax ${maxSpeed.toFixed(2)}, y ${minY.toFixed(1)}..${maxY.toFixed(1)})`);
+    } else {
+      ok(`demo seed ${seed}: ${loopS.toFixed(0)}s lap at <= ${maxSpeed.toFixed(1)} m/s, reef ${minY.toFixed(0)}m to surface ${maxY.toFixed(1)}m, closed loop`);
+    }
+  }
+  // the showcase cast: a packed reef the camera can't look away from, still cheap per frame
+  {
+    const gen = generateEcosystem(DEMO_LEVEL, 42);
+    const eco = new Ecosystem(gen, hp);
+    const n0 = eco.alive.length;
+    const preds = eco.alive.filter((e) => e.behavior === 'predator').length;
+    const pstub = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0.4, lureActive: false };
+    // run 3 demo minutes with the menu's hunt haste, counting completed hunts
+    const haste = (DEMO.HUNT_HASTE - 1) / 60;
+    let hunts = 0;
+    const t0 = performance.now();
+    for (let i = 0; i < 60 * 180; i++) {
+      for (const e of eco.alive) if (e.huntCooldown > 3 && (e.behavior === 'predator' || e.species.secondary.includes('predator'))) e.huntCooldown -= haste;
+      eco.update(1 / 60, pstub, 0);
+      for (const ev of eco.drainEvents()) if (ev.type === 'huntEnd') hunts++;
+    }
+    const msPerStep = (performance.now() - t0) / (60 * 180);
+    const alive = eco.alive.filter((e) => e.state !== 'ko' && e.state !== 'removed').length;
+    if (n0 >= 80 && preds >= 6 && hunts >= 15 && alive >= 60 && msPerStep < 0.35) {
+      ok(`demo cast: ${n0} Pokémon, ${preds} predators, ${hunts} hunts in 3 demo minutes, ${alive} still alive (reinforced), ${msPerStep.toFixed(3)} ms/step`);
+    } else {
+      fail(`demo cast wrong (${n0} entities, ${preds} predators, ${hunts} hunts, ${alive} alive, ${msPerStep.toFixed(3)} ms/step)`);
+    }
+  }
+}
+
+// ---- Auto ball selection: right tier for the target, Master Balls stay precious ----
+{
+  const { pickBall, idealBall } = await import('@/engine/sim/autoBall');
+  const sp = (over: Record<string, unknown>) => ({ rarity: 'common', stage: 0, skyOnly: false, ...over }) as any;
+  const skyLegend = sp({ skyOnly: true, rarity: 'legendary' });
+  const rare = sp({ rarity: 'rare' });
+  const stage1 = sp({ stage: 1 });
+  const full = { pokeball: 8, greatball: 4, ultraball: 3, masterball: 2 };
+  const cases: [string, any, Record<string, number>, string][] = [
+    ['no target → pokeball', null, full, 'pokeball'],
+    ['sky legendary → masterball', skyLegend, full, 'masterball'],
+    ['sky legendary, masters gone → walks DOWN to ultra', skyLegend, { ...full, masterball: 0 }, 'ultraball'],
+    ['rare → ultraball', rare, full, 'ultraball'],
+    ['rare, ultras gone → SKIPS master, walks down to great', rare, { ...full, ultraball: 0 }, 'greatball'],
+    ['stage1 → greatball', stage1, full, 'greatball'],
+    ['common, pokeballs gone → walks UP to great', sp({}), { ...full, pokeball: 0 }, 'greatball'],
+    ['only masters left → last resort master', sp({}), { pokeball: 0, greatball: 0, ultraball: 0, masterball: 1 }, 'masterball'],
+  ];
+  let bad = 0;
+  for (const [label, species, inv, want] of cases) {
+    const got = pickBall(species, inv as any);
+    if (got !== want) { bad++; fail(`autoBall: ${label} — got ${got}, wanted ${want}`); }
+  }
+  if (idealBall(sp({ stage: 2 })) !== 'ultraball') { bad++; fail('autoBall: stage2 ideal should be ultraball'); }
+  if (!bad) ok(`autoBall: all ${cases.length + 1} pick cases correct (legendary→master, stock-walk skips master, null→poke)`);
+}
+
+// ---- First-run tutorial: full walk, both sky fallbacks, water-catch emphasis ----
+{
+  const { createTutorial, advanceTutorial } = await import('@/engine/sim/tutorial');
+  const { TUTORIAL } = await import('@/data/tutorial');
+  const base = { moved: 0, wildNearDist: Infinity, playerY: -20, pitch: 0, skyBirdNear: false, threwWater: false, threwSky: false, caughtWater: 0, caughtSky: 0 };
+  const run = (t: any, o: object, frames = 1) => { for (let i = 0; i < frames; i++) advanceTutorial(t, { ...base, ...o } as any, 1 / 30); };
+  // happy path — the emphasis: TWO water catches before the sky is even mentioned
+  const t = createTutorial();
+  const got: string[] = [];
+  run(t, { moved: 0.3 }, 40); got.push(t.step);                       // 12m swum
+  run(t, { wildNearDist: 8 }); got.push(t.step);                      // wild spotted
+  run(t, { threwWater: true }); got.push(t.step);                     // first throw
+  run(t, { caughtWater: 1 }); got.push(t.step);                       // 1/2 — still catching
+  run(t, { caughtWater: 1 }); got.push(t.step);                       // 2/2
+  run(t, { playerY: -1 }); got.push(t.step);                          // surfaced
+  run(t, { skyBirdNear: true, pitch: 0.4 }, 60); got.push(t.step);    // 2s of sky-watching
+  run(t, { threwSky: true }); got.push(t.step);                       // the discovery throw
+  const want = ['spotWater', 'throwWater', 'catchWater', 'catchWater', 'surface', 'spotSky', 'skyThrow', 'done'];
+  if (got.join() === want.join()) ok(`tutorial: happy path walks all 8 transitions (${TUTORIAL.CATCH_COUNT} water catches required)`);
+  else fail(`tutorial: happy path broke — ${got.join(' → ')}`);
+  // fallbacks: an empty sky and an ignored optional throw both advance on their own
+  const t2 = createTutorial(); t2.step = 'spotSky';
+  run(t2, {}, Math.ceil((TUTORIAL.SKY_TIMEOUT + 1) * 30));
+  const afterEmptySky = t2.step;
+  run(t2, {}, Math.ceil((TUTORIAL.SKY_THROW_TIMEOUT + 1) * 30));
+  if (afterEmptySky === 'skyThrow' && t2.step === 'done') ok(`tutorial: empty-sky (${TUTORIAL.SKY_TIMEOUT}s) and optional-throw (${TUTORIAL.SKY_THROW_TIMEOUT}s) fallbacks advance`);
+  else fail(`tutorial: fallbacks broken (${afterEmptySky}, then ${t2.step})`);
+  // overachiever: catches before/at the throw step count — never nag a player who already caught
+  const t3 = createTutorial(); t3.step = 'throwWater';
+  run(t3, { caughtWater: 2 });
+  if (t3.step === 'surface') ok('tutorial: early catches skip straight past catchWater');
+  else fail(`tutorial: early catches mishandled (${t3.step})`);
+}
+
 // ---- FEED: calm groups graze; threats cancel instantly; feeding fish are easier to catch ----
 {
   const { GAME } = await import('@/data/gameConfig');

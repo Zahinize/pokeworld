@@ -61,7 +61,11 @@ a { color: var(--aqua); }
 @keyframes ping { 0% { transform: scale(.6); opacity: .9 } 100% { transform: scale(2.4); opacity: 0 } }
 
 /* ---------- Layout primitives ---------- */
-.screen { position: fixed; inset: 0; display: grid; place-items: center; padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom)); overflow: auto; }
+.screen { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom)); overflow: auto; }
+/* Attract mode: the live reef canvas floats between the static backdrop and the menu UI */
+.demo-scene { position: fixed; inset: 0; z-index: 1; animation: demoIn 1.6s ease both; }
+.demo-scene .demo-scrim { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 12, 26, .48) 0%, rgba(3, 12, 26, .12) 28%, rgba(3, 12, 26, .12) 68%, rgba(3, 12, 26, .55) 100%); }
+@keyframes demoIn { from { opacity: 0; } to { opacity: 1; } }
 .screen-inner { width: min(100%, 960px); animation: fadeUp .5s ease both; }
 .glass { background: var(--panel); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
 .glass.strong { background: var(--panel-strong); }
@@ -137,6 +141,15 @@ a { color: var(--aqua); }
 
 /* ---------- Level cards ---------- */
 .level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+/* World picker: minimal cards — an icon medallion, the name, one status pill. The blurb lives in the tooltip. */
+.world-card { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 16px 20px; text-align: center; }
+.world-card .wicon { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: rgba(53,208,255,.1); border: 1px solid rgba(53,208,255,.28); color: var(--aqua); transition: box-shadow .2s, transform .15s ease; }
+.world-card b { font-family: var(--font-display); font-size: 16.5px; color: var(--text); letter-spacing: .01em; }
+.world-card.open { border-color: rgba(53,208,255,.4); box-shadow: 0 0 22px rgba(53,208,255,.1); }
+.world-card.open:hover { border-color: rgba(53,208,255,.6); box-shadow: 0 0 30px rgba(53,208,255,.22); }
+.world-card.open:hover .wicon { box-shadow: 0 0 18px rgba(53,208,255,.4); transform: scale(1.06); }
+.world-card.locked .wicon { background: rgba(255,255,255,.05); border-color: var(--line); color: var(--dim); }
+.world-card.locked b { color: var(--muted); }
 .level-num { font-family: var(--font-display); font-weight: 900; font-size: 42px; line-height: 1; color: var(--aqua); }
 .level-card h3 { font-family: var(--font-display); font-size: 17px; margin: 6px 0 2px; }
 
@@ -163,7 +176,21 @@ a { color: var(--aqua); }
 .hud-top-left { position: absolute; top: calc(14px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: min(340px, calc(100vw - 28px)); }
 .hud-top-right { position: absolute; top: calc(14px + var(--safe-top)); right: calc(14px + var(--safe-right)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .hud-bottom { position: absolute; bottom: calc(14px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 14px; }
-.hud-hint { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(16px + var(--safe-bottom)); max-width: 360px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,.3); border: 1px solid var(--line); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(10px); animation: fadeUp .4s ease both; }
+.hud-hint { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(64px + var(--safe-bottom)); max-width: 360px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,.3); border: 1px solid var(--line); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(10px); animation: fadeUp .4s ease both; }
+/* First-run tutorial banner: top-center, one instruction at a time (regular hints stay hidden) */
+.tutorial-banner { position: absolute; top: calc(16px + var(--safe-top)); left: 50%; transform: translate(-50%, 0); width: max-content; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 18px; max-width: min(560px, calc(100vw - 32px)); animation: tutIn .3s ease both; }
+@keyframes tutIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.tutorial-banner .dots { display: flex; gap: 4px; flex: none; }
+.tutorial-banner .dots i { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.18); }
+.tutorial-banner .dots i.past { background: var(--aqua); opacity: .55; }
+.tutorial-banner .dots i.cur { background: var(--aqua); box-shadow: 0 0 8px rgba(53,208,255,.8); }
+.tutorial-banner .txt { font-size: 13.5px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.tutorial-banner .skip { flex: none; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--dim); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
+.tutorial-banner .skip:hover { color: var(--text); border-color: var(--line-strong); }
+.tutorial-banner.done { border-color: rgba(53,208,255,.5); box-shadow: 0 0 24px rgba(53,208,255,.25); }
+.hud.touch .tutorial-banner { top: calc(118px + var(--safe-top)); padding: 7px 12px; gap: 8px; max-width: calc(100vw - 24px); }
+.hud.touch .tutorial-banner .txt { font-size: 12px; }
+.hud.touch .tutorial-banner .dots i { width: 5px; height: 5px; }
 .mission-panel { padding: 12px 14px; }
 .mission-panel .head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
 .mission-panel .head .lvl { font-family: var(--font-display); font-weight: 900; letter-spacing: .08em; font-size: 12.5px; color: var(--aqua); }
@@ -193,22 +220,15 @@ a { color: var(--aqua); }
 .target-arrow i { position: absolute; left: -7px; top: -70px; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 12px solid var(--gold); filter: drop-shadow(0 0 6px rgba(255,209,102,.8)); }
 .target-label { position: absolute; left: 50%; top: calc(50% + 92px); transform: translateX(-50%); display: flex; align-items: center; gap: 8px; white-space: nowrap; font-size: 12.5px; font-weight: 700; color: var(--gold); text-shadow: 0 1px 4px rgba(0,0,0,.8); }
 .target-label img { width: 28px; height: 28px; }
-.ball-tray { display: flex; align-items: flex-end; gap: 8px; padding: 10px 12px; border-radius: 20px; }
-.ball-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 8px; border-radius: 14px; min-width: 62px; border: 1px solid transparent; transition: background .2s, border-color .2s, transform .15s; color: var(--muted); font-size: 11px; font-weight: 700; }
-.ball-btn:hover { background: rgba(255,255,255,.06); }
-.ball-btn.selected { background: rgba(255,255,255,.1); border-color: var(--line-strong); color: var(--text); transform: translateY(-3px); }
-.ball-btn.empty { opacity: .4; }
-.ball-btn .count { font-family: var(--font-display); font-weight: 900; font-size: 15px; color: var(--text); }
-.ball-btn .key { font-size: 10px; color: var(--dim); }
+/* one ball chip replaces the whole tray: the auto-picked ball + stock; tap cycles & pins, hold returns to AUTO */
+.ball-chip { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 999px; color: var(--text); transition: background .2s, transform .15s; }
+.ball-chip:hover { background: rgba(255,255,255,.07); }
+.ball-chip:active { transform: scale(.96); }
+.ball-chip .count { font-family: var(--font-display); font-weight: 900; font-size: 16px; }
+.ball-chip .mode { font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--aqua); border: 1px solid rgba(53,208,255,.35); border-radius: 999px; padding: 2px 8px; }
+.ball-chip .mode.pinned { color: var(--gold); border-color: rgba(255,209,102,.45); }
 .pokeball-icon { width: 30px; height: 30px; border-radius: 50%; position: relative; background: linear-gradient(180deg, var(--top, #ee3b4b) 0 46%, #222 46% 54%, #f4f4f4 54%); box-shadow: inset -3px -3px 6px rgba(0,0,0,.25), 0 3px 8px rgba(0,0,0,.4); }
 .pokeball-icon::after { content: ''; position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; background: #f4f4f4; border: 2px solid #222; border-radius: 50%; transform: translate(-50%, -50%); }
-.ball-btn.selected .pokeball-icon { box-shadow: inset -3px -3px 6px rgba(0,0,0,.25), 0 0 0 2px rgba(255,255,255,.25), 0 0 18px rgba(53,208,255,.55); }
-.lure-btn { position: relative; width: 64px; height: 64px; border-radius: 20px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 11px; font-weight: 800; color: var(--text); overflow: hidden; }
-.lure-btn .ring { position: absolute; inset: 0; border-radius: 20px; background: conic-gradient(var(--violet) var(--p, 0%), transparent 0); opacity: .3; }
-.lure-btn.ready .ring { opacity: 0; }
-.lure-btn.ready { box-shadow: 0 0 18px rgba(179,136,255,.45); border-color: rgba(179,136,255,.6); }
-.lure-btn span { position: relative; z-index: 1; }
-.lure-btn .ic { font-size: 20px; }
 .restore-banner { padding: 7px 12px; border-radius: 12px; text-align: right; white-space: nowrap; border-left: 3px solid var(--gold); }
 .restore-banner .eyebrow { color: var(--gold); }
 .restore-banner b { font-family: var(--font-display); font-size: 17px; }
@@ -265,7 +285,7 @@ a { color: var(--aqua); }
 .swap-prompt .txt { text-align: left; }
 .swap-prompt .txt b { display: block; font-size: 13.5px; color: var(--gold); }
 .swap-prompt .txt span { font-size: 12px; color: var(--muted); }
-.hud.touch .swap-prompt { bottom: calc(200px + var(--safe-bottom)); }
+.hud.touch .swap-prompt { bottom: calc(232px + var(--safe-bottom)); } /* clears the control row */
 
 /* Trainer tag under companions */
 .partner-tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 5px; border-radius: 999px; background: rgba(5, 28, 52, .78); border: 2px solid rgba(255, 209, 102, .85); box-shadow: 0 0 14px rgba(255, 209, 102, .55), inset 0 0 8px rgba(255, 209, 102, .18); white-space: nowrap; transform: translateZ(0); animation: tagGlow 2.2s ease-in-out infinite; }
@@ -275,12 +295,13 @@ a { color: var(--aqua); }
 @keyframes tagGlow { 0%, 100% { box-shadow: 0 0 10px rgba(255, 209, 102, .4), inset 0 0 8px rgba(255, 209, 102, .15); } 50% { box-shadow: 0 0 20px rgba(255, 209, 102, .75), inset 0 0 10px rgba(255, 209, 102, .25); } }
 
 /* Player vitals */
-.player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }
+/* desktop: sits on the same baseline as the centered ball chip (chip ~44px tall at bottom 14, this pill ~37px → bottom 18 centers them) */
+.player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(15px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px; width: 200px; }
 .player-hp .ic { font-size: 16px; }
 .player-hp .bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid var(--line); }
 .player-hp .bar i { display: block; height: 100%; border-radius: 999px; transition: width .3s ease; box-shadow: 0 0 10px rgba(53,208,255,.5); }
 .player-hp b { font-size: 12.5px; min-width: 26px; text-align: right; }
-.hud.touch .player-hp { bottom: auto; top: calc(64px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: 150px; padding: 6px 10px; }
+.hud.touch .player-hp { bottom: auto; top: calc(64px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: 128px; padding: 6px 10px; }
 .hit-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 25; background: radial-gradient(ellipse at center, transparent 55%, rgba(244,63,94,.5) 100%); animation: hitFlash .55s ease-out forwards; }
 @keyframes hitFlash { 0% { opacity: 0 } 15% { opacity: 1 } 100% { opacity: 0 } }
 .recovery-overlay { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(4, 22, 42, .55), rgba(2, 8, 18, .85)); animation: fadeUp .4s ease both; pointer-events: auto; }
@@ -329,6 +350,11 @@ a { color: var(--aqua); }
 .ctl-desc { flex: 1; min-width: 0; line-height: 1.3; color: var(--muted); }
 .ctl-desc b { color: var(--text); }
 @media (max-width: 640px) { .controls-prompt .controls-grid { grid-template-columns: 1fr; } }
+/* desktop power-user keys, collapsed by default — the first screen teaches only move + throw */
+details.vet { margin-top: 12px; }
+details.vet summary { cursor: pointer; font-size: 11.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--dim); padding: 4px 2px; user-select: none; list-style-position: inside; }
+details.vet summary:hover { color: var(--muted); }
+details.vet[open] summary { margin-bottom: 10px; }
 
 /* Dive-in prompt */
 .dive-prompt { position: fixed; inset: 0; display: grid; place-items: center; z-index: 30; background: radial-gradient(ellipse at center, rgba(2,10,22,.2), rgba(2,10,22,.6)); cursor: pointer; }
@@ -396,28 +422,50 @@ a { color: var(--aqua); }
 input[type=range] { accent-color: var(--aqua); width: 150px; }
 
 /* Touch controls */
+/* phones play in landscape: the in-game portrait gate, above every HUD layer */
+.rotate-gate { position: fixed; inset: 0; z-index: 46; display: grid; place-items: center; text-align: center; padding: 24px; background: radial-gradient(120% 100% at 50% 18%, #0a2a44 0%, #051a2c 55%, #03101e 100%); animation: fadeUp .25s ease both; }
+.rotate-gate .phone { display: inline-block; animation: tiltPhone 2.2s ease-in-out infinite; transform-origin: 50% 60%; margin-bottom: 18px; filter: drop-shadow(0 0 18px rgba(53,208,255,.4)); }
+.rotate-gate h2 { font-family: var(--font-display); font-size: 24px; margin: 0 0 6px; color: var(--text); }
+.rotate-gate p { margin: 0; font-size: 14.5px; color: var(--muted); }
+@keyframes tiltPhone {
+  0%, 18% { transform: rotate(0deg); }
+  45%, 78% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+/* entering the reef: a deep-sea curtain hides the canvas's first frames, then lifts */
+.scene-curtain { position: fixed; inset: 0; z-index: 24; pointer-events: none; background: radial-gradient(120% 100% at 50% 18%, #0a2a44 0%, #051a2c 55%, #03101e 100%); opacity: 1; transition: opacity .9s ease; }
+.scene-curtain.off { opacity: 0; }
 .touch-controls { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
 .touch-controls .zone-look { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
 .touch-controls .joy { position: absolute; left: calc(26px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,.06); border: 1px solid var(--line-strong); pointer-events: auto; touch-action: none; }
 .touch-controls .joy .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-.touch-controls .tbtn { position: absolute; pointer-events: auto; touch-action: none; width: 58px; height: 58px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px); display: grid; place-items: center; font-size: 20px; color: var(--text); font-weight: 800; user-select: none; -webkit-user-select: none; }
-.touch-controls .tbtn.on { background: rgba(53,208,255,.3); border-color: var(--aqua); }
-.touch-controls .joy { left: calc(18px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
-.touch-controls .tbtn.throw { width: 78px; height: 78px; right: calc(16px + var(--safe-right)); bottom: calc(152px + var(--safe-bottom)); background: radial-gradient(circle at 50% 40%, #ff8a8a, #f43f5e 60%, #c81e3e); border-color: rgba(255,255,255,.4); font-size: 26px; box-shadow: 0 8px 24px rgba(244,63,94,.45); }
-.touch-controls .tbtn.up { right: calc(106px + var(--safe-right)); bottom: calc(198px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch-controls .tbtn.down { right: calc(106px + var(--safe-right)); bottom: calc(130px + var(--safe-bottom)); width: 54px; height: 54px; }
-.touch-controls .tbtn.sprint { left: calc(132px + var(--safe-left)); bottom: calc(232px + var(--safe-bottom)); width: 50px; height: 50px; font-size: 16px; }
+/* the three bottom controls sit on ONE center line (joy center = the line) and lean toward
+   each other — a single control cluster instead of far-flung corners */
+.touch-controls .joy { left: calc(30px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
+.touch-controls .sling-anchor {
+  position: absolute; pointer-events: auto; touch-action: none;
+  width: 78px; height: 78px; border-radius: 50%;
+  right: calc(28px + var(--safe-right)); bottom: calc(139px + var(--safe-bottom)); /* center 178, level with the joystick */
+  background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px);
+  display: grid; place-items: center; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 8px 24px rgba(4, 22, 43, 0.45);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.touch-controls .sling-anchor.drawn { transform: scale(0.92); box-shadow: 0 0 0 4px rgba(53,208,255,.35), 0 8px 24px rgba(53,208,255,.3); border-color: var(--aqua); }
+/* locked on: the drawn shot would hit a wild — red means "throw now" */
+.touch-controls .sling-anchor.hot { border-color: #ff6b6b; box-shadow: 0 0 0 4px rgba(255, 97, 97, .35), 0 0 26px rgba(255, 97, 97, .55); }
+.touch-controls .sling-anchor .sling-count { position: absolute; right: 4px; bottom: 4px; font: 800 12px var(--font-display); color: var(--text); background: rgba(4,22,43,.75); border-radius: 8px; padding: 0 5px; }
 /* HUD adjustments in touch mode */
-.hud.touch .hud-top-left { width: auto; max-width: 190px; }
-.hud.touch .mission-panel.compact { padding: 8px 12px; }
-.hud.touch .mission-panel.compact .head { margin-bottom: 6px; }
-.hud.touch .mission-panel.compact .head .tot { font-size: 16px; }
+.hud.touch .hud-top-left { width: auto; max-width: 162px; }
+.hud.touch .mission-panel.compact { padding: 6px 10px; }
+.hud.touch .mission-panel.compact .head { margin-bottom: 4px; }
+.hud.touch .mission-panel.compact .head .lvl { font-size: 10px; }
+.hud.touch .mission-panel.compact .head .tot { font-size: 13px; }
+.hud.touch .mission-panel.compact .head .tot small { font-size: 10px; }
+.hud.touch .mission-panel.compact .progress { height: 3px; }
 .hud.touch .hud-top-right { align-items: flex-end; }
-.hud.touch .hud-bottom { bottom: calc(10px + var(--safe-bottom)); gap: 8px; }
-.hud.touch .ball-tray { padding: 6px 8px; gap: 4px; border-radius: 16px; }
-.hud.touch .ball-btn { min-width: 48px; padding: 4px 4px; }
-.hud.touch .ball-btn .key { display: none; }
-.hud.touch .lure-btn { width: 56px; height: 56px; border-radius: 16px; }
+.hud.touch .hud-bottom { bottom: calc(158px + var(--safe-bottom)); gap: 8px; } /* chip center ~178: the row's middle control */
+.hud.touch .ball-chip { padding: 6px 12px; gap: 8px; }
 .hud.touch .target-label { top: calc(50% + 70px); }
 .hud.touch .target-ring { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
 .hud.touch .target-arrow i { top: -56px; }
@@ -448,16 +496,11 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .target-arrow i { top: -56px; }
   .target-label { top: calc(50% + 74px); }
   .hud-bottom { gap: 8px; bottom: calc(10px + var(--safe-bottom)); }
-  .ball-btn { min-width: 50px; padding: 4px 5px; }
-  .ball-btn .key { display: none; }
-  /* touch controls: phone sizes, throw centered on the arrow column */
-  /* joystick top aligns with the throw circle top (both 195px up); the centered tray keeps the strip below */
-  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
-  /* arrows + throw sit above the centered ball tray; sprint beside the joystick's top edge */
-  .touch-controls .tbtn.up { bottom: calc(164px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.down { bottom: calc(100px + var(--safe-bottom)); right: calc(100px + var(--safe-right)); }
-  .touch-controls .tbtn.throw { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
-  .touch-controls .tbtn.sprint { left: calc(122px + var(--safe-left)); bottom: calc(158px + var(--safe-bottom)); }
+  .ball-chip { padding: 5px 12px; gap: 7px; }
+  .ball-chip .count { font-size: 13px; }
+  /* touch controls: phone sizes — joystick left thumb, slingshot right thumb, chip centered below */
+  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(26px + var(--safe-left)); }
+  .touch-controls .sling-anchor { bottom: calc(109px + var(--safe-bottom)); right: calc(24px + var(--safe-right)); width: 72px; height: 72px; } /* center 145 */
   /* party box: tiny but fully functional, floating clear above the joystick */
   .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
@@ -478,21 +521,18 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .restore-banner { padding: 4px 8px; }
   .hud.touch .restore-banner .eyebrow { font-size: 8.5px; letter-spacing: .14em; }
   .hud.touch .restore-banner b { font-size: 11px; }
-  /* ball tray + lure: compact, lure vertically centered on the tray */
-  .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(8px + var(--safe-bottom)); }
-  .hud.touch .ball-tray { padding: 4px 6px; gap: 2px; border-radius: 13px; }
-  .hud.touch .ball-btn { min-width: 38px; padding: 2px 3px; gap: 2px; font-size: 9.5px; }
-  .hud.touch .ball-btn .count { font-size: 12px; }
+  /* the single ball chip: compact */
+  .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(127px + var(--safe-bottom)); } /* chip center ~145 */
+  .hud.touch .ball-chip { padding: 4px 10px; gap: 6px; }
+  .hud.touch .ball-chip .count { font-size: 12px; }
+  .hud.touch .ball-chip .mode { font-size: 8.5px; padding: 1px 6px; }
   .hud.touch .pokeball-icon { width: 22px !important; height: 22px !important; }
   .hud.touch .pokeball-icon::after { width: 7px; height: 7px; border-width: 1.5px; }
-  .hud.touch .lure-btn { width: 42px; height: 42px; border-radius: 12px; font-size: 9px; gap: 1px; }
-  .hud.touch .lure-btn .ic { font-size: 14px; }
-  .hud.touch .lure-btn .ring { border-radius: 12px; }
 }
 @media (max-height: 540px) and (orientation: landscape) {
   .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
   /* mission bar: a slim pill matching the player health bar beside it */
-  .hud.touch .hud-top-left { width: 150px; }
+  .hud.touch .hud-top-left { width: 128px; }
   .hud.touch .mission-panel.compact { padding: 4px 12px 6px; border-radius: 999px; }
   .hud.touch .mission-panel .head { margin-bottom: 2px; gap: 6px; }
   .hud.touch .mission-panel .head .lvl { font-size: 9.5px; letter-spacing: .05em; }
@@ -500,17 +540,16 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .mission-panel .head .tot small { font-size: 9px; }
   .hud.touch .mission-panel .progress { height: 3px; border-width: 0; }
   .hud.touch .mission-panel .expand-hint { display: none; }
-  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(172px + var(--safe-left)); width: 132px; padding: 5px 9px; }
+  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(150px + var(--safe-left)); width: 114px; padding: 5px 9px; }
   .hud.touch .player-hp .ic { font-size: 13px; }
   .hud.touch .player-hp .bar { height: 6px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
   .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
-  .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); }
-  .touch-controls .tbtn.up { bottom: calc(92px + var(--safe-bottom)); }
-  .touch-controls .tbtn.down { bottom: calc(28px + var(--safe-bottom)); }
-  .touch-controls .tbtn.throw { bottom: calc(51px + var(--safe-bottom)); }
-  .touch-controls .tbtn.sprint { left: calc(126px + var(--safe-left)); bottom: calc(26px + var(--safe-bottom)); }
+  .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); left: calc(48px + var(--safe-left)); }
+  .touch-controls .sling-anchor { bottom: calc(39px + var(--safe-bottom)); right: calc(40px + var(--safe-right)); } /* center 78 (base 78px ball) */
+  .hud.touch .hud-bottom { bottom: calc(58px + var(--safe-bottom)); } /* chip center ~78: level with joy + ball */
+  .hud.touch .swap-prompt { bottom: calc(132px + var(--safe-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ocean-bg::before, .ocean-bg .ray, .ocean-bg .bubble { animation: none; }

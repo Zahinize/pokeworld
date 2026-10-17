@@ -3,7 +3,9 @@ dist
 .DS_Store
 *.log
 tsconfig.tsbuildinfo
-data
+# the local JSON store written by the api/ dev server — ROOT ONLY: a bare "data"
+# would silently swallow any new file under src/data/ (it ate two source files once)
+/data
 .env
 .env.*.local
 .env.local

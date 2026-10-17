@@ -24,6 +24,8 @@ export interface Toast {
 
 export interface HudState {
   ballType: BallId;
+  /** 'auto' lets the game pick the ball for the current target; manual selection pins. */
+  ballMode: 'auto' | 'pinned';
   lureRemaining: number;
   lureCooldown: number;
   restorationEndsAt: number | null;
@@ -46,6 +48,10 @@ export interface HudState {
   bossIntro: { label: string; bosses: { speciesId: string; shiny: boolean }[]; text: string; final: boolean } | null;
   swapPrompt: { slot: 0 | 1; from: string; to: string } | null;
   hint: string | null;
+  /** The slingshot's predicted flight would hit a wild Pokémon right now (touch). */
+  slingHot: boolean;
+  /** First-run tutorial banner: current step + copy; null once done/skipped. */
+  tutorial: { step: string; text: string; i: number; n: number } | null;
   fps: number;
   ecoSummary: string[];
 }
@@ -55,6 +61,8 @@ interface AppState {
   save: SaveData;
   loadStatus: 'new' | 'loaded' | 'recovered';
   isTouch: boolean;
+  /** Attract mode is loaded and rendering — menu screens float over the live reef. */
+  demoLive: boolean;
   paused: boolean;
   mission: MissionState | null;
   levelId: number;
@@ -88,6 +96,7 @@ interface AppState {
   setOverlay(o: AppState['overlay']): void;
   setCompleteStats(s: AppState['completeStats']): void;
   setIsTouch(v: boolean): void;
+  setDemoLive(v: boolean): void;
   incBallsThrown(): void;
 }
 
@@ -98,11 +107,12 @@ export const useStore = create<AppState>((set, get) => ({
   save: loadGame().save,
   loadStatus: 'new',
   isTouch: false,
+  demoLive: false,
   paused: false,
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,
@@ -178,6 +188,7 @@ export const useStore = create<AppState>((set, get) => ({
   setOverlay(overlay) { set({ overlay }); },
   setCompleteStats(completeStats) { set({ completeStats }); },
   setIsTouch(isTouch) { set({ isTouch }); },
+  setDemoLive(demoLive) { set({ demoLive }); },
   incBallsThrown() { const s = get().save; const save = { ...s, stats: { ...s.stats, ballsThrown: s.stats.ballsThrown + 1 } }; set({ save }); },
 }));
 

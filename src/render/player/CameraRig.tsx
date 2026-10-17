@@ -106,6 +106,9 @@ export function CameraRig() {
     );
     euler.current.set(p.pitch, p.yaw, reduced ? 0 : sway.roll);
     camera.quaternion.setFromEuler(euler.current);
+    // live projection for the touch throw's hand placement (portrait vs landscape)
+    const pc = camera as THREE.PerspectiveCamera;
+    session.camFov = pc.fov; session.camAspect = pc.aspect;
     const cam = camera as THREE.PerspectiveCamera;
     const targetFov = 70 + Math.min(8, p.speed * 0.6);
     if (Math.abs(cam.fov - targetFov) > 0.05) { cam.fov += (targetFov - cam.fov) * Math.min(1, state.clock.getDelta() * 60 * 0.06 + 0.04); cam.updateProjectionMatrix(); }

@@ -54,6 +54,51 @@ export const GAME = {
   /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
   FEED_CATCH_MULT: 1.15,
 
+  /** Slingshot (touch throw): gesture thresholds, aim mapping, power curve. */
+  SLING_MIN_DRAG_PX: 24,
+  SLING_TAP_MS: 250,
+  SLING_DEG_PER_PX: 0.22,
+  SLING_MAX_DEG: 35,
+  SLING_POWER_MIN: 0.55,
+  SLING_POWER_MAX: 1.25,
+  SLING_FULL_POWER_PX: 140,
+  /** Touch throws launch from the "hand" — low and to the right, matching the on-screen
+   *  Poké Ball — and converge back onto the aim ray at THROW_FOCUS metres so accuracy
+   *  matches desktop. Desktop keeps the original small offset (byte-identical feel). */
+  /** FALLBACK hand offsets (portrait phone, fov 70, ball at ~86%/80% of the screen).
+   *  In the running game the offsets are derived live from the real camera fov/aspect
+   *  and the measured Poké Ball position (GameSession.handOffsets), so the launch point
+   *  projects onto the ball in ANY orientation; these raw dials serve the headless sim. */
+  HAND_RIGHT_TOUCH: 0.26,
+  HAND_DOWN_TOUCH: 0.47,
+  HAND_FWD_TOUCH: 1.1,
+  THROW_FOCUS: 26,
+  /** Aiming dots (Angry Birds style): spaced along the WHOLE simulated flight, constant
+   *  on-screen size, ending in a landing marker. Spacing is screen-proportional — the gap
+   *  grows with camera distance (clamped), so the chain LOOKS evenly spaced and a dense
+   *  run of dots visibly climbs out of the on-screen Poké Ball. */
+  SLING_DOT_SPACING: 1.2,   // fixed fallback when no eye is given (headless sim)
+  SLING_DOT_ANGLE: 0.085,   // gap in metres per metre of eye distance ≈ constant screen gap
+  SLING_DOT_GAP_MIN: 0.3,
+  SLING_DOT_GAP_MAX: 2.2,
+  SLING_DOT_MAX: 64,
+  /** Dot size = SIZE · dist^FALLOFF (world radius). FALLOFF between 0 (fixed world size,
+   *  far dots vanish) and 1 (fixed screen size, no depth cue): chunky dots leave the hand
+   *  and gradually shrink along the path — the Angry Birds taper, and what makes the
+   *  receding arc READ as a parabola from behind the throw. */
+  SLING_DOT_SIZE: 0.022,
+  SLING_DOT_FALLOFF: 0.6,
+
+  /** Auto-sprint, simple and consistent: keep moving this long and speed ramps up —
+   *  exactly like holding the old sprint button. Stop, and water drag slows you down.
+   *  No other condition (wild Pokémon nearby or not) ever touches your speed. */
+  AUTO_SPRINT_AFTER: 2,
+  /** Hysteresis: once auto-sprint engages, brief joystick re-grips must not drop it. */
+  AUTO_SPRINT_OFF: 0.5,
+  SPEED_RAMP_TAU: 0.4,
+  /** The sprint cap never snaps down mid-swim; when it does fall it eases with this slower tau. */
+  SPEED_RAMP_TAU_DOWN: 0.8,
+
   CATCH_MIN: 0.06,
   CATCH_MAX: 0.96,
 
@@ -75,8 +120,11 @@ export const GAME = {
 
   /** Ball throw. */
   THROW_SPEED: 26,
-  BALL_GRAVITY: 3.2,
-  BALL_DRAG: 0.9,
+  /** Tuned as a pair for a clean parabolic lob: low drag keeps the ball moving past the
+   *  apex (no stall-and-sink tail), higher gravity brings it down in a real arc. Drop at
+   *  20m is ~2.0m — almost exactly the old feel — but the curve now reads as a parabola. */
+  BALL_GRAVITY: 5.2,
+  BALL_DRAG: 0.45,
   BALL_HIT_RADIUS: 0.55,
 
   /** Minimum time in a level before a predator first hunts (s) — protects the 30-second hook. */

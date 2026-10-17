@@ -33,6 +33,10 @@ export interface Settings {
   reducedMotion: boolean;
   /** Collapse the in-game mission panel to a mini pill. */
   missionCollapsed: boolean;
+  /** The pre-dive controls screen was shown once; afterwards touch auto-dives and desktop gets a minimal click bar. */
+  controlsSeen: boolean;
+  /** First-run tutorial finished (or skipped). Settings can reset it for a replay. */
+  tutorialDone: boolean;
 }
 
 export interface SaveData {
@@ -53,7 +57,7 @@ export interface SaveData {
 
 export const DEFAULT_SETTINGS: Settings = {
   // New trainers see the reef at its best — 'auto' stays available as an explicit downgrade path.
-  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'high', showHints: true, reducedMotion: false, missionCollapsed: false,
+  audioEnabled: true, volume: 0.8, ambience: 'deep-sea', sensitivity: 1, invertY: false, quality: 'high', showHints: true, reducedMotion: false, missionCollapsed: false, controlsSeen: false, tutorialDone: false,
 };
 
 export function createNewSave(): SaveData {

@@ -1,6 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
-import { useEffect, useMemo, useState } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Wand2, Hourglass, Swords, Wind, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
+import { useEffect, useMemo, useState, useRef } from 'react';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone } from '../components/icons';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -84,39 +84,38 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
   );
 }
 
-function BallTray() {
+function BallChip() {
   const inv = useStore((s) => s.save.inventory);
   const ballType = useStore((s) => s.hud.ballType);
+  const ballMode = useStore((s) => s.hud.ballMode);
   const isTouch = useStore((s) => s.isTouch);
+  const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // tap cycles (and pins) the ball; holding half a second hands control back to AUTO
+  const down = () => { holdTimer.current = setTimeout(() => { holdTimer.current = null; session.clearBallPin(); }, 500); };
+  const up = () => { if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; session.cycleBall(1); } };
   return (
-    <Panel className="ball-tray interactive">
-      {BALL_ORDER.map((b, i) => (
-        <button key={b} className={`ball-btn ${ballType === b ? 'selected' : ''} ${inv[b] === 0 ? 'empty' : ''}`} onClick={() => session.selectBall(b)} aria-label={`${BALLS[b].name}, ${inv[b]} left`} aria-pressed={ballType === b}>
-          <PokeballIcon ball={b} />
-          <span className="count">{inv[b]}</span>
-          <span>{BALLS[b].short}</span>
-          {!isTouch && <span className="key">{i + 1}</span>}
-        </button>
-      ))}
-    </Panel>
+    <button className="glass ball-chip interactive" onPointerDown={down} onPointerUp={up} onPointerCancel={up}
+      aria-label={`${BALLS[ballType].name}, ${inv[ballType]} left — ${ballMode === 'auto' ? 'picked automatically' : 'pinned'}`}
+      title={isTouch ? undefined : 'Auto-picked for your target · 1–4 or Q to pin · hold to return to auto'}>
+      <PokeballIcon ball={ballType} size={26} />
+      <span className="count">{inv[ballType]}</span>
+      <span className={`mode ${ballMode === 'pinned' ? 'pinned' : ''}`}>{ballMode === 'auto' ? 'AUTO' : BALLS[ballType].short}</span>
+    </button>
   );
 }
 
-function LureButton() {
-  const rem = useStore((s) => s.hud.lureRemaining);
-  const cd = useStore((s) => s.hud.lureCooldown);
-  const isTouch = useStore((s) => s.isTouch);
-  const active = rem > 0;
-  const ready = cd <= 0 && !active;
-  const total = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
-  const p = active ? (rem / GAME.LURE_DURATION) * 100 : cd > 0 ? (1 - cd / total) * 100 : 0;
-  const mmss = (t: number) => { const s0 = Math.ceil(t); return s0 >= 60 ? `${Math.floor(s0 / 60)}:${(s0 % 60).toString().padStart(2, '0')}` : `${s0}s`; };
+/** First-run tutorial: one instruction at a time, progress dots, always skippable. */
+function TutorialBanner() {
+  const tut = useStore((s) => s.hud.tutorial);
+  if (!tut) return null;
   return (
-    <button className={`glass lure-btn interactive ${ready ? 'ready' : ''}`} onClick={() => session.activateLure()} disabled={!ready} aria-label="Lure (available every 5 minutes)" title="Lure — once every 5 minutes" style={{ ['--p' as any]: `${p}%` }}>
-      <span className="ring" />
-      <span className="ic">{active ? <Ic icon={Sparkles} size={15} /> : ready ? <Ic icon={Wand2} size={15} /> : <Ic icon={Hourglass} size={15} />}</span>
-      <span>{active ? `${Math.ceil(rem)}s` : cd > 0 ? mmss(cd) : isTouch ? 'Lure' : 'Lure · E'}</span>
-    </button>
+    <div className={`tutorial-banner glass interactive ${tut.step === 'done' ? 'done' : ''}`}>
+      <div className="dots" aria-hidden>
+        {Array.from({ length: tut.n }, (_, i) => <i key={i} className={i < tut.i ? 'past' : i === tut.i ? 'cur' : ''} />)}
+      </div>
+      <div className="txt">{tut.text}</div>
+      {tut.step !== 'done' && <button className="skip" onClick={() => { Audio.uiClick(); session.skipTutorial(); }}>Skip</button>}
+    </div>
   );
 }
 
@@ -200,7 +199,7 @@ function PlayerVitals() {
   return (
     <>
       <div className="player-hp glass" title="Your health">
-        <span className="ic">{frac > 0.6 ? <Ic icon={Wind} size={15} /> : frac > 0.3 ? <Ic icon={AlertTriangle} size={15} color="var(--gold)" /> : <Ic icon={LifeBuoy} size={15} color="var(--red)" />}</span>
+        <span className="ic">{frac > 0.6 ? <Ic icon={User} size={15} /> : frac > 0.3 ? <Ic icon={AlertTriangle} size={15} color="var(--gold)" /> : <Ic icon={LifeBuoy} size={15} color="var(--red)" />}</span>
         <div className="bar"><i style={{ width: `${frac * 100}%`, background: frac > 0.6 ? 'linear-gradient(90deg,#35d0ff,#7ff0c9)' : frac > 0.3 ? 'linear-gradient(90deg,#ffd166,#ff9f43)' : 'linear-gradient(90deg,#ff7a7a,#f43f5e)' }} /></div>
         <b className="mono">{Math.round(hp)}</b>
       </div>
@@ -351,32 +350,36 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
   const Row = ({ keys, children }: { keys: React.ReactNode; children: React.ReactNode }) => (
     <div className="ctl"><span className="ctl-keys">{keys}</span><span className="ctl-desc">{children}</span></div>
   );
+  // Two things to learn: move and throw. Speed, vertical swim and ball choice are automatic;
+  // everything else lives behind "Veteran shortcuts" so the first screen stays tiny.
   return isTouch ? (
     <div className="controls-grid">
-      <Row keys={<b>Left stick</b>}>swim</Row>
+      <Row keys={<b>Left stick</b>}><b>swim</b> — you swim where you look</Row>
       <Row keys={<b>Drag anywhere</b>}>look around</Row>
-      <Row keys={<b><span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: 'var(--red)', verticalAlign: '-1px' }} /> Red button</b>}>throw the selected ball</Row>
-      <Row keys={<b>▲ ▼</b>}>swim up / down</Row>
-      <Row keys={<b>Ball tray</b>}>tap to switch balls</Row>
-      <Row keys={<b><Ic icon={Wand2} size={13} /> Lure</b>}>draw nearby Pokémon · once every 5 min</Row>
-      <Row keys={<b>»</b>}>toggle fast swim</Row>
-      <Row keys={<b><Ic icon={Pause} size={13} /></b>}>pause · mission in the top-left pill</Row>
+      <Row keys={<b>Poké Ball</b>}><b>drag to aim, release to throw</b> · tap = quick throw</Row>
     </div>
   ) : (
-    <div className="controls-grid">
-      <Row keys={<><K k="W" /><K k="A" /><K k="S" /><K k="D" /></>}><b>swim</b> · you swim where you look</Row>
-      <Row keys={<><b>Mouse</b> · <b>Left click</b></>}>look · throw ball</Row>
-      <Row keys={<K k="Shift" />}><b>swim faster</b></Row>
-      <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
-      <Row keys={<><K k="1" />–<K k="4" /> · <b>Right click</b></>}>switch ball</Row>
-      <Row keys={<K k="E" />}><b>lure</b> nearby Pokémon · once every 5 min</Row>
-      <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
-      <Row keys={<K k="C" />}>collection</Row>
-      <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
-      {session.companionsEnabled && <Row keys={<b>Right click</b>}><b>quick attack</b> — best ready companion move at your crosshair</Row>}
-      {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
-      {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
-    </div>
+    <>
+      <div className="controls-grid">
+        <Row keys={<><K k="W" /><K k="A" /><K k="S" /><K k="D" /></>}><b>swim</b> · you swim where you look</Row>
+        <Row keys={<><b>Mouse</b> · <b>Left click</b></>}>look · <b>throw ball</b></Row>
+        <Row keys={<><K k="Space" /> · <K k="Ctrl" /><span className="dim">/</span><K k="X" /></>}>swim up · down</Row>
+        <Row keys={<><K k="Esc" /> · <K k="P" /></>}>pause</Row>
+      </div>
+      <details className="vet">
+        <summary>Veteran shortcuts</summary>
+        <div className="controls-grid">
+          <Row keys={<K k="Shift" />}>sprint — speed also ramps up on its own</Row>
+          <Row keys={<><K k="1" />–<K k="4" /> · <K k="Q" /></>}>pin a ball — otherwise they pick themselves</Row>
+          <Row keys={<K k="E" />}>lure nearby Pokémon · once every 5 min</Row>
+          <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
+          <Row keys={<K k="C" />}>collection</Row>
+          {session.companionsEnabled && <Row keys={<b>Right click</b>}>quick attack — best ready companion move at your crosshair</Row>}
+          {session.companionsEnabled && <Row keys={<><K k="5" /><K k="6" /> · <K k="7" /><K k="8" /></>}>companion moves · slot 1 · slot 2</Row>}
+          {session.companionsEnabled && <Row keys={<><K k="9" /> · <K k="0" /></>}>swap companion · slot 1 · slot 2</Row>}
+        </div>
+      </details>
+    </>
   );
 }
 
@@ -417,7 +420,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   const [compact, setCompact] = useState(() => isTouch || small());
   useEffect(() => { const f = () => setCompact(isTouch || small()); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, [isTouch]);
   const missionExpanded = overlay === 'mission';
-  const tray = useMemo(() => <BallTray />, []);
+
   return (
     <>
       <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
@@ -425,12 +428,12 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
         </div>
         <StatusChips />
+        <TutorialBanner />
         <BossBar />
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
-          {tray}
-          <LureButton />
+          <BallChip />
         </div>
         <PlayerVitals />
         <PartyBar />
@@ -455,20 +458,70 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   );
 }
 
-export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouch: boolean }) {
+/**
+ * Phones play PokeWorld in landscape: in-game portrait shows a full-screen rotate prompt
+ * (animated tilting phone) and holds the simulation. Rotating back resumes on its own —
+ * unless the pause menu was already open, which stays the player's pause. Tablets
+ * (shortest side >= 768px) are exempt; menus are portrait-friendly everywhere.
+ */
+export function RotateGate() {
+  const isTouch = useStore((s) => s.isTouch);
+  const [portrait, setPortrait] = useState(false);
+  const wePaused = useRef(false);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); Audio.init(); onDive(); } };
+    if (!isTouch) return;
+    const check = () => setPortrait(Math.min(window.innerWidth, window.innerHeight) < 768 && window.innerHeight > window.innerWidth);
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    // some browsers settle innerWidth/innerHeight late during rotation — the media query is the truth
+    const mq = window.matchMedia('(orientation: portrait)');
+    mq.addEventListener?.('change', check);
+    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); mq.removeEventListener?.('change', check); };
+  }, [isTouch]);
+  useEffect(() => {
+    if (portrait && session.phase === 'playing') { session.pause(); wePaused.current = true; }
+    else if (!portrait && wePaused.current) {
+      wePaused.current = false;
+      if (session.phase === 'paused' && useStore.getState().overlay === 'none') session.resume();
+    }
+  }, [portrait]);
+  if (!isTouch || !portrait) return null;
+  return (
+    <div className="rotate-gate">
+      <div>
+        <div className="phone"><Ic icon={Smartphone} size={72} color="var(--aqua)" /></div>
+        <h2>Please rotate your phone.</h2>
+        <p>PokeWorld is played in landscape mode.</p>
+      </div>
+    </div>
+  );
+}
+
+export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouch: boolean }) {
+  const seen = useStore((s) => s.save.settings.controlsSeen);
+  const setSettings = useStore((s) => s.setSettings);
+  const dive = () => { Audio.init(); if (!seen) setSettings({ controlsSeen: true }); onDive(); };
+  // Returning players dive straight in: the "Enter Reef" click on the brief was the user
+  // gesture (Audio unlocked there, and its activation window still covers the pointer-lock
+  // request this triggers). If a browser refuses the lock, the first click on the reef
+  // acquires it — the standard recapture path players already know from pausing.
+  useEffect(() => { if (seen) onDive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (seen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); dive(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onDive]);
+  }, [onDive, seen, isTouch]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (seen) return null;
   return (
     <div className="overlay controls-prompt" style={{ zIndex: 30 }}>
       <Panel className="panel strong">
         <div className="eyebrow">Before you dive</div>
         <h2 className="title" style={{ fontSize: 28, margin: '4px 0 12px' }}>Controls</h2>
         <ControlsLegend isTouch={isTouch} />
-        <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
-        <button className="btn primary big block" onClick={() => { Audio.init(); Audio.uiConfirm(); onDive(); }} autoFocus><Ic icon={Play} size={16} /> Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
+        <p className="muted small" style={{ margin: '14px 0 16px' }}>{isTouch ? 'Balls pick themselves for whatever you aim at. Catch the Pokémon your mission asks for — and watch out for predators.' : 'Your mouse will be captured while you play; press Esc to pause at any time.'}</p>
+        <button className="btn primary big block" onClick={() => { Audio.uiConfirm(); dive(); }} autoFocus><Ic icon={Play} size={16} /> Dive in {!isTouch && <span className="kbd">Enter</span>}</button>
       </Panel>
     </div>
   );
