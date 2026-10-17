@@ -59,7 +59,11 @@ export function Scene() {
     <Canvas
       className="game-canvas"
       dpr={dpr}
-      camera={{ fov: 70, near: 0.1, far: 420, position: [0, -14, 0] }}
+      // far 640: the horizon islands span ~270-440m from world center, so a player at the
+      // opposite edge of the bounds sees their far slopes at up to ~590m — a 420m far plane
+      // sliced them apart as you swam away (the "white overlay" playtest bug). Underwater
+      // fog hides everything long before this, so the only cost is a hair of depth precision.
+      camera={{ fov: 70, near: 0.1, far: 640, position: [0, -14, 0] }}
       gl={{ antialias: !isTouch, powerPreference: 'high-performance', alpha: false, stencil: false }}
       performance={{ min: 0.6 }}
       frameloop="always"
