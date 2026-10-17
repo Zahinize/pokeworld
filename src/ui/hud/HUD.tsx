@@ -1,6 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, Wind, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -199,7 +199,7 @@ function PlayerVitals() {
   return (
     <>
       <div className="player-hp glass" title="Your health">
-        <span className="ic">{frac > 0.6 ? <Ic icon={Wind} size={15} /> : frac > 0.3 ? <Ic icon={AlertTriangle} size={15} color="var(--gold)" /> : <Ic icon={LifeBuoy} size={15} color="var(--red)" />}</span>
+        <span className="ic">{frac > 0.6 ? <Ic icon={User} size={15} /> : frac > 0.3 ? <Ic icon={AlertTriangle} size={15} color="var(--gold)" /> : <Ic icon={LifeBuoy} size={15} color="var(--red)" />}</span>
         <div className="bar"><i style={{ width: `${frac * 100}%`, background: frac > 0.6 ? 'linear-gradient(90deg,#35d0ff,#7ff0c9)' : frac > 0.3 ? 'linear-gradient(90deg,#ffd166,#ff9f43)' : 'linear-gradient(90deg,#ff7a7a,#f43f5e)' }} /></div>
         <b className="mono">{Math.round(hp)}</b>
       </div>

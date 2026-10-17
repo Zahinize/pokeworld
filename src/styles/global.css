@@ -176,7 +176,7 @@ a { color: var(--aqua); }
 .hud-top-left { position: absolute; top: calc(14px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: min(340px, calc(100vw - 28px)); }
 .hud-top-right { position: absolute; top: calc(14px + var(--safe-top)); right: calc(14px + var(--safe-right)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
 .hud-bottom { position: absolute; bottom: calc(14px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 14px; }
-.hud-hint { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(16px + var(--safe-bottom)); max-width: 360px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,.3); border: 1px solid var(--line); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(10px); animation: fadeUp .4s ease both; }
+.hud-hint { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(64px + var(--safe-bottom)); max-width: 360px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,.3); border: 1px solid var(--line); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(10px); animation: fadeUp .4s ease both; }
 /* First-run tutorial banner: top-center, one instruction at a time (regular hints stay hidden) */
 .tutorial-banner { position: absolute; top: calc(16px + var(--safe-top)); left: 50%; transform: translate(-50%, 0); width: max-content; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 18px; max-width: min(560px, calc(100vw - 32px)); animation: tutIn .3s ease both; }
 @keyframes tutIn { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -295,7 +295,8 @@ a { color: var(--aqua); }
 @keyframes tagGlow { 0%, 100% { box-shadow: 0 0 10px rgba(255, 209, 102, .4), inset 0 0 8px rgba(255, 209, 102, .15); } 50% { box-shadow: 0 0 20px rgba(255, 209, 102, .75), inset 0 0 10px rgba(255, 209, 102, .25); } }
 
 /* Player vitals */
-.player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(60px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px; width: 200px; }
+/* desktop: sits on the same baseline as the centered ball chip (chip ~44px tall at bottom 14, this pill ~37px → bottom 18 centers them) */
+.player-hp { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(15px + var(--safe-bottom)); display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-radius: 999px; width: 200px; }
 .player-hp .ic { font-size: 16px; }
 .player-hp .bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid var(--line); }
 .player-hp .bar i { display: block; height: 100%; border-radius: 999px; transition: width .3s ease; box-shadow: 0 0 10px rgba(53,208,255,.5); }
