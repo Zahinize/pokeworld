@@ -61,7 +61,6 @@ export class GameSession {
   slingAim = { active: false, yawOff: 0, pitchOff: 0, power: 1, armed: false };
   private surfaceAtkReady = new Map<number, number>();
   private surfaceDrainAcc = new Map<number, number>();
-  private surfaceHintShown = false;
   private rampageSurge = false;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
@@ -199,7 +198,7 @@ export class GameSession {
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
     this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
-    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear(); this.surfaceHintShown = false;
+    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear();
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
     this.timeOfDay = this.level.timeOfDay;
@@ -463,7 +462,6 @@ export class GameSession {
     Audio.restore();
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, recovering: 0 });
-    store.pushToast({ kind: 'info', title: 'You recovered', body: 'The current carried you somewhere calmer. Catch your breath.', ttl: 4 });
   }
 
   // ------------------------------------------------------------------ Boss phases
@@ -518,7 +516,6 @@ export class GameSession {
     // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it,
     // and bringing a BOSS of your own provokes them: every boss rises SHINY for a fair fight
     const partyHasBoss = this.party.some((t) => getSpecies(baseSpeciesId(t)).bossOnly);
-    if (partyHasBoss) store.pushToast({ kind: 'warn', title: 'Your boss companion stirs the deep…', body: 'The challengers answer in kind: every boss here will be SHINY.', ttl: 6 });
     this.bossIds = wave.bosses.map((b, i) => {
       const shiny = !!wave.shiny || partyHasBoss || Math.random() < 0.2;
       if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
@@ -530,7 +527,6 @@ export class GameSession {
     this.bossEncounter = 'dormant';
     this.pendingWaveConfig = wave;
     eco.bossesActive = false; // they wait, glowing in their lair, until challenged
-    store.pushToast({ kind: 'event', title: `Something waits in the ${ZONES[wave.site].label}…`, body: 'Follow the golden arrow when you are ready to face it.', ttl: 6 });
     this.emit();
   }
 
@@ -561,7 +557,6 @@ export class GameSession {
     this.bossIds.forEach((id, i) => { const e = eco.byId.get(id); if (e) Audio.playCry(e.species.dexId, 1, i * 0.7); });
     const store = useStore.getState();
     store.setHud({ bossIntro: null });
-    store.pushToast({ kind: 'alert', title: wave.arrivalToast, body: 'Stay agile — keep swimming while you fight!', ttl: 6 });
     this.resume();
     this.emit();
   }
@@ -607,7 +602,6 @@ export class GameSession {
     const next = this.party.find((t) => !this.downedSpecies.includes(t) && !activeTokens.includes(t));
     if (!next) return null;
     if (!this.swapPartner(slot, next)) return null;
-    useStore.getState().pushToast({ kind: 'info', title: `Go, ${tokenLabel(next)}!`, speciesId: baseSpeciesId(next), shiny: isShinyToken(next), ttl: 3 });
     return next;
   }
 
@@ -690,12 +684,10 @@ export class GameSession {
     if (!best) {
       // nothing ready: send out a reserve if a slot is empty, otherwise brief feedback
       if (this.activePartners.some((id) => id < 0) && this.party.length > 0) { this.sendNextReserve(this.activePartners[0] < 0 ? 0 : 1); return false; }
-      if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 3; useStore.getState().pushToast({ kind: 'info', title: 'Moves are recharging…', ttl: 2 }); }
       return false;
     }
     return this.orderCast(best.partner, best.slot, target);
   }
-  private attackFeedbackT = 0;
   private swapCooldownT = 0;
 
   /** 9/0 keys and the low-HP banner: swap `slot` for the healthiest reserve. */
@@ -709,7 +701,6 @@ export class GameSession {
     const out = activeTokens[slot];
     if (!this.swapPartner(slot, best)) return false;
     this.swapCooldownT = 2;
-    useStore.getState().pushToast({ kind: 'info', title: `${tokenLabel(best)}, you're up!`, body: out ? `${tokenLabel(out)} returns to rest.` : undefined, speciesId: baseSpeciesId(best), shiny: isShinyToken(best), ttl: 3 });
     return true;
   }
 
@@ -774,7 +765,6 @@ export class GameSession {
     this.lureCooldown = GAME.LURE_COOLDOWN + GAME.LURE_DURATION;
     Audio.lure();
     this.pushFx('lure', this.player.x, this.player.y, this.player.z, 1);
-    useStore.getState().pushToast({ kind: 'info', title: 'Lure activated', body: 'Nearby Pokémon are curious about you… Next lure in 5 minutes.', ttl: 4 });
     return true;
   }
 
@@ -818,7 +808,6 @@ export class GameSession {
     // and is hard-capped so no event can ever leave the camera trembling for long
     if (this.shakeT > 0) this.shakeT = Math.min(5, this.shakeT) - dt;
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
-    if (this.attackFeedbackT > 0) this.attackFeedbackT -= dt;
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
@@ -894,7 +883,6 @@ export class GameSession {
     if (changed && this.tutorial.step === 'done') {
       this.tutDoneT = TUTORIAL.DONE_LINGER;
       store.setSettings({ tutorialDone: true });
-      store.pushToast({ kind: 'event', title: 'Tutorial complete!', body: 'The reef is yours — good luck, trainer.', ttl: 5 });
       Audio.uiConfirm();
     }
   }
@@ -1007,11 +995,6 @@ export class GameSession {
           if (e?.role !== 'partner') this.creditTakedown(ev.entityId);
           if (near(e, 60)) Audio.ko();
           if (e) this.pushFx('ko', e.x, e.y, e.z, e.species.size);
-          const victim = getSpecies(ev.speciesId);
-          const pred = ev.bySpeciesId ? getSpecies(ev.bySpeciesId) : null;
-          const o = e?.objectiveId && this.mission ? this.mission.objectives.find((x) => x.id === e.objectiveId) : undefined;
-          const missionHit = !!o && !objectiveDone(o);
-          store.pushToast({ kind: 'alert', title: pred ? `${pred.name} KOed ${victim.name}` : `${victim.name} was KOed`, body: missionHit ? 'A mission target was lost — the reef will send more.' : undefined, speciesId: pred?.id ?? victim.id, ttl: 5 });
           break;
         }
         case 'alarm': {
@@ -1027,24 +1010,15 @@ export class GameSession {
           }
           break;
         }
-        case 'reinforce': {
-          const s = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'info', title: `${s.name} have drifted into the reef`, body: ev.count > 1 ? 'A new group arrived from the open water.' : 'Another one has appeared.', speciesId: s.id, ttl: 4 });
-          break;
-        }
-        case 'respawn': {
-          const s = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'event', title: `${s.name} has returned`, body: 'The reef restores its balance.', speciesId: s.id, ttl: 4 });
-          break;
-        }
+        case 'reinforce': break;
+        case 'respawn': break;
         case 'legendary': {
           Audio.legendary();
-          store.pushToast({ kind: 'event', title: 'Something massive is moving in the deep…', body: 'The water is trembling.', ttl: 6 });
           break;
         }
         case 'breach': {
           const e = eco.byId.get(ev.entityId);
-          if (near(e, 70)) { Audio.breach(); if (near(e, 45)) store.pushToast({ kind: 'event', title: `${e!.species.name} is rising to the surface`, speciesId: e!.species.id, ttl: 3 }); }
+          if (near(e, 70)) Audio.breach();
           break;
         }
         case 'inflate': { if (near(eco.byId.get(ev.entityId), 30)) Audio.inflate(); break; }
@@ -1058,16 +1032,10 @@ export class GameSession {
             this.autoSend.push([slot, (this.eco?.time ?? 0) + 2.5]); // a reserve dives in on its own
           }
           Audio.ko();
-          const hasReserve = this.party.some((t) => !this.downedSpecies.includes(t) && !this.activePartners.some((pid) => { const pe = pid >= 0 ? eco.byId.get(pid) : undefined; return pe && this.tok(pe) === t; }));
-          store.pushToast({ kind: 'warn', title: `${tokenLabel(token)} is exhausted!`, body: hasReserve ? 'A reserve is diving in…' : 'No reserves left — fight carefully.', speciesId: ev.speciesId, shiny: isShinyToken(token), ttl: 4 });
           this.syncPartyHud();
           break;
         }
-        case 'duelStart': {
-          const w = eco.byId.get(ev.wildId);
-          if (w) store.pushToast({ kind: 'event', title: `Locked on ${w.species.name}!`, body: 'Your companion is dueling it — finish it with a well-timed ball.', speciesId: w.species.id, ttl: 3 });
-          break;
-        }
+        case 'duelStart': break;
         case 'faint': break;
         case 'autoCaught': {
           const e = eco.byId.get(ev.entityId);
@@ -1075,11 +1043,7 @@ export class GameSession {
           if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, true); }
           break;
         }
-        case 'guardianDefends': {
-          const sp = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'warn', title: `${sp.name} defends its group!`, body: 'Guardians strike back when you catch their kin — stay alert.', speciesId: sp.id, ttl: 4 });
-          break;
-        }
+        case 'guardianDefends': break;
         case 'recovered': break;
         case 'feedChatter': {
           // soft nibble-cries from a grazing school, carrying only a short distance
@@ -1129,14 +1093,12 @@ export class GameSession {
         case 'bossDeflect': {
           Audio.escape();
           this.pushFx('hit', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size);
-          if (this.attackFeedbackT <= 0) { this.attackFeedbackT = 6; store.pushToast({ kind: 'warn', title: `The ball glanced off ${ev.entity.species.name}!`, body: 'Bosses can only be defeated by your companions\' moves.', speciesId: ev.entity.species.id, ttl: 4 }); }
           break;
         }
         case 'shake': Audio.ballShake(ev.index); break;
         case 'miss': Audio.miss(); break;
         case 'escaped': {
           Audio.escape(); this.pushFx('escape', ev.entity.x, ev.entity.y, ev.entity.z, ev.entity.species.size);
-          store.pushToast({ kind: 'miss', title: `${ev.entity.species.name} broke free!`, body: `Catch chance was ${Math.round(ev.p * 100)}%`, speciesId: ev.entity.species.id, ttl: 3 });
           break;
         }
         case 'caught': this.onCaught(ev.entity); break;
@@ -1151,7 +1113,6 @@ export class GameSession {
         case 'skyEscaped': {
           const sp = getSpecies(ev.speciesId);
           Audio.escape(); this.pushFx('escape', ev.ball.x, ev.ball.y, ev.ball.z, sp.size);
-          store.pushToast({ kind: 'miss', title: `${sp.name} broke free and fled!`, body: `Catch chance was ${Math.round(ev.p * 100)}%`, speciesId: sp.id, ttl: 3 });
           break;
         }
       }
@@ -1192,10 +1153,6 @@ export class GameSession {
       if (!e || e.state === 'ko' || e.state === 'removed') continue;
       const atSurface = e.y > -Math.max(0.8, e.species.size * 0.5);
       if (!atSurface) { this.surfaceDrainAcc.set(id, 0); continue; }
-      if (!this.surfaceHintShown) {
-        this.surfaceHintShown = true;
-        useStore.getState().pushToast({ kind: 'warn', title: 'Your companions can\'t breathe air!', body: `They lose ${SKY.COMPANION_SURFACE_HP_DRAIN} HP/s above the waves — pick your sky battles wisely.`, ttl: 6 });
-      }
       // suffocation drain, applied in whole-HP chunks
       let acc = (this.surfaceDrainAcc.get(id) ?? 0) + SKY.COMPANION_SURFACE_HP_DRAIN * dt;
       if (acc >= 1) { const chunk = Math.floor(acc); acc -= chunk; eco.damageAbs(e, chunk, -1); }
@@ -1300,11 +1257,7 @@ export class GameSession {
           store.pushToast({ kind: 'event', title: `A wild ${sp.name} crosses the sky!`, body: "Surface and look up — it won't stay long…", speciesId: sp.id, ttl: 6 });
           break;
         }
-        case 'legendaryVanish': {
-          const sp = getSpecies(ev.speciesId);
-          store.pushToast({ kind: 'info', title: `${sp.name} vanished beyond the horizon`, body: 'Legends never linger.', speciesId: sp.id, ttl: 4 });
-          break;
-        }
+        case 'legendaryVanish': break;
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true);

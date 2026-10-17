@@ -16,6 +16,7 @@ import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
 import { FeedCrumbs } from './env/FeedCrumbs';
 import { ThrowArc } from './fx/ThrowArc';
+import { CatchConfetti } from './fx/CatchConfetti';
 import { SKY } from '@/data/sky';
 
 function GameLoop() {
@@ -92,6 +93,7 @@ export function Scene() {
         <PartnerTags />
         <HealthBars />
         <Balls />
+        <CatchConfetti />
         <MoveProjectiles />
         <MoveMotes />
         <MoveLights count={resolveQuality(qualitySetting, isTouch) === 'high' ? 4 : resolveQuality(qualitySetting, isTouch) === 'medium' ? 2 : 0} />
