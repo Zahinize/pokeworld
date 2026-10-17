@@ -343,6 +343,7 @@ export class GameSession {
       this.gen = gen;
       this.eco = new Ecosystem(gen, maxHpOf);
       this.eco.onPlayerDamage = () => {}; // nothing hurts the camera
+      this.eco.time = GAME.PREDATOR_GRACE; // the menu reef appears mid-life: no quiet opening
       this.balls = new BallSystem();
       this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
       this.timeOfDay = DEMO.TIME_OF_DAY;
@@ -386,6 +387,15 @@ export class GameSession {
     p.speed = Math.hypot(p.vx, p.vy, p.vz);
     p.swayT += dt * 0.7; // gentle breathing
     eco.playerYaw = p.yaw;
+    // menu drama: predators (and ambushing bottom dwellers) shake off their rest between
+    // hunts much faster than in a real dive — and the ones near the camera are hungrier
+    // still, so chases and guardian stand-offs happen where the viewer is looking
+    for (const e of eco.alive) {
+      if (e.huntCooldown > 3 && (e.behavior === 'predator' || e.species.secondary.includes('predator'))) {
+        const near = Math.hypot(e.x - p.x, e.y - p.y, e.z - p.z) < DEMO.HUNT_NEAR_R;
+        e.huntCooldown -= ((near ? DEMO.HUNT_HASTE_NEAR : DEMO.HUNT_HASTE) - 1) * dt;
+      }
+    }
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: false }, this.lighting.nightness);
     this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
     // a display, not a play session: drain and discard everything

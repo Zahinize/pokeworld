@@ -13,6 +13,13 @@ export const DEMO = {
   TIME_OF_DAY: 0.36,   // late-morning light at boot
   DAY_DRIFT: 0.25,     // the day advances at quarter speed while the menu idles
   SURFACE_Y: 1.7,      // eye height while gliding along the waves
+  /** Menu drama: predators' rest between hunts ticks down this much faster than in a
+   *  real dive, so chases, scattering schools and guardian stand-offs are a constant
+   *  sight. Predators near the camera are hungrier still, putting the action where the
+   *  viewer is looking. Reinforcements keep the reef populated however hard they hunt. */
+  HUNT_HASTE: 3,
+  HUNT_HASTE_NEAR: 8,
+  HUNT_NEAR_R: 60,
 } as const;
 
 /**
@@ -27,7 +34,7 @@ export const DEMO_LEVEL: LevelConfig = {
     schools: 5,
     passiveGroups: 3,
     curious: 6,
-    predators: 5,
+    predators: 7,
     bottom: 5,
     defensive: 3,
     ambient: { schools: 3, drifters: 3, giants: 2, legendaryChance: 0.1 },

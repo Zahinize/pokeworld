@@ -216,12 +216,23 @@ for (const levelId of [1, 2]) {
     const eco = new Ecosystem(gen, hp);
     const n0 = eco.alive.length;
     const preds = eco.alive.filter((e) => e.behavior === 'predator').length;
-    const pstub = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0.8, lureActive: false };
+    const pstub = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0.4, lureActive: false };
+    // run 3 demo minutes with the menu's hunt haste, counting completed hunts
+    const haste = (DEMO.HUNT_HASTE - 1) / 60;
+    let hunts = 0;
     const t0 = performance.now();
-    for (let i = 0; i < 60 * 30; i++) { eco.update(1 / 60, pstub, 0); eco.drainEvents(); }
-    const msPerStep = (performance.now() - t0) / (60 * 30);
-    if (n0 >= 80 && preds >= 4 && msPerStep < 0.35) ok(`demo cast: ${n0} Pokémon (${preds} predators hunting) at ${msPerStep.toFixed(3)} ms/step — menu stays smooth`);
-    else fail(`demo cast wrong (${n0} entities, ${preds} predators, ${msPerStep.toFixed(3)} ms/step)`);
+    for (let i = 0; i < 60 * 180; i++) {
+      for (const e of eco.alive) if (e.huntCooldown > 3 && (e.behavior === 'predator' || e.species.secondary.includes('predator'))) e.huntCooldown -= haste;
+      eco.update(1 / 60, pstub, 0);
+      for (const ev of eco.drainEvents()) if (ev.type === 'huntEnd') hunts++;
+    }
+    const msPerStep = (performance.now() - t0) / (60 * 180);
+    const alive = eco.alive.filter((e) => e.state !== 'ko' && e.state !== 'removed').length;
+    if (n0 >= 80 && preds >= 6 && hunts >= 15 && alive >= 60 && msPerStep < 0.35) {
+      ok(`demo cast: ${n0} Pokémon, ${preds} predators, ${hunts} hunts in 3 demo minutes, ${alive} still alive (reinforced), ${msPerStep.toFixed(3)} ms/step`);
+    } else {
+      fail(`demo cast wrong (${n0} entities, ${preds} predators, ${hunts} hunts, ${alive} alive, ${msPerStep.toFixed(3)} ms/step)`);
+    }
   }
 }
 
