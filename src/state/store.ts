@@ -59,6 +59,8 @@ interface AppState {
   save: SaveData;
   loadStatus: 'new' | 'loaded' | 'recovered';
   isTouch: boolean;
+  /** Attract mode is loaded and rendering — menu screens float over the live reef. */
+  demoLive: boolean;
   paused: boolean;
   mission: MissionState | null;
   levelId: number;
@@ -92,6 +94,7 @@ interface AppState {
   setOverlay(o: AppState['overlay']): void;
   setCompleteStats(s: AppState['completeStats']): void;
   setIsTouch(v: boolean): void;
+  setDemoLive(v: boolean): void;
   incBallsThrown(): void;
 }
 
@@ -102,6 +105,7 @@ export const useStore = create<AppState>((set, get) => ({
   save: loadGame().save,
   loadStatus: 'new',
   isTouch: false,
+  demoLive: false,
   paused: false,
   mission: null,
   levelId: 1,
@@ -182,6 +186,7 @@ export const useStore = create<AppState>((set, get) => ({
   setOverlay(overlay) { set({ overlay }); },
   setCompleteStats(completeStats) { set({ completeStats }); },
   setIsTouch(isTouch) { set({ isTouch }); },
+  setDemoLive(demoLive) { set({ demoLive }); },
   incBallsThrown() { const s = get().save; const save = { ...s, stats: { ...s.stats, ballsThrown: s.stats.ballsThrown + 1 } }; set({ save }); },
 }));
 

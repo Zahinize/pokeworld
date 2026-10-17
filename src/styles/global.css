@@ -61,7 +61,11 @@ a { color: var(--aqua); }
 @keyframes ping { 0% { transform: scale(.6); opacity: .9 } 100% { transform: scale(2.4); opacity: 0 } }
 
 /* ---------- Layout primitives ---------- */
-.screen { position: fixed; inset: 0; display: grid; place-items: center; padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom)); overflow: auto; }
+.screen { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom)); overflow: auto; }
+/* Attract mode: the live reef canvas floats between the static backdrop and the menu UI */
+.demo-scene { position: fixed; inset: 0; z-index: 1; animation: demoIn 1.6s ease both; }
+.demo-scene .demo-scrim { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 12, 26, .48) 0%, rgba(3, 12, 26, .12) 28%, rgba(3, 12, 26, .12) 68%, rgba(3, 12, 26, .55) 100%); }
+@keyframes demoIn { from { opacity: 0; } to { opacity: 1; } }
 .screen-inner { width: min(100%, 960px); animation: fadeUp .5s ease both; }
 .glass { background: var(--panel); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
 .glass.strong { background: var(--panel-strong); }

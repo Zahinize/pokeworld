@@ -10,6 +10,8 @@ import { BallSystem } from './sim/balls';
 import { computeThrow, THROW_LIFT } from './sim/ballPreview';
 import { pickBall } from './sim/autoBall';
 import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
+import { buildDemoPath, demoPose, buildArcLUT, arcT, type DemoPath } from './sim/demoPath';
+import { DEMO } from '@/data/demo';
 import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
@@ -63,6 +65,12 @@ export class GameSession {
   private rampageSurge = false;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
+  /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
+  demo = false;
+  private demoPath: DemoPath | null = null;
+  private demoLUT: Float32Array | null = null;
+  private demoT = 0;
+  private demoLoopS: number = DEMO.MIN_LOOP_S;
   /** First-run tutorial (level 1, until settings.tutorialDone). Null once finished/skipped. */
   private tutorial: TutorialState | null = null;
   private tutObs = { threwWater: false, threwSky: false, caughtWater: 0, caughtSky: 0 };
@@ -161,6 +169,7 @@ export class GameSession {
 
   /** Generate the ecosystem + preload species HP and sprites. Resolves when the level can start. */
   async prepare(levelId: number, seed?: number, resume?: CurrentRun | null): Promise<void> {
+    if (this.demo) this.endDemo(); // a real dive always wins over the menu backdrop
     this.phase = 'preparing';
     this.level = getLevel(levelId);
     this.seed = seed ?? randomSeed();
@@ -307,6 +316,81 @@ export class GameSession {
   }
 
   clearSlingAim() { this.slingAim.active = false; this.slingAim.armed = false; }
+
+  /**
+   * Attract mode: load a real level-1 reef and let it live behind the menu — schools,
+   * feeding, guardians, predators, the surface and the sky — while a slow cinematic
+   * camera laps it. No HUD, no mission, no audio, no collection side effects: every
+   * event the ecosystem emits is discarded unseen.
+   */
+  async startDemo(): Promise<void> {
+    if (this.demo || this.phase !== 'idle') return;
+    this.demo = true;
+    try {
+      this.level = getLevel(DEMO.LEVEL);
+      this.seed = randomSeed();
+      const gen = generateEcosystem(this.level, this.seed);
+      const ids = Array.from(new Set([...gen.spawns.map((s) => s.speciesId), ...SKY_SPECIES_IDS]));
+      const keep = new Set<string>(ids);
+      for (const t of this.party) { const b = baseSpeciesId(t); for (const v of ['front', 'back', 'shiny', 'shinyback'] as const) keep.add(sheetKey(b, v)); }
+      disposeSheetsExcept(keep);
+      for (const k of [...this.sheets.keys()]) if (!keep.has(k)) this.sheets.delete(k);
+      await Promise.all([
+        preloadSpeciesData(ids),
+        preloadSprites(ids).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
+      ]);
+      if (!this.demo) return; // the player headed into a real dive while we loaded
+      this.gen = gen;
+      this.eco = new Ecosystem(gen, maxHpOf);
+      this.eco.onPlayerDamage = () => {}; // nothing hurts the camera
+      this.balls = new BallSystem();
+      this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
+      this.timeOfDay = DEMO.TIME_OF_DAY;
+      this.lighting = lightingAt(this.timeOfDay, this.lighting);
+      this.demoPath = buildDemoPath(gen);
+      this.demoLUT = buildArcLUT(this.demoPath);
+      const lapLen = this.demoLUT[this.demoLUT.length - 1];
+      this.demoLoopS = Math.max(DEMO.MIN_LOOP_S, Math.min(DEMO.MAX_LOOP_S, lapLen / DEMO.CRUISE));
+      this.demoT = 0;
+      const pose = demoPose(this.demoPath, 0);
+      this.player.reset(pose.x, pose.y, pose.z, pose.yaw);
+      this.shakeT = 0;
+      useStore.getState().setDemoLive(true);
+      this.emit();
+    } catch (e) {
+      console.error('attract mode failed to start — menu keeps its static backdrop', e);
+      this.demo = false;
+    }
+  }
+
+  endDemo() {
+    if (!this.demo) return;
+    this.demo = false;
+    this.demoPath = null; this.demoLUT = null;
+    this.eco = null; this.sky = null; this.gen = null;
+    useStore.getState().setDemoLive(false);
+  }
+
+  private updateDemo(dt: number) {
+    const eco = this.eco;
+    if (!eco || !this.demoPath || !this.demoLUT) return;
+    dt = Math.min(dt, 0.05);
+    this.demoT = (this.demoT + dt) % this.demoLoopS;
+    this.timeOfDay = (this.timeOfDay + (dt * DEMO.DAY_DRIFT) / (this.level.dayCycleMinutes * 60)) % 1;
+    lightingAt(this.timeOfDay, this.lighting);
+    const p = this.player;
+    const px = p.x, py = p.y, pz = p.z;
+    const pose = demoPose(this.demoPath, arcT(this.demoLUT, this.demoT / this.demoLoopS));
+    p.x = pose.x; p.y = pose.y; p.z = pose.z; p.yaw = pose.yaw; p.pitch = pose.pitch;
+    p.vx = (p.x - px) / dt; p.vy = (p.y - py) / dt; p.vz = (p.z - pz) / dt;
+    p.speed = Math.hypot(p.vx, p.vy, p.vz);
+    p.swayT += dt * 0.7; // gentle breathing
+    eco.playerYaw = p.yaw;
+    eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: false }, this.lighting.nightness);
+    this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
+    // a display, not a play session: drain and discard everything
+    eco.drainEvents(); this.sky?.drainEvents(); this.balls.drainEvents();
+  }
 
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
   throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
@@ -687,6 +771,7 @@ export class GameSession {
   // ------------------------------------------------------------------ Frame update
 
   update(dt: number) {
+    if (this.demo) { this.updateDemo(dt); return; }
     if (this.phase !== 'playing' && this.phase !== 'completing') { this.input.lookDX = 0; this.input.lookDY = 0; return; }
     const eco = this.eco!;
     dt = Math.min(dt, 0.05);

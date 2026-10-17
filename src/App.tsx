@@ -58,6 +58,15 @@ export default function App() {
   const [loadLabel, setLoadLabel] = useState('Preparing the reef…');
   const [brief, setBrief] = useState<{ levelId: number; seed?: number; resume?: CurrentRun | null }>({ levelId: 1 });
   const [dived, setDived] = useState(false);
+  const demoLive = useStore((s) => s.demoLive);
+  const reducedMotion = save.settings.reducedMotion;
+
+  // Attract mode: the live reef behind the menu. It loads once, keeps simulating only
+  // while its canvas is mounted, and is torn down the moment a real dive begins.
+  useEffect(() => {
+    if (screen === 'brief' || screen === 'play' || screen === 'complete' || screen === 'defeat') session.endDemo();
+    else if (screen !== 'loading' && !reducedMotion) void session.startDemo();
+  }, [screen, reducedMotion]);
 
   // Boot: load save, detect touch, warm PokeAPI cache
   useEffect(() => {
@@ -111,40 +120,57 @@ export default function App() {
 
   const quitToMenu = useCallback(() => { session.end(); setOverlay('none'); setScreen('menu'); }, [setScreen, setOverlay]);
 
-  switch (screen) {
-    case 'loading': return <LoadingScreen progress={loadProgress} label={loadLabel} />;
-    case 'start': return <StartScreen onStart={() => setScreen(authChoiceMade() ? (save.trainer ? 'worlds' : 'trainer') : 'login')} />;
-    case 'login': return <AuthScreen onDone={() => setScreen(save.trainer ? 'worlds' : 'trainer')} />;
-    case 'worlds': return <WorldsScreen />;
-    case 'leaderboard': return <LeaderboardScreen />;
-    case 'trainer': return <TrainerSelect />;
-    case 'menu': return <MainMenu onPlay={(id) => goBrief(id)} onResume={() => { const r = save.currentRun; if (r) goBrief(r.levelId, r.seed, r); }} />;
-    case 'levels': return <LevelSelect onPlay={(id) => goBrief(id)} />;
-    case 'collection': return <CollectionScreen />;
-    case 'settings': return <SettingsScreen />;
-    case 'brief': return <MissionBrief levelId={brief.levelId} seed={brief.seed} resume={brief.resume} onEnter={enterReef} onBack={() => { session.end(); setScreen('menu'); }} />;
-    case 'play':
-    case 'complete':
-    case 'defeat':
-      return (
-        <>
+  const view = (() => {
+    switch (screen) {
+      case 'loading': return <LoadingScreen progress={loadProgress} label={loadLabel} />;
+      case 'start': return <StartScreen onStart={() => setScreen(authChoiceMade() ? (save.trainer ? 'worlds' : 'trainer') : 'login')} />;
+      case 'login': return <AuthScreen onDone={() => setScreen(save.trainer ? 'worlds' : 'trainer')} />;
+      case 'worlds': return <WorldsScreen />;
+      case 'leaderboard': return <LeaderboardScreen />;
+      case 'trainer': return <TrainerSelect />;
+      case 'menu': return <MainMenu onPlay={(id) => goBrief(id)} onResume={() => { const r = save.currentRun; if (r) goBrief(r.levelId, r.seed, r); }} />;
+      case 'levels': return <LevelSelect onPlay={(id) => goBrief(id)} />;
+      case 'collection': return <CollectionScreen />;
+      case 'settings': return <SettingsScreen />;
+      case 'brief': return <MissionBrief levelId={brief.levelId} seed={brief.seed} resume={brief.resume} onEnter={enterReef} onBack={() => { session.end(); setScreen('menu'); }} />;
+      case 'play':
+      case 'complete':
+      case 'defeat':
+        return (
+          <>
+            <Scene />
+            {screen === 'play' && <SceneCurtain />}
+            {screen === 'play' && <HUD onQuit={quitToMenu} />}
+            {screen === 'play' && isTouch && !paused && <TouchControls />}
+            {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}
+            {screen === 'defeat' && (
+              <DefeatScreen onRestart={() => goBrief(brief.levelId)} onLevels={() => { session.end(); setScreen('levels'); }} />
+            )}
+            {screen === 'complete' && (
+              <LevelComplete
+                onContinue={() => { const next = brief.levelId + 1; if (LEVELS.some((l) => l.id === next && l.status === 'playable')) goBrief(next); else { session.end(); setScreen('levels'); } }}
+                onReplay={() => goBrief(brief.levelId)}
+                onMenu={quitToMenu}
+              />
+            )}
+          </>
+        );
+      default: return null;
+    }
+  })();
+
+  // The living menu: the real reef idles behind the home screens (PokeSurvivor-style).
+  // Only mounted on screens that show it — on brief/play the real Scene takes over.
+  const demoScreens = screen === 'start' || screen === 'login' || screen === 'worlds' || screen === 'menu' || screen === 'levels' || screen === 'trainer' || screen === 'leaderboard';
+  return (
+    <>
+      {demoLive && demoScreens && (
+        <div className="demo-scene" aria-hidden>
           <Scene />
-          {screen === 'play' && <SceneCurtain />}
-          {screen === 'play' && <HUD onQuit={quitToMenu} />}
-          {screen === 'play' && isTouch && !paused && <TouchControls />}
-          {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}
-          {screen === 'defeat' && (
-            <DefeatScreen onRestart={() => goBrief(brief.levelId)} onLevels={() => { session.end(); setScreen('levels'); }} />
-          )}
-          {screen === 'complete' && (
-            <LevelComplete
-              onContinue={() => { const next = brief.levelId + 1; if (LEVELS.some((l) => l.id === next && l.status === 'playable')) goBrief(next); else { session.end(); setScreen('levels'); } }}
-              onReplay={() => goBrief(brief.levelId)}
-              onMenu={quitToMenu}
-            />
-          )}
-        </>
-      );
-    default: return null;
-  }
+          <div className="demo-scrim" />
+        </div>
+      )}
+      {view}
+    </>
+  );
 }

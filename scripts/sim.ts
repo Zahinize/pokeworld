@@ -180,6 +180,38 @@ for (const levelId of [1, 2]) {
   else fail(`sling: adaptive spacing wrong (first ${firstGap.toFixed(2)}, max ${maxGap.toFixed(2)}, out-of-clamp ${outOfClamp})`);
 }
 
+// ---- Attract mode: the menu's cinematic lap is smooth, grounded, and shows reef AND sky ----
+{
+  const { buildDemoPath, demoPose, buildArcLUT, arcT } = await import('@/engine/sim/demoPath');
+  const { DEMO } = await import('@/data/demo');
+  const { floorY } = await import('@/engine/world/terrain');
+  for (const seed of [11, 77, 1234]) {
+    const gen = generateEcosystem(getLevel(DEMO.LEVEL), seed);
+    const path = buildDemoPath(gen);
+    const lut = buildArcLUT(path);
+    const loopS = Math.max(DEMO.MIN_LOOP_S, Math.min(DEMO.MAX_LOOP_S, lut[lut.length - 1] / DEMO.CRUISE));
+    const N = 600;
+    let minY = Infinity, maxY = -Infinity, maxSpeed = 0, clip = 0, bad = 0;
+    let prev = { ...demoPose(path, arcT(lut, 0)) };
+    const first = { ...prev };
+    for (let i = 1; i <= N; i++) {
+      const po = demoPose(path, arcT(lut, (i % N) / N));
+      if (![po.x, po.y, po.z, po.yaw, po.pitch].every(Number.isFinite)) bad++;
+      minY = Math.min(minY, po.y); maxY = Math.max(maxY, po.y);
+      if (po.y < 0 && po.y < floorY(po.x, po.z) + 1.2) clip++;
+      maxSpeed = Math.max(maxSpeed, Math.hypot(po.x - prev.x, po.y - prev.y, po.z - prev.z) / (loopS / N));
+      prev = { ...po };
+    }
+    const seam = Math.hypot(prev.x - first.x, prev.y - first.y, prev.z - first.z);
+    // arc-length pacing: never faster than cruise + the clamps' vertical adjustments
+    if (bad || clip || seam > 0.5 || maxSpeed > DEMO.CRUISE * 1.5 || minY > -8 || maxY < 1) {
+      fail(`demo seed ${seed}: path broken (NaN ${bad}, floor clips ${clip}, seam ${seam.toFixed(2)}m, vmax ${maxSpeed.toFixed(2)}, y ${minY.toFixed(1)}..${maxY.toFixed(1)})`);
+    } else {
+      ok(`demo seed ${seed}: ${loopS.toFixed(0)}s lap at <= ${maxSpeed.toFixed(1)} m/s, reef ${minY.toFixed(0)}m to surface ${maxY.toFixed(1)}m, closed loop`);
+    }
+  }
+}
+
 // ---- Auto ball selection: right tier for the target, Master Balls stay precious ----
 {
   const { pickBall, idealBall } = await import('@/engine/sim/autoBall');
