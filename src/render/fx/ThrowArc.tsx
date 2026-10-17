@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
+import { useStore } from '@/state/store';
 import { GAME } from '@/data/gameConfig';
 import { previewDots, computeThrow, slingDir } from '@/engine/sim/ballPreview';
 
@@ -30,6 +31,8 @@ export function ThrowArc() {
     if (!mesh) return;
     const aim = session.slingAim;
     if (!aim.active) { mesh.count = 0; return; }
+    // locked on: the engine says this flight would hit a wild — the whole chain turns red
+    mat.color.set(useStore.getState().hud.slingHot ? '#ff6161' : '#ffffff');
     const p = session.player;
     // unarmed = what a tap would do (full power, straight ahead); armed = the live drag
     const [dx, dy, dz] = aim.armed ? slingDir(p, aim) : p.forward();

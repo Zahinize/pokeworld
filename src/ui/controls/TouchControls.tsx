@@ -25,6 +25,7 @@ export function TouchControls() {
   const sensitivity = useStore((s) => s.save.settings.sensitivity);
   const ballType = useStore((s) => s.hud.ballType);
   const ballCount = useStore((s) => s.save.inventory[s.hud.ballType]);
+  const hot = useStore((s) => s.hud.slingHot); // the drawn shot would HIT a wild: show it
 
   useEffect(() => {
     const joy = joyRef.current!, knob = knobRef.current!, look = lookRef.current!, sling = slingRef.current!;
@@ -118,7 +119,7 @@ export function TouchControls() {
     <div className="touch-controls">
       <div ref={lookRef} className="zone-look" />
       <div ref={joyRef} className="joy" aria-label="Move"><div ref={knobRef} className="knob" /></div>
-      <button ref={slingRef} className="sling-anchor" aria-label="Touch and drag to aim, release to throw">
+      <button ref={slingRef} className={`sling-anchor ${hot ? 'hot' : ''}`} aria-label="Touch and drag to aim, release to throw">
         <PokeballIcon ball={ballType} size={34} />
         <span className="sling-count">{ballCount}</span>
       </button>

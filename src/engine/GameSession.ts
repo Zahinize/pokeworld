@@ -7,7 +7,7 @@ import { getLevel, isFinalLevel, type LevelConfig, type BossPhase } from '@/data
 import { generateEcosystem, type GeneratedEcosystem } from './ecosystem/generator';
 import { Ecosystem } from './world/Ecosystem';
 import { BallSystem } from './sim/balls';
-import { computeThrow, THROW_LIFT } from './sim/ballPreview';
+import { computeThrow, previewBallPath, slingDir, THROW_LIFT } from './sim/ballPreview';
 import { pickBall } from './sim/autoBall';
 import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
 import { buildDemoPath, demoPose, buildArcLUT, arcT, type DemoPath } from './sim/demoPath';
@@ -839,7 +839,7 @@ export class GameSession {
     this.handleSkyEvents();
     this.updateTutorial(dt);
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
@@ -920,6 +920,34 @@ export class GameSession {
     const store = useStore.getState();
     store.setSettings({ tutorialDone: true });
     store.setHud({ tutorial: null });
+  }
+
+  /** While the slingshot is drawn: would the predicted flight HIT a wild right now?
+   *  Uses the exact same contact test as the real ball (balls.ts), walked along the
+   *  previewed path, so the red "locked on" state never lies. Published at hud cadence. */
+  private updateSlingHot() {
+    const store = useStore.getState();
+    const aim = this.slingAim;
+    const eco = this.eco;
+    if (!store.isTouch || !aim.active || !eco) { if (store.hud.slingHot) store.setHud({ slingHot: false }); return; }
+    const p = this.player;
+    const [adx, ady, adz] = aim.armed ? slingDir(p, aim) : p.forward();
+    const power = aim.armed ? aim.power : 1;
+    const { origin, dir } = computeThrow(p, adx, ady, adz, true, this.handOffsets());
+    const { pts, n } = previewBallPath(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2], GAME.THROW_SPEED * power, { steps: 64, dt: 1 / 30, obstacles: eco.obstacles });
+    let hot = false;
+    for (let i = 0; i < n && !hot; i++) {
+      const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
+      eco.hash.query(x, y, z, 6, (e, d2) => {
+        if (hot) return;
+        if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
+        if (e.role === 'partner' || e.isBoss) return; // bosses deflect balls: no false confidence
+        const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
+        if (d2 < r * r) hot = true;
+      });
+      if (!hot && this.sky?.hitTest(x, y, z)) hot = true;
+    }
+    if (hot !== store.hud.slingHot) store.setHud({ slingHot: hot });
   }
 
   /** What is the crosshair on? Cone test over reef AND sky — then let the ball pick itself. */

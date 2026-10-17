@@ -474,7 +474,10 @@ export function RotateGate() {
     check();
     window.addEventListener('resize', check);
     window.addEventListener('orientationchange', check);
-    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
+    // some browsers settle innerWidth/innerHeight late during rotation — the media query is the truth
+    const mq = window.matchMedia('(orientation: portrait)');
+    mq.addEventListener?.('change', check);
+    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); mq.removeEventListener?.('change', check); };
   }, [isTouch]);
   useEffect(() => {
     if (portrait && session.phase === 'playing') { session.pause(); wePaused.current = true; }
@@ -488,8 +491,8 @@ export function RotateGate() {
     <div className="rotate-gate">
       <div>
         <div className="phone"><Ic icon={Smartphone} size={72} color="var(--aqua)" /></div>
-        <h2>Please rotate your phone</h2>
-        <p>PokeWorld is played in landscape mode</p>
+        <h2>Please rotate your phone.</h2>
+        <p>PokeWorld is played in landscape mode.</p>
       </div>
     </div>
   );

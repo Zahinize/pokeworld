@@ -48,6 +48,8 @@ export interface HudState {
   bossIntro: { label: string; bosses: { speciesId: string; shiny: boolean }[]; text: string; final: boolean } | null;
   swapPrompt: { slot: 0 | 1; from: string; to: string } | null;
   hint: string | null;
+  /** The slingshot's predicted flight would hit a wild Pokémon right now (touch). */
+  slingHot: boolean;
   /** First-run tutorial banner: current step + copy; null once done/skipped. */
   tutorial: { step: string; text: string; i: number; n: number } | null;
   fps: number;
@@ -110,7 +112,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,

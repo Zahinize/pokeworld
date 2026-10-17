@@ -301,7 +301,7 @@ a { color: var(--aqua); }
 .player-hp .bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid var(--line); }
 .player-hp .bar i { display: block; height: 100%; border-radius: 999px; transition: width .3s ease; box-shadow: 0 0 10px rgba(53,208,255,.5); }
 .player-hp b { font-size: 12.5px; min-width: 26px; text-align: right; }
-.hud.touch .player-hp { bottom: auto; top: calc(64px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: 150px; padding: 6px 10px; }
+.hud.touch .player-hp { bottom: auto; top: calc(64px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: 128px; padding: 6px 10px; }
 .hit-vignette { position: fixed; inset: 0; pointer-events: none; z-index: 25; background: radial-gradient(ellipse at center, transparent 55%, rgba(244,63,94,.5) 100%); animation: hitFlash .55s ease-out forwards; }
 @keyframes hitFlash { 0% { opacity: 0 } 15% { opacity: 1 } 100% { opacity: 0 } }
 .recovery-overlay { position: fixed; inset: 0; z-index: 35; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(4, 22, 42, .55), rgba(2, 8, 18, .85)); animation: fadeUp .4s ease both; pointer-events: auto; }
@@ -452,9 +452,11 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   transition: transform 0.12s ease, box-shadow 0.12s ease;
 }
 .touch-controls .sling-anchor.drawn { transform: scale(0.92); box-shadow: 0 0 0 4px rgba(53,208,255,.35), 0 8px 24px rgba(53,208,255,.3); border-color: var(--aqua); }
+/* locked on: the drawn shot would hit a wild — red means "throw now" */
+.touch-controls .sling-anchor.hot { border-color: #ff6b6b; box-shadow: 0 0 0 4px rgba(255, 97, 97, .35), 0 0 26px rgba(255, 97, 97, .55); }
 .touch-controls .sling-anchor .sling-count { position: absolute; right: 4px; bottom: 4px; font: 800 12px var(--font-display); color: var(--text); background: rgba(4,22,43,.75); border-radius: 8px; padding: 0 5px; }
 /* HUD adjustments in touch mode */
-.hud.touch .hud-top-left { width: auto; max-width: 190px; }
+.hud.touch .hud-top-left { width: auto; max-width: 162px; }
 .hud.touch .mission-panel.compact { padding: 6px 10px; }
 .hud.touch .mission-panel.compact .head { margin-bottom: 4px; }
 .hud.touch .mission-panel.compact .head .lvl { font-size: 10px; }
@@ -530,7 +532,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 @media (max-height: 540px) and (orientation: landscape) {
   .hud-hint.touch-hint { top: calc(52px + var(--safe-top)); }
   /* mission bar: a slim pill matching the player health bar beside it */
-  .hud.touch .hud-top-left { width: 150px; }
+  .hud.touch .hud-top-left { width: 128px; }
   .hud.touch .mission-panel.compact { padding: 4px 12px 6px; border-radius: 999px; }
   .hud.touch .mission-panel .head { margin-bottom: 2px; gap: 6px; }
   .hud.touch .mission-panel .head .lvl { font-size: 9.5px; letter-spacing: .05em; }
@@ -538,7 +540,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .mission-panel .head .tot small { font-size: 9px; }
   .hud.touch .mission-panel .progress { height: 3px; border-width: 0; }
   .hud.touch .mission-panel .expand-hint { display: none; }
-  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(172px + var(--safe-left)); width: 132px; padding: 5px 9px; }
+  .hud.touch .player-hp { top: calc(14px + var(--safe-top)); left: calc(150px + var(--safe-left)); width: 114px; padding: 5px 9px; }
   .hud.touch .player-hp .ic { font-size: 13px; }
   .hud.touch .player-hp .bar { height: 6px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
