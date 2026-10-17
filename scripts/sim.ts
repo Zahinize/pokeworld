@@ -183,10 +183,10 @@ for (const levelId of [1, 2]) {
 // ---- Attract mode: the menu's cinematic lap is smooth, grounded, and shows reef AND sky ----
 {
   const { buildDemoPath, demoPose, buildArcLUT, arcT } = await import('@/engine/sim/demoPath');
-  const { DEMO } = await import('@/data/demo');
+  const { DEMO, DEMO_LEVEL } = await import('@/data/demo');
   const { floorY } = await import('@/engine/world/terrain');
   for (const seed of [11, 77, 1234]) {
-    const gen = generateEcosystem(getLevel(DEMO.LEVEL), seed);
+    const gen = generateEcosystem(DEMO_LEVEL, seed);
     const path = buildDemoPath(gen);
     const lut = buildArcLUT(path);
     const loopS = Math.max(DEMO.MIN_LOOP_S, Math.min(DEMO.MAX_LOOP_S, lut[lut.length - 1] / DEMO.CRUISE));
@@ -209,6 +209,19 @@ for (const levelId of [1, 2]) {
     } else {
       ok(`demo seed ${seed}: ${loopS.toFixed(0)}s lap at <= ${maxSpeed.toFixed(1)} m/s, reef ${minY.toFixed(0)}m to surface ${maxY.toFixed(1)}m, closed loop`);
     }
+  }
+  // the showcase cast: a packed reef the camera can't look away from, still cheap per frame
+  {
+    const gen = generateEcosystem(DEMO_LEVEL, 42);
+    const eco = new Ecosystem(gen, hp);
+    const n0 = eco.alive.length;
+    const preds = eco.alive.filter((e) => e.behavior === 'predator').length;
+    const pstub = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0.8, lureActive: false };
+    const t0 = performance.now();
+    for (let i = 0; i < 60 * 30; i++) { eco.update(1 / 60, pstub, 0); eco.drainEvents(); }
+    const msPerStep = (performance.now() - t0) / (60 * 30);
+    if (n0 >= 80 && preds >= 4 && msPerStep < 0.35) ok(`demo cast: ${n0} Pokémon (${preds} predators hunting) at ${msPerStep.toFixed(3)} ms/step — menu stays smooth`);
+    else fail(`demo cast wrong (${n0} entities, ${preds} predators, ${msPerStep.toFixed(3)} ms/step)`);
   }
 }
 

@@ -11,7 +11,7 @@ import { computeThrow, THROW_LIFT } from './sim/ballPreview';
 import { pickBall } from './sim/autoBall';
 import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs } from './sim/tutorial';
 import { buildDemoPath, demoPose, buildArcLUT, arcT, type DemoPath } from './sim/demoPath';
-import { DEMO } from '@/data/demo';
+import { DEMO, DEMO_LEVEL } from '@/data/demo';
 import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
 import { SkyLife } from './sky/SkyLife';
 import { PlayerController, type InputState } from './player/PlayerController';
@@ -327,7 +327,7 @@ export class GameSession {
     if (this.demo || this.phase !== 'idle') return;
     this.demo = true;
     try {
-      this.level = getLevel(DEMO.LEVEL);
+      this.level = DEMO_LEVEL; // the showcase cast: a packed reef, not the mission roster
       this.seed = randomSeed();
       const gen = generateEcosystem(this.level, this.seed);
       const ids = Array.from(new Set([...gen.spawns.map((s) => s.speciesId), ...SKY_SPECIES_IDS]));

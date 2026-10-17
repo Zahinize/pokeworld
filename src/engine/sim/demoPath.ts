@@ -88,8 +88,9 @@ export function demoPose(path: DemoPath, t01: number): DemoPose {
   samplePath(path.pts, t01, POS);
   samplePath(path.look, t01, LOOK);
   // the spline may dip or overshoot between clamped waypoints — the camera never clips
-  // the sea floor, and never lifts more than a wave-crest above the surface
-  const y = Math.min(DEMO.SURFACE_Y + 0.4, Math.max(POS[1], floorY(POS[0], POS[2]) + 1.5));
+  // the sea floor (and keeps enough clearance not to skim boulders), never lifts more
+  // than a wave-crest above the surface
+  const y = Math.min(DEMO.SURFACE_Y + 0.4, Math.max(POS[1], floorY(POS[0], POS[2]) + 2.6));
   const dx = LOOK[0] - POS[0], dy = LOOK[1] - y, dz = LOOK[2] - POS[2];
   const L = Math.hypot(dx, dy, dz) || 1;
   return {
