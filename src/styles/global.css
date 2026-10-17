@@ -354,10 +354,6 @@ details.vet { margin-top: 12px; }
 details.vet summary { cursor: pointer; font-size: 11.5px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; color: var(--dim); padding: 4px 2px; user-select: none; list-style-position: inside; }
 details.vet summary:hover { color: var(--muted); }
 details.vet[open] summary { margin-bottom: 10px; }
-/* returning desktop players: a bare click bar instead of the full legend (pointer lock still needs a click) */
-.controls-prompt.minimal { background: rgba(3,12,22,.25); cursor: pointer; }
-.dive-bar { display: inline-flex; align-items: center; gap: 10px; padding: 12px 24px; border-radius: 999px; font-size: 14.5px; font-weight: 700; color: var(--text); cursor: pointer; animation: fadeUp .3s ease both; }
-.dive-bar .kbd { font-size: 12px; padding: 3px 7px; }
 
 /* Dive-in prompt */
 .dive-prompt { position: fixed; inset: 0; display: grid; place-items: center; z-index: 30; background: radial-gradient(ellipse at center, rgba(2,10,22,.2), rgba(2,10,22,.6)); cursor: pointer; }

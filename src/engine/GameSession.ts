@@ -1465,8 +1465,10 @@ export class GameSession {
 
   private updateHints(dt: number) {
     const store = useStore.getState();
-    // the tutorial banner IS the hint while it runs — never two instructions at once
-    if (this.tutorial) { if (store.hud.hint) store.setHud({ hint: null }); return; }
+    // the tutorial banner IS the hint while it runs — never two instructions at once.
+    // And once the tutorial has been completed (or skipped), the hints retire for good:
+    // the tutorial covers every control a player needs.
+    if (this.tutorial || store.save.settings.tutorialDone) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     if (!store.save.settings.showHints) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     this.hintTimer += dt;
     const isTouch = store.isTouch;

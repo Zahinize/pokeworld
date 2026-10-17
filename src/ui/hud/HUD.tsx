@@ -462,24 +462,18 @@ export function ControlsPrompt({ onDive, isTouch }: { onDive: () => void; isTouc
   const seen = useStore((s) => s.save.settings.controlsSeen);
   const setSettings = useStore((s) => s.setSettings);
   const dive = () => { Audio.init(); if (!seen) setSettings({ controlsSeen: true }); onDive(); };
-  // Returning touch players dive straight in — the "Dive in" tap on the mission brief was the
-  // gesture (Audio.init already ran there), and there's no pointer lock to request on touch.
-  useEffect(() => { if (seen && isTouch) onDive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Returning players dive straight in: the "Enter Reef" click on the brief was the user
+  // gesture (Audio unlocked there, and its activation window still covers the pointer-lock
+  // request this triggers). If a browser refuses the lock, the first click on the reef
+  // acquires it — the standard recapture path players already know from pausing.
+  useEffect(() => { if (seen) onDive(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (seen && isTouch) return;
+    if (seen) return;
     const onKey = (e: KeyboardEvent) => { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); dive(); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onDive, seen, isTouch]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (seen && isTouch) return null;
-  if (seen) {
-    // Desktop veterans: pointer lock still needs a click, but not a wall of text.
-    return (
-      <div className="overlay controls-prompt minimal" style={{ zIndex: 30 }} onClick={dive}>
-        <button className="glass dive-bar" autoFocus><Ic icon={Play} size={15} /> Click to dive <span className="kbd">Enter</span></button>
-      </div>
-    );
-  }
+  if (seen) return null;
   return (
     <div className="overlay controls-prompt" style={{ zIndex: 30 }}>
       <Panel className="panel strong">
