@@ -285,7 +285,7 @@ a { color: var(--aqua); }
 .swap-prompt .txt { text-align: left; }
 .swap-prompt .txt b { display: block; font-size: 13.5px; color: var(--gold); }
 .swap-prompt .txt span { font-size: 12px; color: var(--muted); }
-.hud.touch .swap-prompt { bottom: calc(150px + var(--safe-bottom)); }
+.hud.touch .swap-prompt { bottom: calc(232px + var(--safe-bottom)); } /* clears the control row */
 
 /* Trainer tag under companions */
 .partner-tag { display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px 4px 5px; border-radius: 999px; background: rgba(5, 28, 52, .78); border: 2px solid rgba(255, 209, 102, .85); box-shadow: 0 0 14px rgba(255, 209, 102, .55), inset 0 0 8px rgba(255, 209, 102, .18); white-space: nowrap; transform: translateZ(0); animation: tagGlow 2.2s ease-in-out infinite; }
@@ -429,11 +429,13 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 .touch-controls .zone-look { position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
 .touch-controls .joy { position: absolute; left: calc(26px + var(--safe-left)); bottom: calc(92px + var(--safe-bottom)); width: 128px; height: 128px; border-radius: 50%; background: rgba(255,255,255,.06); border: 1px solid var(--line-strong); pointer-events: auto; touch-action: none; }
 .touch-controls .joy .knob { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(255,255,255,.22); border: 1px solid rgba(255,255,255,.5); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-.touch-controls .joy { left: calc(18px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
+/* the three bottom controls sit on ONE center line (joy center = the line) and lean toward
+   each other — a single control cluster instead of far-flung corners */
+.touch-controls .joy { left: calc(30px + var(--safe-left)); bottom: calc(122px + var(--safe-bottom)); width: 112px; height: 112px; }
 .touch-controls .sling-anchor {
   position: absolute; pointer-events: auto; touch-action: none;
   width: 78px; height: 78px; border-radius: 50%;
-  right: calc(16px + var(--safe-right)); bottom: calc(152px + var(--safe-bottom));
+  right: calc(28px + var(--safe-right)); bottom: calc(139px + var(--safe-bottom)); /* center 178, level with the joystick */
   background: var(--panel); border: 1px solid var(--line-strong); backdrop-filter: blur(10px);
   display: grid; place-items: center; user-select: none; -webkit-user-select: none;
   box-shadow: 0 8px 24px rgba(4, 22, 43, 0.45);
@@ -450,7 +452,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 .hud.touch .mission-panel.compact .head .tot small { font-size: 10px; }
 .hud.touch .mission-panel.compact .progress { height: 3px; }
 .hud.touch .hud-top-right { align-items: flex-end; }
-.hud.touch .hud-bottom { bottom: calc(10px + var(--safe-bottom)); gap: 8px; }
+.hud.touch .hud-bottom { bottom: calc(158px + var(--safe-bottom)); gap: 8px; } /* chip center ~178: the row's middle control */
 .hud.touch .ball-chip { padding: 6px 12px; gap: 8px; }
 .hud.touch .target-label { top: calc(50% + 70px); }
 .hud.touch .target-ring { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
@@ -485,8 +487,8 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .ball-chip { padding: 5px 12px; gap: 7px; }
   .ball-chip .count { font-size: 13px; }
   /* touch controls: phone sizes — joystick left thumb, slingshot right thumb, chip centered below */
-  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(18px + var(--safe-left)); }
-  .touch-controls .sling-anchor { bottom: calc(123px + var(--safe-bottom)); right: calc(16px + var(--safe-right)); width: 72px; height: 72px; }
+  .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(26px + var(--safe-left)); }
+  .touch-controls .sling-anchor { bottom: calc(109px + var(--safe-bottom)); right: calc(24px + var(--safe-right)); width: 72px; height: 72px; } /* center 145 */
   /* party box: tiny but fully functional, floating clear above the joystick */
   .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
@@ -508,7 +510,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .restore-banner .eyebrow { font-size: 8.5px; letter-spacing: .14em; }
   .hud.touch .restore-banner b { font-size: 11px; }
   /* the single ball chip: compact */
-  .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(8px + var(--safe-bottom)); }
+  .hud.touch .hud-bottom { align-items: center; gap: 6px; bottom: calc(127px + var(--safe-bottom)); } /* chip center ~145 */
   .hud.touch .ball-chip { padding: 4px 10px; gap: 6px; }
   .hud.touch .ball-chip .count { font-size: 12px; }
   .hud.touch .ball-chip .mode { font-size: 8.5px; padding: 1px 6px; }
@@ -532,8 +534,10 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
   .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
-  .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); }
-  .touch-controls .sling-anchor { bottom: calc(51px + var(--safe-bottom)); }
+  .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); left: calc(48px + var(--safe-left)); }
+  .touch-controls .sling-anchor { bottom: calc(39px + var(--safe-bottom)); right: calc(40px + var(--safe-right)); } /* center 78 (base 78px ball) */
+  .hud.touch .hud-bottom { bottom: calc(58px + var(--safe-bottom)); } /* chip center ~78: level with joy + ball */
+  .hud.touch .swap-prompt { bottom: calc(132px + var(--safe-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .ocean-bg::before, .ocean-bg .ray, .ocean-bg .bubble { animation: none; }

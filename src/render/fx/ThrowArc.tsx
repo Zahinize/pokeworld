@@ -34,7 +34,7 @@ export function ThrowArc() {
     // unarmed = what a tap would do (full power, straight ahead); armed = the live drag
     const [dx, dy, dz] = aim.armed ? slingDir(p, aim) : p.forward();
     const power = aim.armed ? aim.power : 1;
-    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dx, dy, dz, true);
+    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dx, dy, dz, true, session.handOffsets());
     const { pts, n } = previewDots(ox, oy, oz, tdx, tdy, tdz, GAME.THROW_SPEED * power, {
       obstacles: session.eco?.obstacles,
       eye: [camera.position.x, camera.position.y, camera.position.z], // screen-even gaps: dense out of the hand

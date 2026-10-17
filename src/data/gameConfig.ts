@@ -65,8 +65,10 @@ export const GAME = {
   /** Touch throws launch from the "hand" — low and to the right, matching the on-screen
    *  Poké Ball — and converge back onto the aim ray at THROW_FOCUS metres so accuracy
    *  matches desktop. Desktop keeps the original small offset (byte-identical feel). */
-  /** Tuned so the launch point PROJECTS onto the on-screen Poké Ball on a portrait phone
-   *  (fov 70, ball at ~86%/80% of the screen): right/fwd ≈ 0.233, down/fwd ≈ 0.425. */
+  /** FALLBACK hand offsets (portrait phone, fov 70, ball at ~86%/80% of the screen).
+   *  In the running game the offsets are derived live from the real camera fov/aspect
+   *  and the measured Poké Ball position (GameSession.handOffsets), so the launch point
+   *  projects onto the ball in ANY orientation; these raw dials serve the headless sim. */
   HAND_RIGHT_TOUCH: 0.26,
   HAND_DOWN_TOUCH: 0.47,
   HAND_FWD_TOUCH: 1.1,

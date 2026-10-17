@@ -59,6 +59,11 @@ export class GameSession {
   sky: SkyLife | null = null;
   /** Live slingshot aim (touch): written by TouchControls at pointer rate, read by ThrowArc. */
   slingAim = { active: false, yawOff: 0, pitchOff: 0, power: 1, armed: false };
+  /** The on-screen Poké Ball's center in NDC, measured by TouchControls on layout. */
+  slingNdc = { x: 0.72, y: -0.6 };
+  /** Live camera projection (written by CameraRig) — the hand offsets track orientation. */
+  camFov = 70;
+  camAspect = 0.46;
   private surfaceAtkReady = new Map<number, number>();
   private surfaceDrainAcc = new Map<number, number>();
   private rampageSurge = false;
@@ -316,6 +321,16 @@ export class GameSession {
 
   clearSlingAim() { this.slingAim.active = false; this.slingAim.armed = false; }
 
+  /** Camera-space launch offsets so a touch throw starts exactly ON the on-screen Poké
+   *  Ball — derived from the live fov/aspect and the ball's measured NDC position, which
+   *  is what makes it hold in portrait AND landscape alike. */
+  handOffsets() {
+    const fwd = GAME.HAND_FWD_TOUCH;
+    const tv = Math.tan(((this.camFov * Math.PI) / 180) / 2);
+    const th = tv * this.camAspect;
+    return { right: this.slingNdc.x * th * fwd, down: -this.slingNdc.y * tv * fwd, fwd };
+  }
+
   /**
    * Attract mode: load a real level-1 reef and let it live behind the menu — schools,
    * feeding, guardians, predators, the surface and the sky — while a slow cinematic
@@ -418,7 +433,7 @@ export class GameSession {
     this.ballsUsed++;
     const p = this.player;
     // touch throws fly out of the on-screen Poké Ball (low-right) and converge onto the aim ray
-    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dirX, dirY, dirZ, store.isTouch);
+    const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
     this.balls.throw(type, ox, oy, oz, tdx, tdy + THROW_LIFT, tdz, speed);
     Audio.throwBall();
     if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw

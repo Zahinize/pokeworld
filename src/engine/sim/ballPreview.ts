@@ -19,23 +19,32 @@ export function computeThrowOrigin(
   return [p.x + rx * 0.35 + dirX * 0.6, p.y - 0.25 + dirY * 0.6, p.z + rz * 0.35 + dirZ * 0.6];
 }
 
+/** Camera-space launch offsets; GameSession derives them live from the real camera
+ *  fov/aspect and the on-screen Poké Ball's measured position, so the arc starts ON
+ *  the ball whatever the device orientation. The GAME dials remain as the fallback. */
+export interface HandOffsets { right: number; down: number; fwd: number }
+
 /**
  * Full throw solution shared by the engine AND the trajectory preview. Desktop is the
  * original math untouched (origin just off the shoulder, dir passed through). Touch
- * launches from the "hand" — low-right, where the on-screen Poké Ball sits — and the
- * direction converges back onto the aim ray at THROW_FOCUS metres, so what you aim at
- * is what you hit, while the ball visibly flies out of the slingshot.
+ * launches from the "hand" — where the on-screen Poké Ball sits — and the direction
+ * converges back onto the aim ray at THROW_FOCUS metres, so what you aim at is what
+ * you hit, while the ball visibly flies out of the slingshot.
  */
 export function computeThrow(
   p: { x: number; y: number; z: number; yaw: number },
   dirX: number, dirY: number, dirZ: number,
   touch: boolean,
+  hand?: HandOffsets,
 ): { origin: [number, number, number]; dir: [number, number, number] } {
   if (!touch) return { origin: computeThrowOrigin(p, dirX, dirY, dirZ), dir: [dirX, dirY, dirZ] };
+  const hr = hand?.right ?? GAME.HAND_RIGHT_TOUCH;
+  const hd = hand?.down ?? GAME.HAND_DOWN_TOUCH;
+  const hf = hand?.fwd ?? GAME.HAND_FWD_TOUCH;
   const rx = Math.cos(p.yaw), rz = -Math.sin(p.yaw);
-  const ox = p.x + rx * GAME.HAND_RIGHT_TOUCH + dirX * GAME.HAND_FWD_TOUCH;
-  let oy = p.y - GAME.HAND_DOWN_TOUCH + dirY * GAME.HAND_FWD_TOUCH;
-  const oz = p.z + rz * GAME.HAND_RIGHT_TOUCH + dirZ * GAME.HAND_FWD_TOUCH;
+  const ox = p.x + rx * hr + dirX * hf;
+  let oy = p.y - hd + dirY * hf;
+  const oz = p.z + rz * hr + dirZ * hf;
   // steep downward throws while hugging the sea floor must not spawn the ball under the sand
   const fy = floorY(ox, oz) + 0.35;
   if (oy < fy) oy = fy;

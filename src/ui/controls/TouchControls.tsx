@@ -88,6 +88,16 @@ export function TouchControls() {
     const onSlingCancel = (e: PointerEvent) => { if (e.pointerId === slingId) clearSling(); };
     // a careful aim is a long-press: the context menu must never steal it (Android)
     const onSlingMenu = (e: Event) => e.preventDefault();
+    // tell the engine where the Poké Ball sits on screen (NDC) so throws launch FROM it,
+    // whatever the orientation or breakpoint
+    const measure = () => {
+      const r = sling.getBoundingClientRect();
+      if (!r.width || !window.innerWidth) return;
+      session.slingNdc.x = ((r.left + r.width / 2) / window.innerWidth) * 2 - 1;
+      session.slingNdc.y = 1 - ((r.top + r.height / 2) / window.innerHeight) * 2;
+    };
+    measure();
+    window.addEventListener('resize', measure);
 
     joy.addEventListener('pointerdown', onJoyDown); joy.addEventListener('pointermove', onJoyMove); joy.addEventListener('pointerup', onJoyUp); joy.addEventListener('pointercancel', onJoyUp);
     look.addEventListener('pointerdown', onLookDown); look.addEventListener('pointermove', onLookMove); look.addEventListener('pointerup', onLookUp); look.addEventListener('pointercancel', onLookUp);
@@ -98,6 +108,7 @@ export function TouchControls() {
       look.removeEventListener('pointerdown', onLookDown); look.removeEventListener('pointermove', onLookMove); look.removeEventListener('pointerup', onLookUp); look.removeEventListener('pointercancel', onLookUp);
       sling.removeEventListener('pointerdown', onSlingDown); sling.removeEventListener('pointermove', onSlingMove); sling.removeEventListener('pointerup', onSlingUp); sling.removeEventListener('pointercancel', onSlingCancel);
       sling.removeEventListener('contextmenu', onSlingMenu);
+      window.removeEventListener('resize', measure);
       clearSling(); // unmount (pause / level end) must never leave a live aim behind
       session.input.strafe = 0; session.input.forward = 0;
     };
