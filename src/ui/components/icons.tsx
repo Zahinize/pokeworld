@@ -8,7 +8,7 @@ import {
   Anchor, BookOpen, Bird, Compass, Crown, Fish, Flame, Gem, Globe, Home, Hourglass,
   Lock, Map, Medal, Moon, Pause, Play, Search, Settings, Shield, Sparkles, Star,
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
-  AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft,
+  AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone,
 } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
@@ -20,7 +20,7 @@ export {
   Anchor, BookOpen, Bird, Compass, Crown, Fish, Flame, Gem, Globe, Home, Hourglass,
   Lock, Map, Medal, Moon, Pause, Play, Search, Settings, Shield, Sparkles, Star,
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
-  AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft,
+  AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone,
 };
 
 /** Behavior groups → icons (replaces BEHAVIOR_GROUPS[..].icon emojis in the UI). */

@@ -422,6 +422,16 @@ details.vet[open] summary { margin-bottom: 10px; }
 input[type=range] { accent-color: var(--aqua); width: 150px; }
 
 /* Touch controls */
+/* phones play in landscape: the in-game portrait gate, above every HUD layer */
+.rotate-gate { position: fixed; inset: 0; z-index: 46; display: grid; place-items: center; text-align: center; padding: 24px; background: radial-gradient(120% 100% at 50% 18%, #0a2a44 0%, #051a2c 55%, #03101e 100%); animation: fadeUp .25s ease both; }
+.rotate-gate .phone { display: inline-block; animation: tiltPhone 2.2s ease-in-out infinite; transform-origin: 50% 60%; margin-bottom: 18px; filter: drop-shadow(0 0 18px rgba(53,208,255,.4)); }
+.rotate-gate h2 { font-family: var(--font-display); font-size: 24px; margin: 0 0 6px; color: var(--text); }
+.rotate-gate p { margin: 0; font-size: 14.5px; color: var(--muted); }
+@keyframes tiltPhone {
+  0%, 18% { transform: rotate(0deg); }
+  45%, 78% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
 /* entering the reef: a deep-sea curtain hides the canvas's first frames, then lifts */
 .scene-curtain { position: fixed; inset: 0; z-index: 24; pointer-events: none; background: radial-gradient(120% 100% at 50% 18%, #0a2a44 0%, #051a2c 55%, #03101e 100%); opacity: 1; transition: opacity .9s ease; }
 .scene-curtain.off { opacity: 0; }

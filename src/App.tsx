@@ -18,7 +18,7 @@ import { DefeatScreen } from './ui/screens/DefeatScreen';
 import { CollectionScreen } from './ui/screens/CollectionScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
 import { Scene } from './render/Scene';
-import { HUD, ControlsPrompt } from './ui/hud/HUD';
+import { HUD, ControlsPrompt, RotateGate } from './ui/hud/HUD';
 import { TouchControls } from './ui/controls/TouchControls';
 import { requestPointerLock } from './render/player/CameraRig';
 import { Audio } from './audio/AudioManager';
@@ -157,6 +157,7 @@ export default function App() {
             {screen === 'play' && <HUD onQuit={quitToMenu} />}
             {screen === 'play' && isTouch && !paused && <TouchControls />}
             {screen === 'play' && !dived && <ControlsPrompt onDive={dive} isTouch={isTouch} />}
+            {screen === 'play' && <RotateGate />}
             {screen === 'defeat' && (
               <DefeatScreen onRestart={() => goBrief(brief.levelId)} onLevels={() => { session.end(); setScreen('levels'); }} />
             )}

@@ -1,6 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone } from '../components/icons';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -455,6 +455,43 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
       {overlay === 'collection' && <div className="overlay"><CollectionView embedded onClose={() => { setOverlay('pause'); }} /></div>}
       {overlay === 'settings' && <div className="overlay"><div style={{ width: 'min(100%, 600px)' }}><SettingsView embedded onClose={() => setOverlay('pause')} /></div></div>}
     </>
+  );
+}
+
+/**
+ * Phones play PokeWorld in landscape: in-game portrait shows a full-screen rotate prompt
+ * (animated tilting phone) and holds the simulation. Rotating back resumes on its own —
+ * unless the pause menu was already open, which stays the player's pause. Tablets
+ * (shortest side >= 768px) are exempt; menus are portrait-friendly everywhere.
+ */
+export function RotateGate() {
+  const isTouch = useStore((s) => s.isTouch);
+  const [portrait, setPortrait] = useState(false);
+  const wePaused = useRef(false);
+  useEffect(() => {
+    if (!isTouch) return;
+    const check = () => setPortrait(Math.min(window.innerWidth, window.innerHeight) < 768 && window.innerHeight > window.innerWidth);
+    check();
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', check);
+    return () => { window.removeEventListener('resize', check); window.removeEventListener('orientationchange', check); };
+  }, [isTouch]);
+  useEffect(() => {
+    if (portrait && session.phase === 'playing') { session.pause(); wePaused.current = true; }
+    else if (!portrait && wePaused.current) {
+      wePaused.current = false;
+      if (session.phase === 'paused' && useStore.getState().overlay === 'none') session.resume();
+    }
+  }, [portrait]);
+  if (!isTouch || !portrait) return null;
+  return (
+    <div className="rotate-gate">
+      <div>
+        <div className="phone"><Ic icon={Smartphone} size={72} color="var(--aqua)" /></div>
+        <h2>Please rotate your phone</h2>
+        <p>PokeWorld is played in landscape mode</p>
+      </div>
+    </div>
   );
 }
 
