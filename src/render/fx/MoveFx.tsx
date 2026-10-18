@@ -14,14 +14,20 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19 } as const;
 
-export interface MoveVis { s: number; w: number; c2: string; blend: 0 | 1; impact: string }
+export interface MoveVis {
+  s: number; w: number; c2: string; blend: 0 | 1; impact: string;
+  /** PokeSurvivor-style volley: [count, gap in metres] — siblings trail the lead projectile. */
+  volley?: [number, number];
+  /** Cast flourish: a ring of bubbles erupts around the caster (Kingler's Bubble). */
+  nova?: boolean;
+}
 
 /** Fallbacks by engine style. */
 const STYLE_VIS: Record<string, MoveVis> = {
-  bubbles: { s: ST.bubbles, w: 1.5, c2: '#e8f8ff', blend: 0, impact: 'bubble' },
-  jet: { s: ST.jet, w: 2.8, c2: '#e0f2fe', blend: 0, impact: 'splash' },
+  bubbles: { s: ST.orb, w: 0.62, c2: '#e8f8ff', blend: 1, impact: 'bubble', volley: [5, 1.0] },
+  jet: { s: ST.jet, w: 2.8, c2: '#e0f2fe', blend: 1, impact: 'splash' },
   beam: { s: ST.aurora, w: 2.6, c2: '#ffffff', blend: 0, impact: 'spark' },
   darts: { s: ST.dart, w: 0.7, c2: '#ffffff', blend: 0, impact: 'spark' },
   ink: { s: ST.ink, w: 1.2, c2: '#0b1220', blend: 1, impact: 'ink' },
@@ -42,9 +48,10 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   auroraBeam: { s: ST.aurora, w: 2.8, impact: 'spark' },
   signalBeam: { s: ST.aurora, w: 2.4, c2: '#f0abfc' },
   originPulse: { s: ST.iceBeam, w: 4.0, c2: '#bfdbfe', impact: 'splash' },
-  hydroPump: { w: 3.4, c2: '#f0f9ff' },
-  waterGun: { w: 1.9 },
-  brine: { w: 2.4, c2: '#99f6e4' },
+  hydroPump: { w: 3.4, c2: '#f0f9ff', blend: 1 },
+  // Water Gun, per the reference: a volley of chunky teardrop droplets, not a stream
+  waterGun: { s: ST.droplet, w: 0.8, c2: '#bfdbfe', blend: 1, volley: [3, 2.2], impact: 'splash' },
+  brine: { s: ST.droplet, w: 1.05, c2: '#99f6e4', blend: 1, volley: [2, 2.2], impact: 'splash' },
   // mud + ink travel as thick, opaque torrents (murk layer, never additive)
   mudShot: { s: ST.mudRay, w: 2.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
   muddyWater: { s: ST.mudRay, w: 3.4, c2: '#d8b27a', blend: 1, impact: 'mud' },
@@ -54,9 +61,9 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   thunder: { impact: 'zap' },
   iceShard: { c2: '#ffffff', impact: 'ice' },
   icicleSpear: { c2: '#ffffff', impact: 'ice' },
-  bubble: { impact: 'bubble' },
-  bubbleBeam: { w: 1.7, impact: 'bubble' },
-  waterPulse: { s: ST.jet, w: 2.6, impact: 'splash' },
+  bubble: { s: ST.orb, w: 0.95, blend: 1, impact: 'bubble', volley: [3, 1.5], nova: true },
+  bubbleBeam: { s: ST.orb, w: 0.62, blend: 1, impact: 'bubble', volley: [5, 1.0] },
+  waterPulse: { s: ST.jet, w: 2.6, blend: 1, impact: 'splash' },
   dragonPulse: { s: ST.aurora, w: 2.8, c2: '#99f6e4', impact: 'spark' },
   round: { s: ST.aurora, w: 2.2, c2: '#fecaca' },
   silverWind: { s: ST.aurora, w: 2.2, c2: '#ffffff' },
@@ -89,7 +96,7 @@ export function visFor(moveId: string, style: string): MoveVis {
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
 const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay]);
 /** Camera-facing square billboards. */
-const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash]);
+const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl]);
 
 // ------------------------------------------------------------------ the projectile / wave shader
 
@@ -117,7 +124,7 @@ void main(){
   } else if (s == 9 || s == 14) { // vertical bolt / geyser column: y spans aLen upward
     vec3 sideH = normalize(vec3(camRight.x, 0.001, camRight.z));
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -172,13 +179,14 @@ void main(){
     float shine = smoothstep(0.34, 0.0, length(p - vec2(-r * 0.35, r * 0.35)));
     a = (rim * 1.15 + body + shine * 0.9) * smoothstep(0.0, 0.25, cyl);
     col = mix(vColor, vColor2, rim * 0.7 + shine);
-  } else if (s == 1) { // water cannon: a solid cylinder of churning water with a foaming skin
+  } else if (s == 1) { // water cannon: a solid cylinder of churning water with a frothing head
     float core = pow(cyl, 0.5);                                  // volumetric through the axis
     float churn = 0.88 + 0.12 * sin(alongW * 3.2 - uTime * 18.0 + vSeed * 12.0);
     float head = smoothstep(0.72, 1.0, along);
-    a = core * churn + skin * 0.5 + head * 0.3 * cyl;
-    // specular run down the top of the tube sells the roundness
-    col = mix(vColor, vColor2, pow(cyl, 2.2) * 0.65 + skin * 0.25 + head * 0.25);
+    // the leading edge boils: white froth clumps, per the Hydro Pump reference
+    float froth = head * (0.5 + 0.5 * sin(c.y * 19.0 + alongW * 6.0 - uTime * 32.0 + vSeed * 8.0));
+    a = core * churn + skin * 0.5 + head * 0.55 * cyl + froth * 0.5 * cyl;
+    col = mix(vColor, vColor2, pow(cyl, 2.2) * 0.65 + skin * 0.25 + head * 0.55 + froth * 0.4);
   } else if (s == 2) { // ice cannon: a faceted crystal rod, frosted along its curved surface
     float facet = 0.86 + 0.14 * sin(across * 11.0 + alongW * 2.0 + vSeed * 4.0);
     float core = pow(cyl, 0.6) * facet;
@@ -290,6 +298,50 @@ void main(){
     float foam = smoothstep(1.0, 0.5, across) * (0.5 + 0.5 * sin(hgt * vLen * 9.0 - uTime * 40.0));
     a = core * churn + foam * 0.45 + crown;
     col = mix(vColor, vColor2, core * 0.5 + crown * 0.6 + foam * 0.25);
+  } else if (s == 16) { // water droplet: chunky teardrop — round head LEADS, point trails
+    float hx = 0.74;
+    float af = 1.0 - along;                       // head at the front of travel
+    float rp = af > hx ? sqrt(max(0.0, 1.0 - pow((af - hx) / (1.0 - hx), 2.0)))
+                       : pow(max(af, 0.0) / hx, 0.72);
+    float m = across / max(rp, 1e-3);
+    float body = smoothstep(1.02, 0.9, m);
+    float outline = smoothstep(0.62, 0.95, m);   // darkening band toward the rim
+    float shine = smoothstep(0.2, 0.0, length(vec2((af - hx - 0.04) * 1.8, c.y * 2.0 - rp * 0.42)));
+    a = body;
+    col = mix(vColor, vColor2, pow(max(0.0, 1.0 - m), 2.0) * 0.5);  // light watery core
+    col = mix(col, vColor * 0.3, outline * 0.8);                     // chunky dark outline
+    col = mix(col, vec3(1.0), shine);                                // the glint
+  
+  } else if (s == 17) { // free bubble: rim-lit sphere, glint, gentle wobble
+    vec2 p = c * 2.0;
+    p.x += 0.07 * sin(uTime * 6.0 + vSeed * 31.0);
+    p.y += 0.07 * cos(uTime * 5.2 + vSeed * 23.0);
+    float d = length(p);
+    float rim = smoothstep(0.2, 0.05, abs(d - 0.74));
+    float edgeDark = smoothstep(0.1, 0.02, abs(d - 0.9));   // thin dark outline outside the rim
+    float body = smoothstep(0.74, 0.1, d) * 0.16;
+    float shine = smoothstep(0.26, 0.0, length(p - vec2(-0.27, 0.3)));
+    a = rim * 0.95 + edgeDark * 0.8 + body + shine;
+    col = mix(vColor, vColor2, rim * 0.75 + shine);          // light rim-lit glass
+    col = mix(col, vColor * 0.25, edgeDark * (1.0 - rim));   // outline keeps it readable anywhere
+  } else if (s == 18) { // impact starburst: white petals snapping outward, then gone
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    float petals = pow(abs(cos(ang * 4.0 + vSeed * 6.2832)), 3.0);
+    float reach = 0.22 + 0.78 * smoothstep(0.0, 0.4, vT);
+    float star = smoothstep(reach, reach * 0.2, d) * petals;
+    float core = pow(max(0.0, 1.0 - d * 2.0), 1.4) * (1.0 - vT);
+    float fade = 1.0 - smoothstep(0.3, 1.0, vT);
+    a = (star * 1.7 + core * 1.9) * fade;
+    col = mix(vec3(1.0), vColor2, 0.18);
+  } else if (s == 19) { // curling water-swirl residue, spinning as it fades
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang2 = atan(p.y, p.x) + uTime * 3.2 + vSeed * 6.2832;
+    float arm = fract(ang2 / 6.2832 + r * 0.55);
+    float curl = smoothstep(0.3, 0.1, abs(arm - 0.5)) * smoothstep(1.0, 0.35, r) * smoothstep(0.03, 0.26, r);
+    a = curl * 1.15 * (1.0 - smoothstep(0.25, 1.0, vT));
+    col = mix(vColor, vec3(1.0), 0.55);
   }
   // Fired straight at the camera the tube has no length to show — resolve it into a round blast
   // instead of a flat slab of colour.
@@ -303,7 +355,7 @@ void main(){
   a *= vAlpha;
   if (a < 0.01) discard;
   // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
-  bool murky = (s == 5 || s == 10 || s == 15);
+  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17);
   gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
@@ -321,8 +373,8 @@ function makeLayer(cap: number, blending: THREE.Blending) {
 }
 
 export function MoveProjectiles() {
-  const capA = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 32;
-  const capN = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 24;
+  const capA = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 120; // volleys, novas, impact stars + swirls
+  const capN = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 96; // matter volleys + novas
   const refA = useRef<THREE.InstancedMesh>(null);
   const refN = useRef<THREE.InstancedMesh>(null);
   const A = useMemo(() => makeLayer(capA, THREE.AdditiveBlending), [capA]);
@@ -367,6 +419,38 @@ export function MoveProjectiles() {
           const len = Math.max(0.6, Math.hypot(dx, dy, dz));
           put(vis.blend, ox + dx / 2, oy + dy / 2, oz + dz / 2, dx / len, dy / len, dz / len,
             vis.s, vis.w, len, Math.min(1, pr.t * 8), seed, 0);
+        } else if (vis.volley) {
+          // reference grammar: a volley of chunky siblings trailing the lead — droplet
+          // bursts and bubble trains — each a full projectile, not a ghost
+          const vl = Math.hypot(pr.vx, pr.vy, pr.vz) || 1;
+          const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
+          const grow = Math.min(1, pr.t * 6);
+          const across = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 1.2;
+          const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.6;
+          const [vn, gap] = vis.volley;
+          const travelled = pr.t * vl; // siblings only exist once they have left the mouth
+          for (let k = 0; k < vn; k++) {
+            const backD = gap * k;
+            if (backD > travelled + 0.3) continue;
+            const back = backD / vl;
+            const wob = vis.s === ST.orb ? Math.sin(state.clock.elapsedTime * 5.2 + k * 1.9 + seed * 20) * 0.14 : 0;
+            put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back + wob, pr.z - pr.vz * back, dx, dy, dz,
+              vis.s, across * grow * (1 - k * 0.07), baseLen * grow * (1 - k * 0.05),
+              (1 - k * 0.1) * grow, seed + k * 0.13, pr.t);
+          }
+          if (vis.nova && pr.t < 0.55) {
+            // the cast flourish: a rosette of bubbles erupting around the caster into a ring
+            const caster = eco.byId.get(pr.casterId);
+            if (caster) {
+              const r = 0.5 + pr.t * 4.2;
+              const fade = 1 - pr.t / 0.55;
+              for (let k = 0; k < 8; k++) {
+                const a2 = (k / 8) * Math.PI * 2 + seed * 6.28;
+                put(1, caster.x + Math.cos(a2) * r, caster.y + Math.sin(a2 * 2.0 + seed * 9) * r * 0.3, caster.z + Math.sin(a2) * r, 0, 1, 0,
+                  ST.orb, 0.42 + 0.1 * Math.sin(k * 3.1 + seed * 17), 0.8, fade, seed + k * 0.11, pr.t);
+              }
+            }
+          }
         } else {
           const vl = Math.hypot(pr.vx, pr.vy, pr.vz) || 1;
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
@@ -378,6 +462,25 @@ export function MoveProjectiles() {
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
               vis.s, vis.w * grow * (1 - k * 0.17) * 2, baseLen * grow * (1 - k * 0.12),
               (k === 0 ? 1 : 0.4 - k * 0.09) * grow, seed + k * 0.07, pr.t);
+          }
+        }
+      }
+      // ---- impact punch: every landed move snaps a white starburst + watery swirls
+      for (const v of eco.moves.visuals) {
+        if (!v.active || v.kind !== 'impact') continue;
+        const vis = visFor(v.moveId, v.style);
+        if (vis.impact === 'mud' || vis.impact === 'ink') continue; // matter splatters, light stars
+        const p = Math.min(1, v.t / 0.42);
+        if (p >= 1) continue;
+        const seed = ((v.x1 * 11 + v.z1 * 17) % 97) / 97;
+        c1.set(v.color); c2.set('#ffffff');
+        put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.star, 0.9 + vis.w * 0.45, 1.2, 1, seed, p);
+        if (vis.impact === 'splash' || vis.impact === 'bubble') {
+          for (let k = 0; k < 3; k++) {
+            const a2 = seed * 6.28 + k * 2.1;
+            const drift = 0.35 + p * 1.1;
+            put(0, v.x1 + Math.cos(a2) * drift, v.y1 + 0.2 + p * 0.5 + k * 0.12, v.z1 + Math.sin(a2) * drift, 0, 1, 0,
+              ST.swirl, 0.5 + k * 0.08, 0.6, 1 - p * 0.7, seed + k * 0.2, p);
           }
         }
       }
