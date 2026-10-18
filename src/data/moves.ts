@@ -31,6 +31,8 @@ export interface MoveConfig {
   cooldown: number;
   range: number;
   style: MoveStyle;
+  /** Projectile speed override (m/s) — e.g. Hydro Pump extends as a near-instant lance. */
+  projSpeed?: number;
   color: string;
   chargeTime?: number;
   effect?: MoveEffect;
@@ -53,7 +55,7 @@ export const MOVES: Record<string, MoveConfig> = {
   hornAttackFast: M({ id: 'hornAttackFast', name: 'Horn Attack', desc: 'A blindingly fast jab with a sharpened horn.', kind: 'damage', category: 'physical', power: 65, cooldown: 3, range: 2.5, style: 'melee', color: '#fbcfe8' }),
   waterfall: M({ id: 'waterfall', name: 'Waterfall', desc: 'Charges with the force of a falling torrent.', kind: 'damage', category: 'physical', power: 80, cooldown: 5, range: 8, style: 'dash', color: '#60a5fa' }),
   bite: M({ id: 'bite', name: 'Bite', desc: 'Snaps at the foe with sharp fangs.', kind: 'damage', category: 'physical', power: 60, cooldown: 3, range: 2.5, style: 'melee', color: '#f8fafc' }),
-  hydroPump: M({ id: 'hydroPump', name: 'Hydro Pump', desc: 'Blasts a huge volume of water under crushing pressure.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 14, style: 'jet', color: '#3b82f6', chargeTime: 0.4 }),
+  hydroPump: M({ id: 'hydroPump', name: 'Hydro Pump', desc: 'Blasts a huge volume of water under crushing pressure.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 14, style: 'jet', color: '#3b82f6', chargeTime: 0.4, projSpeed: 44 }),
   iceBeam: M({ id: 'iceBeam', name: 'Ice Beam', desc: 'A concentrated beam of ice-cold energy.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 13, style: 'beam', color: '#cffafe' }),
   surf: M({ id: 'surf', name: 'Surf', desc: 'Summons a swelling wave that crashes over the foe.', kind: 'damage', category: 'special', power: 90, cooldown: 5, range: 10, style: 'burst', color: '#38bdf8' }),
   spark: M({ id: 'spark', name: 'Spark', desc: 'Rams the target while crackling with electricity.', kind: 'damage', category: 'physical', power: 65, cooldown: 5, range: 2.5, style: 'melee', color: '#fde047' }),

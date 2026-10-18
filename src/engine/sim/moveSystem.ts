@@ -232,7 +232,7 @@ export class MoveSystem {
     pr.x = caster.x + (dx / d) * caster.species.size * 0.5;
     pr.y = caster.y + (dy / d) * caster.species.size * 0.5;
     pr.z = caster.z + (dz / d) * caster.species.size * 0.5;
-    pr.speed = STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
+    pr.speed = move.projSpeed ?? STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
     pr.vx = (dx / d) * pr.speed; pr.vy = (dy / d) * pr.speed; pr.vz = (dz / d) * pr.speed;
     pr.casterId = caster.id; pr.target = target; pr.t = 0;
   }

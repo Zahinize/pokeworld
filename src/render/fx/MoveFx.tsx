@@ -27,11 +27,11 @@ export interface MoveVis {
 /** Fallbacks by engine style. */
 const STYLE_VIS: Record<string, MoveVis> = {
   bubbles: { s: ST.orb, w: 0.62, c2: '#e8f8ff', blend: 1, impact: 'bubble', volley: [5, 1.0] },
-  jet: { s: ST.jet, w: 2.8, c2: '#e0f2fe', blend: 1, impact: 'splash' },
-  beam: { s: ST.aurora, w: 2.6, c2: '#ffffff', blend: 0, impact: 'spark' },
+  jet: { s: ST.jet, w: 1.1, c2: '#e0f2fe', blend: 1, impact: 'splash' },
+  beam: { s: ST.aurora, w: 1.5, c2: '#ffffff', blend: 0, impact: 'spark' },
   darts: { s: ST.dart, w: 0.7, c2: '#ffffff', blend: 0, impact: 'spark' },
   ink: { s: ST.ink, w: 1.2, c2: '#0b1220', blend: 1, impact: 'ink' },
-  ring: { s: ST.pulse, w: 1.5, c2: '#ffffff', blend: 0, impact: 'splash' },
+  ring: { s: ST.pulse, w: 1.0, c2: '#ffffff', blend: 0, impact: 'splash' },
   crescent: { s: ST.crescent, w: 1.4, c2: '#ffffff', blend: 0, impact: 'splash' },
   motes: { s: ST.motes, w: 1.2, c2: '#ffffff', blend: 0, impact: 'spark' },
   burst: { s: ST.flash, w: 2.2, c2: '#ffffff', blend: 0, impact: 'splash' },
@@ -43,18 +43,18 @@ const STYLE_VIS: Record<string, MoveVis> = {
 
 /** Signature looks per move (override any fallback field). */
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
-  iceBeam: { s: ST.iceBeam, w: 3.0, c2: '#eaf9ff', impact: 'ice' },
-  freezeDry: { s: ST.iceBeam, w: 2.2, c2: '#dff4ff', impact: 'ice' },
-  auroraBeam: { s: ST.aurora, w: 2.8, impact: 'spark' },
-  signalBeam: { s: ST.aurora, w: 2.4, c2: '#f0abfc' },
-  originPulse: { s: ST.iceBeam, w: 4.0, c2: '#bfdbfe', impact: 'splash' },
-  hydroPump: { w: 3.4, c2: '#f0f9ff', blend: 1 },
+  iceBeam: { s: ST.iceBeam, w: 1.6, c2: '#eaf9ff', impact: 'ice' },
+  freezeDry: { s: ST.iceBeam, w: 1.3, c2: '#dff4ff', impact: 'ice' },
+  auroraBeam: { s: ST.aurora, w: 1.5, impact: 'spark' },
+  signalBeam: { s: ST.aurora, w: 1.3, c2: '#f0abfc' },
+  originPulse: { s: ST.iceBeam, w: 2.2, c2: '#bfdbfe', impact: 'splash' },
+  hydroPump: { w: 1.3, c2: '#f0f9ff', blend: 1 },
   // Water Gun, per the reference: a volley of chunky teardrop droplets, not a stream
   waterGun: { s: ST.droplet, w: 0.8, c2: '#bfdbfe', blend: 1, volley: [3, 2.2], impact: 'splash' },
   brine: { s: ST.droplet, w: 1.05, c2: '#99f6e4', blend: 1, volley: [2, 2.2], impact: 'splash' },
   // mud + ink travel as thick, opaque torrents (murk layer, never additive)
-  mudShot: { s: ST.mudRay, w: 2.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
-  muddyWater: { s: ST.mudRay, w: 3.4, c2: '#d8b27a', blend: 1, impact: 'mud' },
+  mudShot: { s: ST.droplet, w: 0.85, c2: '#e0c48a', blend: 1, volley: [2, 1.9], impact: 'mud' },
+  muddyWater: { s: ST.droplet, w: 1.0, c2: '#d8b27a', blend: 1, volley: [4, 1.5], impact: 'mud' },
   surf: { s: ST.wave, w: 2.6, c2: '#e0f2fe', impact: 'splash' },
   psychic: { s: ST.psy, w: 2.4, c2: '#f5d0fe', impact: 'psy' },
   discharge: { s: ST.flash, w: 2.6, c2: '#fef9c3', impact: 'zap' },
@@ -63,13 +63,13 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   icicleSpear: { c2: '#ffffff', impact: 'ice' },
   bubble: { s: ST.orb, w: 0.95, blend: 1, impact: 'bubble', volley: [3, 1.5], nova: true },
   bubbleBeam: { s: ST.orb, w: 0.62, blend: 1, impact: 'bubble', volley: [5, 1.0] },
-  waterPulse: { s: ST.jet, w: 2.6, blend: 1, impact: 'splash' },
-  dragonPulse: { s: ST.aurora, w: 2.8, c2: '#99f6e4', impact: 'spark' },
-  round: { s: ST.aurora, w: 2.2, c2: '#fecaca' },
-  silverWind: { s: ST.aurora, w: 2.2, c2: '#ffffff' },
+  waterPulse: { s: ST.jet, w: 1.7, blend: 1, impact: 'splash' },
+  dragonPulse: { s: ST.aurora, w: 1.5, c2: '#99f6e4', impact: 'spark' },
+  round: { s: ST.aurora, w: 1.2, c2: '#fecaca' },
+  silverWind: { s: ST.aurora, w: 1.2, c2: '#ffffff' },
   airSlash: { impact: 'spark' },
   aquaCutter: { impact: 'splash' },
-  octazooka: { s: ST.mudRay, w: 2.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
+  octazooka: { s: ST.mudRay, w: 1.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
   smokescreen: { blend: 1, impact: 'ink' },
   waterSpout: { w: 2.3 },
   drainingKiss: { impact: 'psy' },
@@ -128,7 +128,7 @@ void main(){
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
-    align = smoothstep(0.60, 0.92, abs(dot(axis, toCam)));
+    align = smoothstep(0.90, 0.99, abs(dot(axis, toCam)));
     vec3 cr = cross(axis, toCam);
     vec3 side = normalize(mix(normalize(length(cr) < 1e-4 ? camUp : cr), camUp, align));
     vec3 alongAxis = normalize(mix(axis, camRight, align));
@@ -179,14 +179,18 @@ void main(){
     float shine = smoothstep(0.34, 0.0, length(p - vec2(-r * 0.35, r * 0.35)));
     a = (rim * 1.15 + body + shine * 0.9) * smoothstep(0.0, 0.25, cyl);
     col = mix(vColor, vColor2, rim * 0.7 + shine);
-  } else if (s == 1) { // water cannon: a solid cylinder of churning water with a frothing head
-    float core = pow(cyl, 0.5);                                  // volumetric through the axis
-    float churn = 0.88 + 0.12 * sin(alongW * 3.2 - uTime * 18.0 + vSeed * 12.0);
+  } else if (s == 1) { // water cannon: a writhing, streaked torrent — never a smooth balloon
+    // the silhouette billows as it flies: broken edges read as rushing water
+    float wobJ = 0.10 * sin(alongW * 4.2 - uTime * 22.0 + vSeed * 9.0) + 0.05 * sin(alongW * 9.0 - uTime * 31.0 + vSeed * 4.0);
+    float rrJ = (across + wobJ) / max(radius, 1e-3);
+    float cylJ = sqrt(max(0.0, 1.0 - min(1.0, rrJ * rrJ)));
+    float core = pow(cylJ, 0.5);
+    // foam streaks racing down the column
+    float streak = 0.5 + 0.5 * sin(alongW * 7.0 - uTime * 44.0 + c.y * 10.0 + vSeed * 12.0);
     float head = smoothstep(0.72, 1.0, along);
-    // the leading edge boils: white froth clumps, per the Hydro Pump reference
     float froth = head * (0.5 + 0.5 * sin(c.y * 19.0 + alongW * 6.0 - uTime * 32.0 + vSeed * 8.0));
-    a = core * churn + skin * 0.5 + head * 0.55 * cyl + froth * 0.5 * cyl;
-    col = mix(vColor, vColor2, pow(cyl, 2.2) * 0.65 + skin * 0.25 + head * 0.55 + froth * 0.4);
+    a = core * (0.85 + 0.15 * streak) + head * 0.55 * cylJ + froth * 0.5 * cylJ;
+    col = mix(vColor, vColor2, pow(cylJ, 2.2) * 0.5 + streak * 0.3 * cylJ + head * 0.55 + froth * 0.4);
   } else if (s == 2) { // ice cannon: a faceted crystal rod, frosted along its curved surface
     float facet = 0.86 + 0.14 * sin(across * 11.0 + alongW * 2.0 + vSeed * 4.0);
     float core = pow(cyl, 0.6) * facet;
