@@ -478,8 +478,9 @@ export class GameSession {
       boss.z += (this.arenaAnchor.z - boss.z) * 0.02;
       if (boss.hp < boss.maxHp * 0.06) boss.hp = boss.maxHp; // immortal punching bag
     }
+    // safety floor only — a constant refill would hide what heal moves like Aqua Ring restore
     const partner = eco.byId.get(this.activePartners[0]);
-    if (partner) partner.hp = partner.maxHp;
+    if (partner && partner.hp < partner.maxHp * 0.2) partner.hp = partner.maxHp;
   }
 
   endArena() {

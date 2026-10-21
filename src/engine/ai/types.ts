@@ -73,8 +73,8 @@ export interface Entity {
   defStage: number; defStageUntil: number;
   /** Status timers (seconds remaining). */
   stunT: number; slowT: number; blindT: number;
-  /** Heal-over-time: hp/sec remaining seconds. */
-  hotRate: number; hotT: number;
+  /** Heal-over-time: hp/sec, remaining seconds, and HP accrued since the last green tick. */
+  hotRate: number; hotT: number; hotAcc: number;
   /** Smokescreen concealment: seconds remaining / total — render fades the sprite in the cloud. */
   concealT: number; concealDur: number;
   /** Aqua Ring water veil: seconds remaining / total (visual shell around the regen). */

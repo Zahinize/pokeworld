@@ -130,7 +130,7 @@ export class Ecosystem {
       lured: false, lureOrbit: this.rng.next() * Math.PI * 2, facing: 1, zone: sp.zone, t1: behavior === 'bottom' ? 10 + this.rng.next() * 30 : 0, t2: 120 + this.rng.next() * 200,
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
-      stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
+      stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
@@ -363,7 +363,17 @@ export class Ecosystem {
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
       if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;
-      if (e.hotT > 0) { e.hotT -= dt; e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt); }
+      if (e.hotT > 0) {
+        e.hotT -= dt;
+        e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt);
+        // surface the regen: one green +N tick per second of the veil, remainder at the end
+        e.hotAcc += e.hotRate * dt;
+        if (e.hotAcc >= e.hotRate || e.hotT <= 0) {
+          const amt = Math.round(e.hotAcc);
+          if (amt > 0) this.events.push({ type: 'heal', targetId: e.id, amount: amt });
+          e.hotAcc = 0;
+        }
+      }
       // no healing in open air: a surfaced companion's suffocation drain must bite at full rate
       const surfacedPartner = e.role === 'partner' && e.y > -Math.max(0.8, e.species.size * 0.5);
       if (e.hp < e.maxHp && e.state !== 'ko' && !surfacedPartner) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
