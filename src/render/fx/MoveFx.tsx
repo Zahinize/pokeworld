@@ -15,7 +15,7 @@ import { getMove } from '@/data/moves';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27, ripple: 28 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
@@ -69,7 +69,9 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   thunder: { impact: 'zap' },
   bubble: { s: ST.orb, w: 0.95, blend: 1, impact: 'bubble', volley: [3, 1.5], nova: true },
   bubbleBeam: { s: ST.orb, w: 0.62, blend: 1, impact: 'bubble', volley: [5, 1.0] },
-  waterPulse: { s: ST.jet, w: 1.7, blend: 1, impact: 'splash' },
+  // Water Pulse, per canon: a pulsing ultrasonic blast — a water core riding ahead of
+  // rippling sonic rings that roll outward as it travels
+  waterPulse: { s: ST.ripple, w: 1.9, c2: '#e0f2fe', blend: 0, impact: 'splash' },
   dragonPulse: { s: ST.aurora, w: 1.5, c2: '#99f6e4', impact: 'spark' },
   round: { s: ST.aurora, w: 1.2, c2: '#fecaca' },
   silverWind: { s: ST.aurora, w: 1.2, c2: '#ffffff' },
@@ -136,7 +138,7 @@ void main(){
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
   } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
     w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27 || s == 28) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -401,6 +403,18 @@ void main(){
     col = mix(vec3(0.985, 1.0, 1.0), vColor, facet * 0.25);        // WHITE ice, whisper-blue facet shadows
     col = mix(col, vColor * 0.45, outline * (1.0 - glint));        // cool edge keeps it readable
     col = mix(col, vec3(1.0), glint);
+  } else if (s == 28) { // Water Pulse: rippling sonic water rings rolling outward from a bright core
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    for (int i = 0; i < 3; i++) {
+      float r = fract(vT * 1.5 + float(i) / 3.0 + vSeed);
+      float wob = 0.02 * sin(ang * 5.0 - uTime * 8.0 + float(i) * 2.1 + vSeed * 20.0);  // the gentlest ripple
+      a += smoothstep(0.12, 0.045, abs(d - (r * 0.92 + wob))) * (1.0 - r) * 1.5;
+    }
+    float crest = 0.5 + 0.5 * sin(ang * 9.0 + uTime * 7.0 + vSeed * 9.0);    // froth riding the rings
+    a *= 0.88 + 0.12 * crest;
+    a += pow(max(0.0, 1.0 - d * 2.2), 1.6) * 0.55;                            // the watery core
+    col = mix(vColor, vColor2, 0.4 + crest * 0.3);
   } else if (s == 27) { // frozen solid: a translucent block of ice encasing the victim
     vec2 p = c * 2.0;
     float d = length(p);
@@ -582,7 +596,7 @@ export function MoveProjectiles() {
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
           const grow = Math.min(1, pr.t * 6);
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.2;
-          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard ? 1 : TRAIL;
+          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard || vis.s === ST.ripple ? 1 : TRAIL;
           for (let k = 0; k < ghosts; k++) {
             const back = k * 0.05;
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
