@@ -598,6 +598,9 @@ export class Ecosystem {
     const sp = len3(e.vx, e.vy, e.vz);
     const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
     if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
+    // wind-up brace: a caster mid-charge digs in and holds its spot, so the rear-back
+    // (and the aqua cannon building around a dash user) plays out in place, not mid-glide
+    if (e.castFrom >= 0 && e.castAt > this.time) { e.vx *= 0.88; e.vy *= 0.88; e.vz *= 0.88; }
     // Aqua Jet family: while the water comet wraps the body the ram is REAL — the jet IS
     // the movement, carried at full speed through the target (the cruise clamp above
     // would otherwise kill the surge the same frame it fires)

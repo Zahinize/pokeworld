@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { COMBAT } from '@/data/combatConfig';
+import { getMove } from '@/data/moves';
 
 // ------------------------------------------------------------------ per-move visual identity
 
@@ -672,7 +673,7 @@ export function MoveProjectiles() {
           // so it can never read as a jet FIRED at the target
           const fade = Math.min(1, e.jetT / 0.18) * Math.min(1, vl / 6);
           const size = e.species.size;
-          const len = size * 2.4 + 1.8, w = size * 0.95 + 0.55;
+          const len = size * 2.4 + 1.8, w = size * 0.6 + 0.32;
           // the Pokémon rides at the comet's NOSE: head just past the snout, wake trailing
           const cx = e.x - jdx * (len * 0.5 - size * 0.9), cy = e.y - jdy * (len * 0.5 - size * 0.9), cz = e.z - jdz * (len * 0.5 - size * 0.9);
           c1.set(e.jetColor); c2.set('#e0f2fe');
@@ -709,11 +710,25 @@ export function MoveProjectiles() {
           }
         }
       }
-      // ---- charge-up glows at the caster's mouth
+      // ---- charge-up build-ups at the caster
       for (const ch of eco.moves.charges()) {
         const e = eco.byId.get(ch.casterId);
         if (!e) continue;
         c1.set(ch.color); c2.set('#ffffff');
+        if (getMove(ch.moveId).style === 'dash') {
+          // the aqua cannon BUILDS around the body: a water shell swelling shut
+          // while spray spirals inward — then the Pokémon itself is the shot
+          const R = (e.species.size * 0.95 + 0.5) * (0.55 + ch.progress * 0.5);
+          c2.set('#e0f2fe');
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R, R, 0.25 + ch.progress * 0.75, (e.id % 11) * 0.09, 0);
+          for (let k = 0; k < 3; k++) {
+            const a2 = time * (3.5 + k * 0.6) + k * 2.1 + e.phase * 7;
+            const rr = R * (1.8 - ch.progress * 0.9);
+            put(0, e.x + Math.cos(a2) * rr, e.y + Math.sin(a2 * 1.3 + k * 2) * rr * 0.5, e.z + Math.sin(a2) * rr,
+              0, 1, 0, ST.swirl, 0.4, 0.5, 0.45 + ch.progress * 0.55, k * 0.19 + (e.id % 7) * 0.1, (time * 1.6 + k * 0.33) % 1);
+          }
+          continue;
+        }
         const size = 0.5 + ch.progress * (0.8 + e.species.size * 0.22);
         put(0, e.x, e.y, e.z, 0, 1, 0, ST.flash, size, size, 0.35 + ch.progress * 0.65, (ch.casterId % 97) / 97, 0);
       }
