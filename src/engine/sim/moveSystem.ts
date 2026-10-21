@@ -74,7 +74,10 @@ const PROJECTILE_SPEED = 18;
 /** Canonical pacing: beams snap across the reef, streams surge, lobbed globs arc slower. */
 const STYLE_SPEED: Record<string, number> = { beam: 34, jet: 24, darts: 26, bubbles: 14, ring: 16, crescent: 21, ink: 13, motes: 14 };
 const HOMING_RATE = 2.6; // rad/s steering toward the target
-const MELEE_WINDUP = 0.25;
+const MELEE_WINDUP = 0.35;
+/** Default wind-up before a move leaves the caster — long enough that the rear-back
+ *  anticipation reads as a deliberate, forceful throw (moves may override via chargeTime). */
+const CAST_WINDUP = 0.4;
 
 /** Player stats stand-in for damage computation (defenses only). */
 export const PLAYER_STATS: CombatStats = { maxHp: COMBAT.PLAYER_MAX_HP, atk: 100, def: COMBAT.PLAYER_DEF_NORM, spAtk: 100, spDef: COMBAT.PLAYER_DEF_NORM, speed: 100 };
@@ -145,7 +148,7 @@ export class MoveSystem {
     const move = this.moveOf(e, slot);
     e.mcd[slot] = move.cooldown;
     this.host.events.push({ type: 'cast', casterId: e.id, moveId: move.id, style: move.style });
-    const at = this.host.time + (move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : 0.12));
+    const at = this.host.time + (move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : CAST_WINDUP));
     // anticipation window for the renderer: the sprite rears back until `at`, then whips forward
     e.castFrom = this.host.time; e.castAt = at;
     this.pending.push({ at, casterId: e.id, moveId: move.id, target, slot });

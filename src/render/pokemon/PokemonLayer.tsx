@@ -263,9 +263,9 @@ export function PokemonLayer() {
       if (e.castAt > 0 && eco.time < e.castAt + 0.3) {
         if (eco.time < e.castAt) {
           const wind = Math.min(1, (eco.time - e.castFrom) / Math.max(e.castAt - e.castFrom, 0.001));
-          castTilt = -f * 0.42 * wind * wind;
+          castTilt = -f * 0.55 * wind * wind;
         } else {
-          castTilt = f * 0.5 * (1 - (eco.time - e.castAt) / 0.3);
+          castTilt = f * 0.6 * (1 - (eco.time - e.castAt) / 0.3);
         }
       }
       b.aTilt.array[i] = tNow + castTilt;

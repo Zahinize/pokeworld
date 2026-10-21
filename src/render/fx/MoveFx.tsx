@@ -14,7 +14,7 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
@@ -131,7 +131,7 @@ void main(){
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
   } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
     w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -370,6 +370,15 @@ void main(){
     float tw = step(0.72, n1(cell + floor(uTime * 8.0)));
     a = band * (0.55 + 0.3 * froth + tw * 0.45);
     col = mix(vColor, vColor2, band * froth * 0.3 + tw * 0.55);
+  } else if (s == 24) { // Aqua Ring's protective shield: a translucent watery dome over the Pokémon
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float rim = smoothstep(0.94, 0.7, d) * smoothstep(0.5, 0.82, d);    // fresnel band near the edge
+    float edge = smoothstep(0.06, 0.015, abs(d - 0.93));                 // crisp outer shell line
+    float sheen = 0.5 + 0.5 * sin(atan(p.y, p.x) * 3.0 - uTime * 2.6 + vSeed * 9.0);  // light gliding round the dome
+    float body = smoothstep(0.9, 0.05, d) * 0.1;                         // the faintest watery fill
+    a = rim * (0.45 + 0.3 * sheen) + edge * 0.85 + body;
+    col = mix(vColor, vColor2, rim * 0.55 + edge * 0.4 + sheen * 0.2);
   } else if (s == 20) { // screech: jagged shock-rings ripping outward — sound you can SEE
     float d = length(c * 2.0);
     float ang = atan(c.y, c.x);
@@ -596,12 +605,14 @@ export function MoveProjectiles() {
           const fade = Math.min(1, e.veilT / 0.5) * Math.min(1, (D - e.veilT) / 0.25 + 0.15);
           c1.set('#5eead4'); c2.set('#f0fdfa');
           const R = e.species.size * 0.95 + 0.55;
+          // hoops hug the body tightly, stacked just apart enough to read as three
           for (let k = 0; k < 3; k++) {
-            const rr = R * (k === 1 ? 1.25 : 0.95);
-            const yy = (k - 1) * R * 0.6 + Math.sin(time * 2.6 + k * 2.1 + e.phase * 5) * 0.09;
+            const rr = R * (k === 1 ? 1.12 : 0.95);
+            const yy = (k - 1) * R * 0.34 + Math.sin(time * 2.6 + k * 2.1 + e.phase * 5) * 0.06;
             put(0, e.x, e.y + yy, e.z, 0, 1, 0, ST.waterRing, rr, rr, fade, k * 0.31 + (e.id % 7) * 0.13, 0);
           }
-          put(0, e.x, e.y, e.z, 0, 1, 0, ST.flash, R * 1.7, R * 1.7, 0.14 * fade, (e.id % 97) / 97, 0.5);
+          // the protection: a translucent water dome sealed over the Pokémon
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R * 1.3, R * 1.3, 0.9 * fade, (e.id % 11) * 0.09, 0);
         }
         if (e.concealT > 0) {
           // black smoke billowing outward; it thins as the caster re-emerges
