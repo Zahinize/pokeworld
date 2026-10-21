@@ -598,6 +598,14 @@ export class Ecosystem {
     const sp = len3(e.vx, e.vy, e.vz);
     const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
     if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
+    // Aqua Jet family: while the water comet wraps the body the ram is REAL — the jet IS
+    // the movement, carried at full speed through the target (the cruise clamp above
+    // would otherwise kill the surge the same frame it fires)
+    if (e.jetT > 0) {
+      const ram = Math.max(e.species.burst * 2.0, 11);
+      const jv = len3(e.vx, e.vy, e.vz) || 1e-4;
+      e.vx *= ram / jv; e.vy *= ram / jv; e.vz *= ram / jv;
+    }
     if (this.bossCurrent > 0 && !e.isBoss) {
       // boss-event surge tosses the whole reef around
       const k = this.bossCurrent * dt;

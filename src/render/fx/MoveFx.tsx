@@ -668,19 +668,21 @@ export function MoveProjectiles() {
           // wrapped around the body, head blazing forward, tail streaking behind
           const vl = Math.hypot(e.vx, e.vy, e.vz) || 1;
           const jdx = e.vx / vl, jdy = e.vy / vl, jdz = e.vz / vl;
-          const fade = Math.min(1, e.jetT / 0.18);
+          // the comet is only as real as the ram: it fades out the moment the body slows,
+          // so it can never read as a jet FIRED at the target
+          const fade = Math.min(1, e.jetT / 0.18) * Math.min(1, vl / 6);
           const size = e.species.size;
-          const len = size * 3.2 + 2.6, w = size * 0.95 + 0.55;
+          const len = size * 2.4 + 1.8, w = size * 0.95 + 0.55;
+          // the Pokémon rides at the comet's NOSE: head just past the snout, wake trailing
+          const cx = e.x - jdx * (len * 0.5 - size * 0.9), cy = e.y - jdy * (len * 0.5 - size * 0.9), cz = e.z - jdz * (len * 0.5 - size * 0.9);
           c1.set(e.jetColor); c2.set('#e0f2fe');
-          // the comet body: head half a body ahead, tail trailing (jet style churns + froths)
-          put(1, e.x + jdx * size * 0.4, e.y + jdy * size * 0.4, e.z + jdz * size * 0.4,
-            jdx, jdy, jdz, ST.jet, w, len, fade, (e.id % 13) * 0.07, 0.2);
-          // white-hot bow flash at the nose
-          put(0, e.x + jdx * (len * 0.42), e.y + jdy * (len * 0.42), e.z + jdz * (len * 0.42),
-            0, 1, 0, ST.flash, w * 1.7, w * 1.7, 0.55 * fade, (e.id % 11) * 0.09, 0.3);
+          put(1, cx, cy, cz, jdx, jdy, jdz, ST.jet, w, len, fade, (e.id % 13) * 0.07, 0.2);
+          // white-hot bow flash right at the snout
+          put(0, e.x + jdx * size * 0.9, e.y + jdy * size * 0.9, e.z + jdz * size * 0.9,
+            0, 1, 0, ST.flash, w * 1.5, w * 1.5, 0.5 * fade, (e.id % 11) * 0.09, 0.3);
           // spray swirls peeling off the wake
           for (let k = 0; k < 2; k++) {
-            const backO = len * (0.25 + k * 0.22);
+            const backO = len * (0.45 + k * 0.25);
             put(0, e.x - jdx * backO, e.y - jdy * backO + Math.sin(time * 9 + k * 3) * 0.2, e.z - jdz * backO,
               0, 1, 0, ST.swirl, 0.45 + k * 0.12, 0.6, 0.7 * fade, k * 0.23 + (e.id % 7) * 0.11, (time * 1.4 + k * 0.4) % 1);
           }
