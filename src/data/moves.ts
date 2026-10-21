@@ -46,8 +46,11 @@ export const MOVES: Record<string, MoveConfig> = {
   poisonSting: M({ id: 'poisonSting', name: 'Poison Sting', desc: 'Fires a quick venomous barb at the target.', kind: 'damage', category: 'physical', power: 40, cooldown: 3, range: 9, style: 'darts', color: '#c084fc' }),
   poisonJab: M({ id: 'poisonJab', name: 'Poison Jab', desc: 'A close strike with a toxin-soaked limb.', kind: 'damage', category: 'physical', power: 80, cooldown: 5, range: 2.5, style: 'melee', color: '#a855f7' }),
   auroraBeam: M({ id: 'auroraBeam', name: 'Aurora Beam', desc: 'A rainbow-lit beam of freezing energy.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 12, style: 'beam', color: '#ffe08a' }),
-  iceShard: M({ id: 'iceShard', name: 'Ice Shard', desc: 'Hurls a chip of ice frozen in an instant.', kind: 'damage', category: 'physical', power: 40, cooldown: 3, range: 10, style: 'darts', color: '#bae6fd' }),
-  icicleSpear: M({ id: 'icicleSpear', name: 'Icicle Spear', desc: 'Launches sharpened icicles in quick succession.', kind: 'damage', category: 'physical', power: 55, cooldown: 3, range: 10, style: 'darts', color: '#e0f2fe' }),
+  // Canon: Ice Shard is a PRIORITY move — one chunk of instant-frozen ice hurled so fast it
+  // always strikes first. The fastest projectile in the game, by design.
+  iceShard: M({ id: 'iceShard', name: 'Ice Shard', desc: 'Hurls a chunk of instant-frozen ice — it always strikes first.', kind: 'damage', category: 'physical', power: 40, cooldown: 3, range: 10, style: 'darts', projSpeed: 42, color: '#bae6fd' }),
+  // Canon: Icicle Spear strikes 2-5 times — a fan of sharpened icicles in quick succession.
+  icicleSpear: M({ id: 'icicleSpear', name: 'Icicle Spear', desc: 'A fan of sharpened icicles launched in quick succession.', kind: 'damage', category: 'physical', power: 55, cooldown: 3, range: 10, style: 'darts', projSpeed: 30, color: '#93c5fd' }),
   bubble: M({ id: 'bubble', name: 'Bubble', desc: 'A spray of bubbles that pops against the foe.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 10, style: 'bubbles', color: '#7dd3fc' }),
   waterPulse: M({ id: 'waterPulse', name: 'Water Pulse', desc: 'A pulsing ring of water that ripples outward.', kind: 'damage', category: 'special', power: 60, cooldown: 5, range: 11, style: 'ring', color: '#38bdf8' }),
   twister: M({ id: 'twister', name: 'Twister', desc: 'Whips up a small vortex to tear at the target.', kind: 'damage', category: 'special', power: 55, cooldown: 3, range: 9, style: 'ring', color: '#5eead4' }),

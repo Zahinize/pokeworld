@@ -14,12 +14,14 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
   /** PokeSurvivor-style volley: [count, gap in metres] — siblings trail the lead projectile. */
   volley?: [number, number];
+  /** Volley siblings fan out sideways by this many metres per step (Icicle Spear's spread). */
+  spread?: number;
   /** Cast flourish: a ring of bubbles erupts around the caster (Kingler's Bubble). */
   nova?: boolean;
 }
@@ -44,6 +46,10 @@ const STYLE_VIS: Record<string, MoveVis> = {
 /** Signature looks per move (override any fallback field). */
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   iceBeam: { s: ST.iceBeam, w: 1.6, c2: '#eaf9ff', impact: 'ice' },
+  // per the anime reference: a sparkling FAN of faceted crystal icicles, 5 in quick succession
+  icicleSpear: { s: ST.icicle, w: 0.5, c2: '#a5b4fc', blend: 1, impact: 'ice', volley: [5, 1.5], spread: 0.9 },
+  // per the game reference: ONE big jagged chunk of ice, hurled spinning — priority speed
+  iceShard: { s: ST.shard, w: 1.1, c2: '#dbeafe', blend: 1, impact: 'ice' },
   freezeDry: { s: ST.iceBeam, w: 1.3, c2: '#dff4ff', impact: 'ice' },
   auroraBeam: { s: ST.aurora, w: 1.05, impact: 'spark' },
   signalBeam: { s: ST.aurora, w: 1.3, c2: '#f0abfc' },
@@ -60,8 +66,6 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   psychic: { s: ST.psy, w: 2.4, c2: '#f5d0fe', impact: 'psy' },
   discharge: { s: ST.flash, w: 2.6, c2: '#fef9c3', impact: 'zap' },
   thunder: { impact: 'zap' },
-  iceShard: { c2: '#ffffff', impact: 'ice' },
-  icicleSpear: { c2: '#ffffff', impact: 'ice' },
   bubble: { s: ST.orb, w: 0.95, blend: 1, impact: 'bubble', volley: [3, 1.5], nova: true },
   bubbleBeam: { s: ST.orb, w: 0.62, blend: 1, impact: 'bubble', volley: [5, 1.0] },
   waterPulse: { s: ST.jet, w: 1.7, blend: 1, impact: 'splash' },
@@ -101,7 +105,7 @@ export function visFor(moveId: string, style: string): MoveVis {
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
 const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay, ST.lamJet]);
 /** Camera-facing square billboards. */
-const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws]);
+const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws, ST.shard]);
 
 // ------------------------------------------------------------------ the projectile / wave shader
 
@@ -131,7 +135,7 @@ void main(){
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
   } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
     w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -370,6 +374,32 @@ void main(){
     float tw = step(0.72, n1(cell + floor(uTime * 8.0)));
     a = band * (0.55 + 0.3 * froth + tw * 0.45);
     col = mix(vColor, vColor2, band * froth * 0.3 + tw * 0.55);
+  } else if (s == 25) { // Icicle Spear crystal, per the anime: a faceted ice lozenge flying point-first
+    float af = 1.0 - along;                       // the point leads
+    float rp = pow(sin(clamp(af, 0.0, 1.0) * 3.14159), 0.8);   // lozenge: pointed both ends
+    float m = across / max(rp, 1e-3);
+    float body = smoothstep(1.0, 0.88, m);
+    float outline = smoothstep(0.55, 0.95, m);                 // cool blue rim
+    float facet = 0.5 + 0.5 * sin((af * 5.0 + c.y * 6.0 + vSeed * 9.0) * 3.14159);  // internal facet planes
+    float glint = smoothstep(0.18, 0.0, length(vec2((af - 0.66) * 1.7, c.y * 2.0 - rp * 0.3)));
+    a = body;
+    col = mix(vec3(0.97, 0.99, 1.0), vColor2, facet * 0.4);    // near-white crystal, violet-blue facets
+    col = mix(col, vColor * 0.55, outline * 0.85);             // crisp icy edge
+    col = mix(col, vec3(1.0), glint);                          // the sparkle
+  } else if (s == 26) { // Ice Shard, per the game reference: ONE big jagged chunk, hurled spinning
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float ang = atan(p.y, p.x) + uTime * 2.4 + vSeed * 6.2832; // the chunk tumbles as it flies
+    // irregular spiky silhouette — a boulder of shattered ice, never a neat polygon
+    float rr2 = 0.52 + 0.2 * sin(ang * 3.0 + vSeed * 9.0) + 0.16 * abs(sin(ang * 5.0 + vSeed * 4.0));
+    float body = smoothstep(rr2 + 0.02, rr2 - 0.05, d);
+    float outline = smoothstep(0.09, 0.015, abs(d - rr2));     // crisp frozen rim
+    float facet = 0.5 + 0.5 * sin(p.x * 8.0 + p.y * 6.0 + vSeed * 20.0 + uTime * 2.4);
+    float glint = smoothstep(0.22, 0.0, length(p - vec2(-0.2, 0.22)));
+    a = max(body * 1.2, outline);
+    col = mix(vec3(0.97, 1.0, 1.0), vColor * 0.75, facet * 0.55);  // white ice, bold blue facet shadows
+    col = mix(col, vColor * 0.28, outline * (1.0 - glint));        // hard dark-blue edge
+    col = mix(col, vec3(1.0), glint);
   } else if (s == 24) { // Aqua Ring's protective shield: a translucent watery dome over the Pokémon
     vec2 p = c * 2.0;
     float d = length(p);
@@ -429,7 +459,7 @@ void main(){
   a *= vAlpha;
   if (a < 0.01) discard;
   // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
-  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22);
+  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22 || s == 25 || s == 26);
   gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
@@ -505,12 +535,17 @@ export function MoveProjectiles() {
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.6;
           const [vn, gap] = vis.volley;
           const travelled = pr.t * vl; // siblings only exist once they have left the mouth
+          // fan spread (Icicle Spear): siblings step sideways off the flight line, alternating
+          const sl = Math.hypot(dx, dz) || 1;
+          const sxv = vis.spread ? dz / sl : 0, szv = vis.spread ? -dx / sl : 0;
           for (let k = 0; k < vn; k++) {
             const backD = gap * k;
             if (backD > travelled + 0.3) continue;
             const back = backD / vl;
             const wob = vis.s === ST.orb ? Math.sin(state.clock.elapsedTime * 5.2 + k * 1.9 + seed * 20) * 0.14 : 0;
-            put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back + wob, pr.z - pr.vz * back, dx, dy, dz,
+            const lat = vis.spread ? (k % 2 ? -1 : 1) * Math.ceil(k / 2) * vis.spread * (0.8 + 0.3 * Math.sin(seed * 20 + k * 7)) : 0;
+            const vert = vis.spread ? Math.sin(seed * 9 + k * 5) * vis.spread * 0.5 : 0;
+            put(vis.blend, pr.x - pr.vx * back + sxv * lat, pr.y - pr.vy * back + wob + vert, pr.z - pr.vz * back + szv * lat, dx, dy, dz,
               vis.s, across * grow * (1 - k * 0.07), baseLen * grow * (1 - k * 0.05),
               (1 - k * 0.1) * grow, seed + k * 0.13, pr.t);
           }
@@ -532,7 +567,7 @@ export function MoveProjectiles() {
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
           const grow = Math.min(1, pr.t * 6);
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.2;
-          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound ? 1 : TRAIL;
+          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard ? 1 : TRAIL;
           for (let k = 0; k < ghosts; k++) {
             const back = k * 0.05;
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
@@ -613,6 +648,28 @@ export function MoveProjectiles() {
           }
           // the protection: a translucent water dome sealed over the Pokémon
           put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R * 1.3, R * 1.3, 0.9 * fade, (e.id % 11) * 0.09, 0);
+        }
+        if (e.jetT > 0) {
+          // Aqua Jet, per the reference: the Pokémon IS the jet — a churning water comet
+          // wrapped around the body, head blazing forward, tail streaking behind
+          const vl = Math.hypot(e.vx, e.vy, e.vz) || 1;
+          const jdx = e.vx / vl, jdy = e.vy / vl, jdz = e.vz / vl;
+          const fade = Math.min(1, e.jetT / 0.18);
+          const size = e.species.size;
+          const len = size * 3.2 + 2.6, w = size * 0.95 + 0.55;
+          c1.set(e.jetColor); c2.set('#e0f2fe');
+          // the comet body: head half a body ahead, tail trailing (jet style churns + froths)
+          put(1, e.x + jdx * size * 0.4, e.y + jdy * size * 0.4, e.z + jdz * size * 0.4,
+            jdx, jdy, jdz, ST.jet, w, len, fade, (e.id % 13) * 0.07, 0.2);
+          // white-hot bow flash at the nose
+          put(0, e.x + jdx * (len * 0.42), e.y + jdy * (len * 0.42), e.z + jdz * (len * 0.42),
+            0, 1, 0, ST.flash, w * 1.7, w * 1.7, 0.55 * fade, (e.id % 11) * 0.09, 0.3);
+          // spray swirls peeling off the wake
+          for (let k = 0; k < 2; k++) {
+            const backO = len * (0.25 + k * 0.22);
+            put(0, e.x - jdx * backO, e.y - jdy * backO + Math.sin(time * 9 + k * 3) * 0.2, e.z - jdz * backO,
+              0, 1, 0, ST.swirl, 0.45 + k * 0.12, 0.6, 0.7 * fade, k * 0.23 + (e.id % 7) * 0.11, (time * 1.4 + k * 0.4) % 1);
+          }
         }
         if (e.concealT > 0) {
           // black smoke billowing outward; it thins as the caster re-emerges
@@ -765,7 +822,8 @@ function MoteLayer({ murky, cap }: { murky: boolean; cap: number }) {
           for (const pr of eco.moves.projectiles) {
             if (!pr.active) continue;
             const vis = visFor(pr.moveId, pr.style);
-            if (vis.blend === 1) continue;
+            // matter projectiles don't sparkle — except ice, which glitters (anime reference)
+            if (vis.blend === 1 && vis.impact !== 'ice') continue;
             spawn(pr.x + (Math.random() - 0.5) * 0.5, pr.y + (Math.random() - 0.5) * 0.5, pr.z + (Math.random() - 0.5) * 0.5,
               (Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.2, 0.12 + Math.random() * 0.14, 0.4 + Math.random() * 0.3, pr.color, 0.4);
           }

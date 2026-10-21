@@ -81,6 +81,8 @@ export interface Entity {
   veilT: number; veilDur: number;
   /** Cast anticipation: sim-time wind-up window — rear back until castAt, whip forward after. */
   castFrom: number; castAt: number;
+  /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
+  jetT: number; jetColor: string;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
   /** Who to retaliate against (entity id or -2 for player). */

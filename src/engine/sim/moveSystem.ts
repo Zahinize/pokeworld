@@ -176,12 +176,16 @@ export class MoveSystem {
       if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
         if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
-          if (move.style === 'melee' && d > 0.3) {
-            // the biter LUNGES: a surge of velocity carries it onto the target as the jaws snap
-            const surge = Math.min(11, d * 2.8 + 4);
+          if ((move.style === 'melee' || move.style === 'dash') && d > 0.3) {
+            // the attacker LUNGES: a surge of velocity carries it onto (and through) the target
+            const surge = move.style === 'dash' ? Math.min(16, d * 3.5 + 8) : Math.min(11, d * 2.8 + 4);
             caster.vx += ((tp.x - caster.x) / d) * surge;
             caster.vy += ((tp.y - caster.y) / d) * surge;
             caster.vz += ((tp.z - caster.z) / d) * surge;
+          }
+          if (move.style === 'dash') {
+            // Aqua Jet family: the caster BECOMES the jet — a water comet wraps it through the ram
+            caster.jetT = 0.5; caster.jetColor = move.color;
           }
           // canonical travel visuals: bursts sweep a wave at the target, geysers erupt beneath it, lightning drops from above
           if (move.style === 'burst') this.pushVisual('wave', move, caster.x, caster.y, caster.z, tp.x, tp.y, tp.z, 0.45);
