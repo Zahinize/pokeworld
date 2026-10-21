@@ -64,8 +64,10 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   mudShot: { s: ST.mudRay, w: 1.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
   // Muddy Water, per canon: a breaking brown WAVE with sandy foam crashing over the target
   muddyWater: { s: ST.wave, w: 2.4, c2: '#f1dcb0', blend: 1, impact: 'mud' },
-  pinMissile: { s: ST.dart, w: 0.45, c2: '#fef9c3', blend: 0, impact: 'spark', volley: [9, 1.0], spread: 0.55 },
-  poisonSting: { s: ST.barb, w: 0.5, c2: '#e9d5ff', blend: 1, impact: 'poison' },
+  // plain straight pins, light blue shafts with dark blue tips — no ornament
+  pinMissile: { s: ST.barb, w: 0.42, c2: '#1e40af', blend: 1, impact: 'spark', volley: [9, 1.0], spread: 0.55 },
+  // ONE long venom sting of decent width — never a flurry of little lines
+  poisonSting: { s: ST.barb, w: 0.75, c2: '#e9d5ff', blend: 1, impact: 'poison' },
   poisonJab: { w: 1.2, c2: '#c084fc', impact: 'poison' },
   surf: { s: ST.wave, w: 2.6, c2: '#e0f2fe', impact: 'splash' },
   // normal blend: the saturated spiral must read over ANY body, pale ones included
