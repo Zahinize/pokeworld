@@ -156,12 +156,15 @@ export class Ecosystem {
   }
 
   /** Absolute damage from a move (MoveSystem). */
+  /** The move-dojo dummy: this entity's HP clamps at 1 — it can never be knocked out. */
+  immortalId = -1;
+
   damageAbs(t: Entity, amount: number, sourceId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
     this.applyDamage(t, amount, 'predator', sourceId);
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
     const src = this.byId.get(sourceId);
-    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
+    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant' && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back
     // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock)
     if (t.role === 'partner' && src && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
     // A wild that strikes a companion gets dueled right back
@@ -190,7 +193,7 @@ export class Ecosystem {
 
   private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
     if (t.isBoss && !this.bossesActive) return; // dormant bosses cannot be harmed — challenge them first
-    t.hp = Math.max(0, t.hp - amount);
+    t.hp = Math.max(t.id === this.immortalId ? 1 : 0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });

@@ -425,6 +425,7 @@ export class GameSession {
     const boss = this.eco.spawnBoss('dondozo', this.arenaAnchor.x, this.arenaAnchor.z, false);
     boss.y = this.arenaAnchor.y;
     this.arenaBossId = boss.id;
+    this.eco.immortalId = boss.id; // the dummy survives any hit — HP clamps at 1 and refills
     const store = useStore.getState();
     store.setLevel(99, this.seed);
     store.setMission(null);
