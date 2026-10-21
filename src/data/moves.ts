@@ -9,7 +9,7 @@ export type MoveStyle =
   | 'bubbles' | 'jet' | 'beam' | 'darts' | 'ink' | 'ring' | 'crescent'
   | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning';
 
-export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'conceal';
+export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'conceal' | 'freeze';
 
 export interface MoveEffect {
   type: MoveEffectType;
@@ -59,7 +59,9 @@ export const MOVES: Record<string, MoveConfig> = {
   waterfall: M({ id: 'waterfall', name: 'Waterfall', desc: 'Charges with the force of a falling torrent.', kind: 'damage', category: 'physical', power: 80, cooldown: 5, range: 8, style: 'dash', color: '#60a5fa' }),
   bite: M({ id: 'bite', name: 'Bite', desc: 'Snaps at the foe with sharp fangs.', kind: 'damage', category: 'physical', power: 60, cooldown: 3, range: 2.5, style: 'melee', color: '#f8fafc' }),
   hydroPump: M({ id: 'hydroPump', name: 'Hydro Pump', desc: 'Blasts a huge volume of water under crushing pressure.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 14, style: 'jet', color: '#3b82f6', chargeTime: 0.4, projSpeed: 44 }),
-  iceBeam: M({ id: 'iceBeam', name: 'Ice Beam', desc: 'A concentrated beam of ice-cold energy.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 13, style: 'beam', color: '#cffafe' }),
+  // Canon: Ice Beam carries a 10% chance to FREEZE the target solid (Icicle Spear and
+  // Ice Shard do not — one is a multi-hit, the other is pure priority speed).
+  iceBeam: M({ id: 'iceBeam', name: 'Ice Beam', desc: 'A concentrated beam of ice-cold energy that may freeze the foe solid.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 13, style: 'beam', color: '#cffafe', effect: { type: 'freeze', chance: 0.1, magnitude: 1, duration: 1.5 } }),
   surf: M({ id: 'surf', name: 'Surf', desc: 'Summons a swelling wave that crashes over the foe.', kind: 'damage', category: 'special', power: 90, cooldown: 5, range: 10, style: 'burst', color: '#38bdf8' }),
   spark: M({ id: 'spark', name: 'Spark', desc: 'Rams the target while crackling with electricity.', kind: 'damage', category: 'physical', power: 65, cooldown: 5, range: 2.5, style: 'melee', color: '#fde047' }),
   discharge: M({ id: 'discharge', name: 'Discharge', desc: 'Releases a burst of electricity in every direction.', kind: 'damage', category: 'special', power: 80, cooldown: 7, range: 8, style: 'burst', color: '#facc15' }),
@@ -90,7 +92,7 @@ export const MOVES: Record<string, MoveConfig> = {
   furyAttack: M({ id: 'furyAttack', name: 'Fury Attack', desc: 'Jabs the target repeatedly with a sharp beak.', kind: 'damage', category: 'physical', power: 45, cooldown: 3, range: 2.5, style: 'melee', color: '#e2e8f0' }),
   liquidation: M({ id: 'liquidation', name: 'Liquidation', desc: 'Slams into the foe inside a shell of rushing water.', kind: 'damage', category: 'physical', power: 85, cooldown: 5, range: 10, style: 'dash', color: '#38bdf8' }),
   fishiousRend: M({ id: 'fishiousRend', name: 'Fishious Rend', desc: 'Rends the foe with vicious gill-first speed.', kind: 'damage', category: 'physical', power: 85, cooldown: 5, range: 2.5, style: 'melee', color: '#7dd3fc' }),
-  freezeDry: M({ id: 'freezeDry', name: 'Freeze-Dry', desc: 'Flash-freezes the moisture around the target.', kind: 'damage', category: 'special', power: 70, cooldown: 5, range: 10, style: 'beam', color: '#e0f2fe' }),
+  freezeDry: M({ id: 'freezeDry', name: 'Freeze-Dry', desc: 'Flash-freezes the moisture around the target; may freeze it solid.', kind: 'damage', category: 'special', power: 70, cooldown: 5, range: 10, style: 'beam', color: '#e0f2fe', effect: { type: 'freeze', chance: 0.1, magnitude: 1, duration: 1.2 } }),
   aquaCutter: M({ id: 'aquaCutter', name: 'Aqua Cutter', desc: 'Slices with a pressurized blade of water.', kind: 'damage', category: 'physical', power: 70, cooldown: 5, range: 11, style: 'crescent', color: '#a5f3fc' }),
   drillRun: M({ id: 'drillRun', name: 'Drill Run', desc: 'Spins like a drill and crashes into the target.', kind: 'damage', category: 'physical', power: 80, cooldown: 7, range: 10, style: 'dash', color: '#d6d3d1' }),
   waveCrash: M({ id: 'waveCrash', name: 'Wave Crash', desc: 'Rides a wave headlong into the foe.', kind: 'damage', category: 'physical', power: 100, cooldown: 7, range: 8, style: 'dash', color: '#38bdf8' }),

@@ -14,7 +14,7 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
@@ -47,7 +47,7 @@ const STYLE_VIS: Record<string, MoveVis> = {
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   iceBeam: { s: ST.iceBeam, w: 1.6, c2: '#eaf9ff', impact: 'ice' },
   // per the anime reference: a sparkling FAN of faceted crystal icicles, 5 in quick succession
-  icicleSpear: { s: ST.icicle, w: 0.5, c2: '#a5b4fc', blend: 1, impact: 'ice', volley: [5, 1.5], spread: 0.9 },
+  icicleSpear: { s: ST.icicle, w: 0.5, c2: '#bfdbfe', blend: 1, impact: 'ice', volley: [5, 1.5], spread: 0.9 },
   // per the game reference: ONE big jagged chunk of ice, hurled spinning — priority speed
   iceShard: { s: ST.shard, w: 1.1, c2: '#dbeafe', blend: 1, impact: 'ice' },
   freezeDry: { s: ST.iceBeam, w: 1.3, c2: '#dff4ff', impact: 'ice' },
@@ -135,7 +135,7 @@ void main(){
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
   } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
     w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -383,8 +383,8 @@ void main(){
     float facet = 0.5 + 0.5 * sin((af * 5.0 + c.y * 6.0 + vSeed * 9.0) * 3.14159);  // internal facet planes
     float glint = smoothstep(0.18, 0.0, length(vec2((af - 0.66) * 1.7, c.y * 2.0 - rp * 0.3)));
     a = body;
-    col = mix(vec3(0.97, 0.99, 1.0), vColor2, facet * 0.4);    // near-white crystal, violet-blue facets
-    col = mix(col, vColor * 0.55, outline * 0.85);             // crisp icy edge
+    col = mix(vec3(0.985, 0.995, 1.0), vColor2, facet * 0.18); // WHITE crystal, the faintest cool facets
+    col = mix(col, vColor * 0.7, outline * 0.6);               // light icy edge
     col = mix(col, vec3(1.0), glint);                          // the sparkle
   } else if (s == 26) { // Ice Shard, per the game reference: ONE big jagged chunk, hurled spinning
     vec2 p = c * 2.0;
@@ -397,8 +397,22 @@ void main(){
     float facet = 0.5 + 0.5 * sin(p.x * 8.0 + p.y * 6.0 + vSeed * 20.0 + uTime * 2.4);
     float glint = smoothstep(0.22, 0.0, length(p - vec2(-0.2, 0.22)));
     a = max(body * 1.2, outline);
-    col = mix(vec3(0.97, 1.0, 1.0), vColor * 0.75, facet * 0.55);  // white ice, bold blue facet shadows
-    col = mix(col, vColor * 0.28, outline * (1.0 - glint));        // hard dark-blue edge
+    col = mix(vec3(0.985, 1.0, 1.0), vColor, facet * 0.25);        // WHITE ice, whisper-blue facet shadows
+    col = mix(col, vColor * 0.45, outline * (1.0 - glint));        // cool edge keeps it readable
+    col = mix(col, vec3(1.0), glint);
+  } else if (s == 27) { // frozen solid: a translucent block of ice encasing the victim
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float ang = atan(p.y, p.x) + vSeed * 6.2832;              // static facets — ice doesn't spin
+    float rr2 = 0.62 + 0.14 * sin(ang * 4.0 + vSeed * 9.0) + 0.08 * abs(sin(ang * 7.0 + vSeed * 3.0));
+    float body = smoothstep(rr2 + 0.02, rr2 - 0.05, d);
+    float outline = smoothstep(0.08, 0.015, abs(d - rr2));
+    float facet = 0.5 + 0.5 * sin(p.x * 6.0 + p.y * 8.0 + vSeed * 20.0);
+    float glint = smoothstep(0.26, 0.0, length(p - vec2(-0.22, 0.26)));
+    float shimmer = 0.92 + 0.08 * sin(uTime * 6.0 + vSeed * 9.0);
+    a = max(body * 0.55, outline * 0.95) * shimmer * vT;      // translucent — the victim shows through
+    col = mix(vec3(0.95, 0.99, 1.0), vColor * 0.85, facet * 0.3);
+    col = mix(col, vColor * 0.4, outline * (1.0 - glint));
     col = mix(col, vec3(1.0), glint);
   } else if (s == 24) { // Aqua Ring's protective shield: a translucent watery dome over the Pokémon
     vec2 p = c * 2.0;
@@ -459,7 +473,7 @@ void main(){
   a *= vAlpha;
   if (a < 0.01) discard;
   // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
-  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22 || s == 25 || s == 26);
+  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22 || s == 25 || s == 26 || s == 27);
   gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
@@ -670,6 +684,12 @@ export function MoveProjectiles() {
             put(0, e.x - jdx * backO, e.y - jdy * backO + Math.sin(time * 9 + k * 3) * 0.2, e.z - jdz * backO,
               0, 1, 0, ST.swirl, 0.45 + k * 0.12, 0.6, 0.7 * fade, k * 0.23 + (e.id % 7) * 0.11, (time * 1.4 + k * 0.4) % 1);
           }
+        }
+        if (e.frozenT > 0) {
+          // frozen solid by Ice Beam: an ice block encases the stunned victim, melting off at the end
+          const fade = Math.min(1, e.frozenT / 0.3);
+          c1.set('#bae6fd'); c2.set('#eaf9ff');
+          put(1, e.x, e.y, e.z, 0, 1, 0, ST.iceBlock, e.species.size * 1.25 + 0.5, 1, 1, (e.id % 17) * 0.055, fade);
         }
         if (e.concealT > 0) {
           // black smoke billowing outward; it thins as the caster re-emerges
@@ -917,7 +937,7 @@ export function MoveLights({ count }: { count: number }) {
 
 // ------------------------------------------------------------------ floating combat numbers
 
-const CHARSET = '0123456789-+DEFATKSLOWBINUP↓↑%';
+const CHARSET = '0123456789-+ABCDEFGHIJKLMNOPQRSTUVWXYZ↓↑%';
 const ATLAS_COLS = 8;
 const CELL = 64;
 

@@ -315,6 +315,8 @@ export class MoveSystem {
         break;
       }
       case 'conceal': target.concealT = target.concealDur = fx.duration; break;
+      // frozen solid: a hard stun wearing a casing of ice (the renderer draws the block)
+      case 'freeze': target.stunT = Math.max(target.stunT, fx.duration); target.frozenT = Math.max(target.frozenT, fx.duration); break;
     }
     if (fx.type !== 'heal') h.events.push({ type: 'effect', targetId: target.id, effect: fx.type, magnitude: fx.magnitude });
   }

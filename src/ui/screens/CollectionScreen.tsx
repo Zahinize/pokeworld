@@ -18,6 +18,7 @@ function effectText(fx: MoveEffect): string {
     slow: `slows the target ${pct} for ${fx.duration}s`,
     blind: `blinds the target for ${fx.duration}s`,
     conceal: `vanishes into smoke for ${fx.duration}s`,
+    freeze: `freezes the target solid for ${fx.duration}s`,
     stun: `stuns the target for ${fx.duration}s`,
     defDrop: `lowers the target's Defense ${pct} for ${fx.duration}s`,
     atkDrop: `lowers the target's Attack ${pct} for ${fx.duration}s`,

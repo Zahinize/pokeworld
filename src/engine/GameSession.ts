@@ -1139,8 +1139,7 @@ export class GameSession {
         case 'effect': {
           const t = eco.byId.get(ev.targetId);
           if (!t) break;
-          // labels must stay inside the damage-number glyph atlas (no C, G…)
-          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect === 'conceal' ? 'POOF' : ev.effect.toUpperCase();
+          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect === 'conceal' ? 'POOF' : ev.effect === 'freeze' ? 'FROZEN' : ev.effect.toUpperCase();
           this.pushNumber(label, ev.effect === 'defUp' || ev.effect === 'speedUp' ? '#7ff0c9' : '#ffd166', t.x, t.y + t.species.size * 0.6, t.z, false);
           break;
         }

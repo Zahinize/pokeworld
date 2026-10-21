@@ -83,6 +83,8 @@ export interface Entity {
   castFrom: number; castAt: number;
   /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
   jetT: number; jetColor: string;
+  /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
+  frozenT: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
   /** Who to retaliate against (entity id or -2 for player). */
