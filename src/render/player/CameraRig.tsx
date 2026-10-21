@@ -64,13 +64,14 @@ export function CameraRig() {
         if (session.phase === 'playing' || session.phase === 'paused') { requestPointerLock(); if (session.phase === 'paused') { session.resume(); store().setOverlay('none'); } }
         return;
       }
+      if (session.arena) { session.arenaCast(e.button === 2 ? 1 : 0); return; } // dojo: left = move 1, right = move 2
       if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
       if (e.button === 2) { if (session.companionsEnabled) session.commandAttack(); else session.cycleBall(1); }
     };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {
       if (store().isTouch) return;
-      if (document.pointerLockElement !== el && session.phase === 'playing') { session.pause(); if (store().overlay === "none") store().setOverlay("pause"); }
+      if (document.pointerLockElement !== el && session.phase === 'playing' && !session.arena) { session.pause(); if (store().overlay === "none") store().setOverlay("pause"); }
     };
     const onVisibility = () => { if (document.hidden && session.playing) { session.pause(); store().setOverlay('pause'); } };
     window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', onBlur);

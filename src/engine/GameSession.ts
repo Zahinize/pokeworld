@@ -71,6 +71,10 @@ export class GameSession {
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
   demo = false;
+  /** Move-testing arena (DEV): one companion, one immortal dummy boss, click to cast. */
+  arena = false;
+  arenaBossId = -1;
+  private arenaAnchor = { x: 0, y: -12, z: 0 };
   private demoPath: DemoPath | null = null;
   private demoLUT: Float32Array | null = null;
   private demoT = 0;
@@ -376,6 +380,109 @@ export class GameSession {
       console.error('attract mode failed to start — menu keeps its static backdrop', e);
       this.demo = false;
     }
+  }
+
+  /**
+   * The move dojo: an empty reef, your chosen companion at your side, and an immortal
+   * Dondozo dummy 14m ahead. Clicks cast moves straight at the dummy (guaranteed homing),
+   * so every move's design/animation/feel can be reviewed without aiming or stakes.
+   * DEV playtesting rig — entered via #arena, never part of the campaign flow.
+   */
+  async startArena(): Promise<void> {
+    if (this.demo) this.endDemo();
+    if (this.arena) return;
+    this.phase = 'preparing';
+    this.level = {
+      ...getLevel(1), id: 99, name: 'Move Arena', title: 'MOVE ARENA', subtitle: 'The Dojo',
+      companions: true, bossPhases: [], timeOfDay: 0.35, dayCycleMinutes: 999,
+      spawn: { schools: 0, passiveGroups: 0, curious: 0, predators: 0, bottom: 0, defensive: 0, ambient: { schools: 0, drifters: 0, giants: 0, legendaryChance: 0 } },
+      mission: { schoolGroups: [], passiveGroups: [], curious: 0, bottom: 0, defensive: 0 },
+    };
+    this.seed = 777;
+    this.gen = generateEcosystem(this.level, this.seed);
+    await Promise.all([
+      preloadSpeciesData(['dondozo']),
+      preloadSprites(['dondozo']).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
+    ]);
+    this.eco = new Ecosystem(this.gen, maxHpOf);
+    this.eco.onPlayerDamage = () => {};
+    this.eco.time = GAME.PREDATOR_GRACE;
+    this.balls = new BallSystem();
+    this.sky = null;
+    this.mission = null;
+    this.tutorial = null;
+    const ps = this.gen.playerStart;
+    this.player.reset(ps.x, ps.y, ps.z, 0);
+    this.timeOfDay = 0.35; this.lighting = lightingAt(this.timeOfDay, this.lighting);
+    this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 2; this.hintTimer = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.bossWave = -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
+    this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
+    this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
+    this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
+    const [fx, , fz] = this.player.forward();
+    this.arenaAnchor = { x: ps.x + fx * 14, y: ps.y, z: ps.z + fz * 14 };
+    const boss = this.eco.spawnBoss('dondozo', this.arenaAnchor.x, this.arenaAnchor.z, false);
+    boss.y = this.arenaAnchor.y;
+    this.arenaBossId = boss.id;
+    const store = useStore.getState();
+    store.setLevel(99, this.seed);
+    store.setMission(null);
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null });
+    this.arena = true;
+    this.phase = 'playing';
+    this.arenaSelect('corsola');
+    this.emit();
+  }
+
+  /** Swap the fielded test companion. */
+  arenaSelect(speciesId: string) {
+    if (!this.arena || !this.eco) return;
+    this.downedSpecies = [];
+    this.setParty([speciesId]);
+  }
+
+  /** Fire the companion's move at the dummy — guaranteed target, zero aim required. */
+  arenaCast(moveSlot: 0 | 1 = 0): boolean {
+    if (!this.arena || !this.eco) return false;
+    const partner = this.eco.byId.get(this.activePartners[0]);
+    const boss = this.eco.byId.get(this.arenaBossId);
+    if (!partner || !boss) return false;
+    if (!this.eco.moves.ready(partner, moveSlot)) return false;
+    const mv = kitOf(partner)[moveSlot];
+    if (isSupportive(mv)) return this.eco.moves.cast(partner, moveSlot, { kind: 'entity', id: partner.id });
+    return this.orderCast(partner, moveSlot, boss);
+  }
+
+  /** Fresh dummy on demand. */
+  arenaResetBoss() {
+    const boss = this.arena ? this.eco?.byId.get(this.arenaBossId) : undefined;
+    if (boss) boss.hp = boss.maxHp;
+  }
+
+  /** The dojo keeps everyone alive and the dummy anchored — a stage, not a fight. */
+  private arenaTick() {
+    const eco = this.eco;
+    if (!eco) return;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0;
+    const boss = eco.byId.get(this.arenaBossId);
+    if (boss) {
+      boss.mcd[0] = 9; boss.mcd[1] = 9;              // the dummy never fights back
+      boss.vx *= 0.7; boss.vy *= 0.7; boss.vz *= 0.7; // and holds its ground
+      boss.x += (this.arenaAnchor.x - boss.x) * 0.02;
+      boss.y += (this.arenaAnchor.y - boss.y) * 0.02;
+      boss.z += (this.arenaAnchor.z - boss.z) * 0.02;
+      if (boss.hp < boss.maxHp * 0.06) boss.hp = boss.maxHp; // immortal punching bag
+    }
+    const partner = eco.byId.get(this.activePartners[0]);
+    if (partner) partner.hp = partner.maxHp;
+  }
+
+  endArena() {
+    if (!this.arena) return;
+    this.arena = false;
+    this.arenaBossId = -1;
+    this.end();
   }
 
   endDemo() {
@@ -838,11 +945,12 @@ export class GameSession {
     this.handleBallEvents();
     this.handleSkyEvents();
     this.updateTutorial(dt);
+    if (this.arena) this.arenaTick();
     // Throttled UI / audio / persistence
     this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
-    this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
-    this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
+    this.seenAcc += dt; if (this.seenAcc > 2 && !this.arena) { this.seenAcc = 0; this.updateSeen(); }
+    this.saveAcc += dt; if (this.saveAcc > 20 && !this.arena) { this.saveAcc = 0; this.persistRun(); }
     this.updateRestoration();
     this.updateHints(dt);
     if (this.huntToastCooldown > 0) this.huntToastCooldown -= dt;
@@ -1461,6 +1569,7 @@ export class GameSession {
 
   private updateHints(dt: number) {
     const store = useStore.getState();
+    if (this.arena) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     // the tutorial banner IS the hint while it runs — never two instructions at once.
     // And once the tutorial has been completed (or skipped), the hints retire for good:
     // the tutorial covers every control a player needs.
