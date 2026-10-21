@@ -146,6 +146,8 @@ export class MoveSystem {
     e.mcd[slot] = move.cooldown;
     this.host.events.push({ type: 'cast', casterId: e.id, moveId: move.id, style: move.style });
     const at = this.host.time + (move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : 0.12));
+    // anticipation window for the renderer: the sprite rears back until `at`, then whips forward
+    e.castFrom = this.host.time; e.castAt = at;
     this.pending.push({ at, casterId: e.id, moveId: move.id, target, slot });
     return true;
   }
@@ -171,6 +173,13 @@ export class MoveSystem {
       if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
         if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
+          if (move.style === 'melee' && d > 0.3) {
+            // the biter LUNGES: a surge of velocity carries it onto the target as the jaws snap
+            const surge = Math.min(11, d * 2.8 + 4);
+            caster.vx += ((tp.x - caster.x) / d) * surge;
+            caster.vy += ((tp.y - caster.y) / d) * surge;
+            caster.vz += ((tp.z - caster.z) / d) * surge;
+          }
           // canonical travel visuals: bursts sweep a wave at the target, geysers erupt beneath it, lightning drops from above
           if (move.style === 'burst') this.pushVisual('wave', move, caster.x, caster.y, caster.z, tp.x, tp.y, tp.z, 0.45);
           else if (move.style === 'geyser') this.pushVisual('wave', move, tp.x, tp.y - 2.5, tp.z, tp.x, tp.y, tp.z, 0.7);
@@ -293,9 +302,12 @@ export class MoveSystem {
         } else {
           target.hotRate = (target.maxHp * fx.magnitude) / fx.duration;
           target.hotT = fx.duration;
+          // the water veil wraps the body for as long as the regen runs (Aqua Ring)
+          target.veilT = target.veilDur = fx.duration;
         }
         break;
       }
+      case 'conceal': target.concealT = target.concealDur = fx.duration; break;
     }
     if (fx.type !== 'heal') h.events.push({ type: 'effect', targetId: target.id, effect: fx.type, magnitude: fx.magnitude });
   }

@@ -14,7 +14,7 @@ import { COMBAT } from '@/data/combatConfig';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
@@ -45,12 +45,13 @@ const STYLE_VIS: Record<string, MoveVis> = {
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   iceBeam: { s: ST.iceBeam, w: 1.6, c2: '#eaf9ff', impact: 'ice' },
   freezeDry: { s: ST.iceBeam, w: 1.3, c2: '#dff4ff', impact: 'ice' },
-  auroraBeam: { s: ST.aurora, w: 1.5, impact: 'spark' },
+  auroraBeam: { s: ST.aurora, w: 1.05, impact: 'spark' },
   signalBeam: { s: ST.aurora, w: 1.3, c2: '#f0abfc' },
   originPulse: { s: ST.iceBeam, w: 2.2, c2: '#bfdbfe', impact: 'splash' },
   hydroPump: { w: 1.3, c2: '#f0f9ff', blend: 1 },
-  // Water Gun, per the reference: a volley of chunky teardrop droplets, not a stream
-  waterGun: { s: ST.droplet, w: 0.8, c2: '#bfdbfe', blend: 1, volley: [3, 2.2], impact: 'splash' },
+  // Water Gun, per the anime reference: one solid FILLED laminar jet — white-hot core,
+  // clean light-blue skin, dead straight (Hydro Pump keeps the churning torrent)
+  waterGun: { s: ST.lamJet, w: 0.52, c2: '#bae6fd', blend: 1, impact: 'splash' },
   brine: { s: ST.droplet, w: 1.05, c2: '#99f6e4', blend: 1, volley: [2, 2.2], impact: 'splash' },
   // mud + ink travel as thick, opaque torrents (murk layer, never additive)
   mudShot: { s: ST.droplet, w: 0.85, c2: '#e0c48a', blend: 1, volley: [2, 1.9], impact: 'mud' },
@@ -71,6 +72,10 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   aquaCutter: { impact: 'splash' },
   octazooka: { s: ST.mudRay, w: 1.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
   smokescreen: { blend: 1, impact: 'ink' },
+  screech: { s: ST.sound, w: 1.6, c2: '#ffe4e6', blend: 0, impact: 'spark' },
+  bite: { w: 1.2, c2: '#fecaca', impact: 'jaws' },
+  crunch: { w: 1.5, c2: '#ddd6fe', impact: 'jaws' },
+  superFang: { w: 1.4, c2: '#fecaca', impact: 'jaws' },
   waterSpout: { w: 2.3 },
   drainingKiss: { impact: 'psy' },
   healPulse: { impact: 'heal' },
@@ -94,9 +99,9 @@ export function visFor(moveId: string, style: string): MoveVis {
 }
 
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
-const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay]);
+const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay, ST.lamJet]);
 /** Camera-facing square billboards. */
-const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl]);
+const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws]);
 
 // ------------------------------------------------------------------ the projectile / wave shader
 
@@ -124,7 +129,9 @@ void main(){
   } else if (s == 9 || s == 14) { // vertical bolt / geyser column: y spans aLen upward
     vec3 sideH = normalize(vec3(camRight.x, 0.001, camRight.z));
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19) { // camera-facing billboard
+  } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
+    w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -201,15 +208,17 @@ void main(){
     float star = tw * max(0.0, 1.0 - abs(cx) * 3.0) * cyl;
     a = (core * 1.25 + frost * 0.5 + star * 0.9) * (1.0 - vT);
     col = mix(mix(vColor, vColor2, 0.45 + frost * 0.4), vec3(1.0), pow(cyl, 2.2) * 0.85 + star * 0.6);
-  } else if (s == 3) { // energy cannon: a glowing rod with spectral bands rolling around it
-    float core = pow(cyl, 0.7);
-    float bands = 0.5 + 0.5 * sin(alongW * 5.0 - uTime * 22.0 + vSeed * 6.0);
-    a = (core * 1.2 + skin * bands * 0.55) * (1.0 - vT);
-    vec3 spectral = vec3(0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0),
-                         0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 2.1),
-                         0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 4.2));
-    col = mix(vColor, mix(vColor2, spectral, 0.55), bands * (1.0 - pow(cyl, 2.0)));
-    col = mix(col, vec3(1.0), pow(cyl, 2.5) * 0.8);
+  } else if (s == 3) { // aurora cannon, per the reference: separate parallel rainbow rays with real gaps
+    float sp = c.y / max(radius, 1e-3);            // -0.5..0.5 inside the silhouette
+    float lane = sp * 3.0 + 0.5;                    // three strands across the tube
+    float li = floor(lane);
+    float lf = abs(fract(lane) - 0.5) * 2.0;        // 0 strand centre .. 1 the gap between rays
+    float strand = smoothstep(0.8, 0.25, lf);       // thin ribbons, dark water between them
+    float hue = li * 0.3 + alongW * 0.03 - uTime * 0.4;
+    vec3 rainbow = 0.5 + 0.5 * vec3(sin(6.2832 * hue), sin(6.2832 * (hue + 0.33)), sin(6.2832 * (hue + 0.66)));
+    float race = 0.75 + 0.25 * sin(alongW * 3.0 - uTime * 26.0 + li * 2.0);  // light racing head-ward
+    a = strand * race * cyl * 1.5 * (1.0 - vT);
+    col = mix(rainbow, vec3(1.0), smoothstep(0.3, 0.0, lf) * 0.4);  // white-hot strand centres
   } else if (s == 4) { // shard / needle: sharp icy dart with a bright tip
     float taper = mix(1.9, 0.35, along);           // wide tail, needle tip
     float m = across * taper * 1.5;
@@ -316,18 +325,22 @@ void main(){
     col = mix(col, vColor * 0.3, outline * 0.8);                     // chunky dark outline
     col = mix(col, vec3(1.0), shine);                                // the glint
   
-  } else if (s == 17) { // free bubble: rim-lit sphere, glint, gentle wobble
+  } else if (s == 17) { // anime bubble, per the reference: translucent blue sphere, bold white crescent
     vec2 p = c * 2.0;
-    p.x += 0.07 * sin(uTime * 6.0 + vSeed * 31.0);
-    p.y += 0.07 * cos(uTime * 5.2 + vSeed * 23.0);
+    p.x += 0.06 * sin(uTime * 6.0 + vSeed * 31.0);
+    p.y += 0.06 * cos(uTime * 5.2 + vSeed * 23.0);
     float d = length(p);
-    float rim = smoothstep(0.2, 0.05, abs(d - 0.74));
-    float edgeDark = smoothstep(0.1, 0.02, abs(d - 0.9));   // thin dark outline outside the rim
-    float body = smoothstep(0.74, 0.1, d) * 0.16;
-    float shine = smoothstep(0.26, 0.0, length(p - vec2(-0.27, 0.3)));
-    a = rim * 0.95 + edgeDark * 0.8 + body + shine;
-    col = mix(vColor, vColor2, rim * 0.75 + shine);          // light rim-lit glass
-    col = mix(col, vColor * 0.25, edgeDark * (1.0 - rim));   // outline keeps it readable anywhere
+    float body = smoothstep(0.98, 0.9, d);                         // hard sphere edge
+    float limb = smoothstep(0.4, 0.95, d);                         // blue deepens toward the rim
+    // the signature crescent: a thick white arc hugging the upper-left rim
+    float facing = smoothstep(0.05, 0.85, dot(p / max(d, 1e-4), vec2(-0.707, 0.707)));
+    float cres = smoothstep(0.3, 0.1, abs(d - 0.58)) * facing;
+    float glint2 = smoothstep(0.14, 0.0, length(p - vec2(0.3, -0.28))) * 0.6;  // small counter-glint
+    float outline = smoothstep(0.08, 0.02, abs(d - 0.94));
+    a = body * (0.5 + limb * 0.45) + cres * 0.95 + outline * 0.8;  // see-through heart, solid rim
+    col = mix(vColor, vColor * 0.55, limb * 0.6);                  // deeper blue toward the limb
+    col = mix(col, vec3(1.0), cres + glint2);                      // the white crescent
+    col = mix(col, vColor, outline * (1.0 - cres));                // rim stays the bubble's own blue
   } else if (s == 18) { // impact starburst: white petals snapping outward, then gone
     float d = length(c * 2.0);
     float ang = atan(c.y, c.x);
@@ -338,6 +351,54 @@ void main(){
     float fade = 1.0 - smoothstep(0.3, 1.0, vT);
     a = (star * 1.7 + core * 1.9) * fade;
     col = mix(vec3(1.0), vColor2, 0.18);
+  } else if (s == 22) { // Water Gun, per the reference: a LAMINAR cannon of real blue water
+    float core = pow(cyl, 0.45);                                    // near-solid water
+    float rush = 0.92 + 0.08 * sin(alongW * 11.0 - uTime * 50.0 + vSeed * 9.0);  // subtle speed lines
+    float head = smoothstep(0.86, 1.0, along);                      // small cap at the tip
+    a = core * rush + head * 0.35 * cyl;
+    col = mix(vColor * 0.6, vColor, pow(cyl, 1.3));                 // deep blue skin → true blue body
+    col = mix(col, vColor2, pow(cyl, 3.5) * 0.7 + head * 0.25);     // lighter BLUE heart — never white foam
+  } else if (s == 23) { // Aqua Ring, per the reference: a churning hoop of sparkling water
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+    float churn = 0.05 * sin(ang * 7.0 + uTime * 6.0 + vSeed * 20.0) + 0.02 * sin(ang * 13.0 - uTime * 9.0 + vSeed * 9.0);
+    float band = smoothstep(0.26, 0.04, abs(r - (0.68 + churn)));   // a thick, soft water torus
+    float froth = 0.6 + 0.4 * sin(ang * 19.0 - uTime * 12.0 + vSeed * 9.0);
+    // sparkles riding the hoop (the reference ring is full of starlight)
+    float cell = floor(ang * 6.366 + 0.5) + floor(vSeed * 40.0);
+    float tw = step(0.72, n1(cell + floor(uTime * 8.0)));
+    a = band * (0.55 + 0.3 * froth + tw * 0.45);
+    col = mix(vColor, vColor2, band * froth * 0.3 + tw * 0.55);
+  } else if (s == 20) { // screech: jagged shock-rings ripping outward — sound you can SEE
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    for (int i = 0; i < 3; i++) {
+      float r = fract(vT * 1.7 + float(i) / 3.0 + vSeed);
+      float wob = 0.06 * sin(ang * 10.0 + float(i) * 2.1 + uTime * 30.0 + vSeed * 20.0);  // trembling ring
+      a += smoothstep(0.12, 0.035, abs(d - (r * 0.9 + wob))) * (1.0 - r) * 1.6;
+    }
+    a *= 0.85 + 0.15 * sin(uTime * 44.0 + vSeed * 9.0);   // the harsh tremor of a scream
+    col = mix(vColor, vColor2, 0.35);
+  } else if (s == 21) { // bite: two fanged jaws snapping shut over the target
+    vec2 p = c * 2.0;
+    float close = smoothstep(0.0, 0.4, vT);               // jaws slam shut fast
+    float gap = mix(0.9, 0.08, close);
+    float curve = p.x * p.x * 0.55;                        // the jaw lines bow like an open mouth
+    float tri  = abs(fract(p.x * 2.6 + 0.25 + vSeed) - 0.5) * 2.0;  // upper fangs
+    float tri2 = abs(fract(p.x * 2.6 + 0.75 + vSeed) - 0.5) * 2.0;  // lower fangs, interleaved
+    float ends = smoothstep(1.02, 0.86, abs(p.x));
+    float upEdge = gap + curve + tri * 0.32;               // fang tips reach down toward the gap
+    float dnEdge = -gap - curve - tri2 * 0.32;
+    float up = step(upEdge, p.y) * step(p.y, gap + curve + 0.48) * ends;   // a thin fanged arc
+    float dn = step(-gap - curve - 0.48, p.y) * step(p.y, dnEdge) * ends;
+    // a slim dark rim hugging the fangs, so the bite reads on ANY background
+    float upO = step(upEdge - 0.09, p.y) * step(p.y, gap + curve + 0.56) * ends;
+    float dnO = step(-gap - curve - 0.56, p.y) * step(p.y, dnEdge + 0.09) * ends;
+    float fade = 1.0 - smoothstep(0.6, 1.0, vT);
+    float fang = max(up, dn);
+    a = max(max(upO, dnO) * 0.8, fang) * fade * 1.25;
+    col = mix(vec3(0.05, 0.09, 0.16), mix(vec3(0.99), vColor2, 0.12), fang);
   } else if (s == 19) { // curling water-swirl residue, spinning as it fades
     vec2 p = c * 2.0;
     float r = length(p);
@@ -349,7 +410,7 @@ void main(){
   }
   // Fired straight at the camera the tube has no length to show — resolve it into a round blast
   // instead of a flat slab of colour.
-  if (vAlign > 0.001 && (s == 0 || s == 1 || s == 2 || s == 3 || s == 15)) {
+  if (vAlign > 0.001 && (s == 0 || s == 1 || s == 2 || s == 3 || s == 15 || s == 22)) {
     float d2 = length(vec2((along - 0.5) * 2.0, c.y * 2.0));
     float bloom = pow(max(0.0, 1.0 - d2), 1.6) * 1.5;
     float k = smoothstep(0.0, 0.7, vAlign);   // resolve to the round blast quickly
@@ -359,7 +420,7 @@ void main(){
   a *= vAlpha;
   if (a < 0.01) discard;
   // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
-  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17);
+  bool murky = (s == 1 || s == 5 || s == 10 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22);
   gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
@@ -423,6 +484,8 @@ export function MoveProjectiles() {
           const len = Math.max(0.6, Math.hypot(dx, dy, dz));
           put(vis.blend, ox + dx / 2, oy + dy / 2, oz + dz / 2, dx / len, dy / len, dz / len,
             vis.s, vis.w, len, Math.min(1, pr.t * 8), seed, 0);
+          // the muzzle burst (Aurora Beam reference): a hot flash blooming at the mouth on launch
+          if (pr.t < 0.22) put(0, ox, oy, oz, 0, 1, 0, ST.flash, 0.9 + vis.w * 0.9, 1.4, 1 - pr.t / 0.22, seed, pr.t * 3);
         } else if (vis.volley) {
           // reference grammar: a volley of chunky siblings trailing the lead — droplet
           // bursts and bubble trains — each a full projectile, not a ghost
@@ -460,7 +523,7 @@ export function MoveProjectiles() {
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
           const grow = Math.min(1, pr.t * 6);
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.2;
-          const ghosts = vis.s === ST.ink || vis.s === ST.pulse ? 1 : TRAIL;
+          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound ? 1 : TRAIL;
           for (let k = 0; k < ghosts; k++) {
             const back = k * 0.05;
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
@@ -474,9 +537,17 @@ export function MoveProjectiles() {
         if (!v.active || v.kind !== 'impact') continue;
         const vis = visFor(v.moveId, v.style);
         if (vis.impact === 'mud' || vis.impact === 'ink') continue; // matter splatters, light stars
+        const seed = ((v.x1 * 11 + v.z1 * 17) % 97) / 97;
+        if (vis.impact === 'jaws') {
+          // a big pair of jaws clamps over the target instead of the generic starburst
+          const pj = Math.min(1, v.t / 0.6);
+          if (pj >= 1) continue;
+          c1.set(v.color); c2.set(vis.c2);
+          put(1, v.x1, v.y1, v.z1, 0, 1, 0, ST.jaws, 1.3 + vis.w * 1.1, 1.2, 1, seed, pj);
+          continue;
+        }
         const p = Math.min(1, v.t / 0.42);
         if (p >= 1) continue;
-        const seed = ((v.x1 * 11 + v.z1 * 17) % 97) / 97;
         c1.set(v.color); c2.set('#ffffff');
         put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.star, 0.9 + vis.w * 0.45, 1.2, 1, seed, p);
         if (vis.impact === 'splash' || vis.impact === 'bubble') {
@@ -513,6 +584,39 @@ export function MoveProjectiles() {
         } else { // psy rings / discharge flash sit on their target point
           const x = vis.s === ST.flash ? v.x0 : v.x1, y = vis.s === ST.flash ? v.y0 : v.y1, z = vis.s === ST.flash ? v.z0 : v.z1;
           put(vis.blend, x, y, z, 0, 1, 0, vis.s, vis.w, vis.w, 1, seed, p);
+        }
+      }
+      // ---- body-anchored auras: Aqua Ring's water veil, Smokescreen's disseminating cloud
+      const time = state.clock.elapsedTime;
+      for (const e of eco.alive) {
+        if (e.veilT > 0) {
+          // Aqua Ring, per the reference: three flat hoops of churning, sparkling water
+          // stacked around the body, wrapped in a soft aqua glow
+          const D = Math.max(e.veilDur, 0.001);
+          const fade = Math.min(1, e.veilT / 0.5) * Math.min(1, (D - e.veilT) / 0.25 + 0.15);
+          c1.set('#5eead4'); c2.set('#f0fdfa');
+          const R = e.species.size * 0.95 + 0.55;
+          for (let k = 0; k < 3; k++) {
+            const rr = R * (k === 1 ? 1.25 : 0.95);
+            const yy = (k - 1) * R * 0.6 + Math.sin(time * 2.6 + k * 2.1 + e.phase * 5) * 0.09;
+            put(0, e.x, e.y + yy, e.z, 0, 1, 0, ST.waterRing, rr, rr, fade, k * 0.31 + (e.id % 7) * 0.13, 0);
+          }
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.flash, R * 1.7, R * 1.7, 0.14 * fade, (e.id % 97) / 97, 0.5);
+        }
+        if (e.concealT > 0) {
+          // black smoke billowing outward; it thins as the caster re-emerges
+          const D = Math.max(e.concealDur, 0.001);
+          const p = 1 - e.concealT / D;
+          // bursts to full density in 0.2s, holds, then thins away over the last 55%
+          const smoke = Math.min(1, (D - e.concealT) / 0.2) * Math.max(0, 1 - Math.max(0, (p - 0.45) / 0.55));
+          c1.set('#0f172a'); c2.set('#334155');
+          const R = e.species.size * 0.55 + 0.4 + p * 2.4;
+          for (let k = 0; k < 7; k++) {
+            const a2 = k * (Math.PI * 2 / 7) + e.phase * 9 + time * 0.4;
+            const rr = k === 0 ? 0 : R * (0.6 + 0.4 * Math.sin(k * 3.7 + e.phase * 11));
+            put(1, e.x + Math.cos(a2) * rr, e.y + Math.sin(a2 * 1.7 + k) * rr * 0.55, e.z + Math.sin(a2) * rr, 0, 1, 0,
+              ST.ink, (0.9 + k * 0.14) * (0.6 + p * 0.9) * e.species.size * 0.8 + 0.5, 1, smoke, k * 0.13 + (e.id % 5) * 0.2, p);
+          }
         }
       }
       // ---- charge-up glows at the caster's mouth
@@ -556,6 +660,7 @@ const IMPACTS: Record<string, [number, number, number, number, number, number, s
   heal: [8, 1.2, 1.6, 0.6, 0.18, 0.9, '#a7f3d0'],
   mud: [14, 2.6, 2.2, -9.5, 0.24, 0.8],
   ink: [10, 1.2, 0.2, 0.35, 0.42, 1.1],
+  jaws: [8, 2.8, 0.6, -0.5, 0.16, 0.4, '#fee2e2'],
 };
 const MURKY = new Set(['mud', 'ink']);
 

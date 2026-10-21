@@ -9,7 +9,7 @@ export type MoveStyle =
   | 'bubbles' | 'jet' | 'beam' | 'darts' | 'ink' | 'ring' | 'crescent'
   | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning';
 
-export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal';
+export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'conceal';
 
 export interface MoveEffect {
   type: MoveEffectType;
@@ -62,7 +62,7 @@ export const MOVES: Record<string, MoveConfig> = {
   discharge: M({ id: 'discharge', name: 'Discharge', desc: 'Releases a burst of electricity in every direction.', kind: 'damage', category: 'special', power: 80, cooldown: 7, range: 8, style: 'burst', color: '#facc15' }),
   bubbleBeam: M({ id: 'bubbleBeam', name: 'Bubble Beam', desc: 'A forceful stream of bursting bubbles.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 11, style: 'bubbles', color: '#93c5fd' }),
   pinMissile: M({ id: 'pinMissile', name: 'Pin Missile', desc: 'Fires sharp spikes that strike in bursts.', kind: 'damage', category: 'physical', power: 50, cooldown: 3, range: 10, style: 'darts', color: '#d9f99d' }),
-  waterGun: M({ id: 'waterGun', name: 'Water Gun', desc: 'Squirts a quick jet of water.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 11, style: 'jet', color: '#7dd3fc' }),
+  waterGun: M({ id: 'waterGun', name: 'Water Gun', desc: 'Squirts a quick jet of water.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 11, style: 'jet', projSpeed: 34, color: '#7dd3fc' }),
   octazooka: M({ id: 'octazooka', name: 'Octazooka', desc: 'Sprays ink that can leave the target blinded.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 11, style: 'ink', color: '#475569', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.3 } }),
   airSlash: M({ id: 'airSlash', name: 'Air Slash', desc: 'Launches a blade of compressed air.', kind: 'damage', category: 'special', power: 75, cooldown: 5, range: 11, style: 'crescent', color: '#e2e8f0' }),
   dragonPulse: M({ id: 'dragonPulse', name: 'Dragon Pulse', desc: 'A shockwave of draconic energy from the mouth.', kind: 'damage', category: 'special', power: 85, cooldown: 5, range: 12, style: 'ring', color: '#2dd4bf' }),
@@ -103,15 +103,21 @@ export const MOVES: Record<string, MoveConfig> = {
   supersonic: M({ id: 'supersonic', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
   supersonicSlow: M({ id: 'supersonicSlow', name: 'Supersonic', desc: 'Weird sound waves that stun the target.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 8, style: 'ring', color: '#fca5a5', effect: { type: 'stun', magnitude: 1, duration: 1.5 } }),
   wrap: M({ id: 'wrap', name: 'Wrap', desc: 'Coils around the foe to slow its movement.', kind: 'utility', category: 'physical', power: 0, cooldown: 5, range: 4, style: 'motes', color: '#c4b5fd', effect: { type: 'slow', magnitude: 0.4, duration: 4 } }),
-  smokescreen: M({ id: 'smokescreen', name: 'Smokescreen', desc: 'A cloud of ink that blinds the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ink', color: '#334155', effect: { type: 'blind', magnitude: 1, duration: 3 } }),
+  // Canon: smokescreen clouds the FOE's vision — here the drama is the escape: the caster
+  // vanishes into its own black cloud and re-emerges only as the smoke thins away.
+  smokescreen: M({ id: 'smokescreen', name: 'Smokescreen', desc: 'Vanishes into a burst of black smoke, reappearing as it thins.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 8, style: 'ink', color: '#1e293b', selfTarget: true, effect: { type: 'conceal', magnitude: 1, duration: 2.6 } }),
   withdraw: M({ id: 'withdraw', name: 'Withdraw', desc: 'Tucks into its shell to raise Defense.', kind: 'utility', category: 'physical', power: 0, cooldown: 7, range: 0, style: 'motes', color: '#a5b4fc', selfTarget: true, effect: { type: 'defUp', magnitude: 0.5, duration: 6 } }),
-  aquaRing: M({ id: 'aquaRing', name: 'Aqua Ring', desc: 'A veil of water that restores HP over time.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 0, style: 'ring', color: '#5eead4', selfTarget: true, effect: { type: 'heal', magnitude: 0.2, duration: 5 } }),
+  // PokeAPI effect text: "restores 1/16 of the user's max HP each turn" — a turn here is a
+  // second, and the veil holds for 3: 3/16 of max HP restored while the water wraps the body.
+  aquaRing: M({ id: 'aquaRing', name: 'Aqua Ring', desc: 'A veil of water that restores 1/16 max HP each second.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 0, style: 'ring', color: '#5eead4', selfTarget: true, effect: { type: 'heal', magnitude: 3 / 16, duration: 3 } }),
   sing: M({ id: 'sing', name: 'Sing', desc: 'A soothing lullaby that stuns the listener.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 8, style: 'motes', color: '#fbcfe8', effect: { type: 'stun', magnitude: 1, duration: 2.5 } }),
   flash: M({ id: 'flash', name: 'Flash', desc: 'A blinding burst of light.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'burst', color: '#fef9c3', effect: { type: 'blind', magnitude: 1, duration: 3 } }),
   harden: M({ id: 'harden', name: 'Harden', desc: 'Stiffens its body to raise Defense.', kind: 'utility', category: 'physical', power: 0, cooldown: 7, range: 0, style: 'motes', color: '#cbd5e1', selfTarget: true, effect: { type: 'defUp', magnitude: 0.5, duration: 6 } }),
   agility: M({ id: 'agility', name: 'Agility', desc: 'Lightens its body to move far faster.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 0, style: 'motes', color: '#bae6fd', selfTarget: true, effect: { type: 'speedUp', magnitude: 0.4, duration: 5 } }),
   sweetScent: M({ id: 'sweetScent', name: 'Sweet Scent', desc: 'A sweet aroma that saps the will to fight.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 7, style: 'motes', color: '#f9a8d4', effect: { type: 'atkDrop', magnitude: 0.3, duration: 5 } }),
-  screech: M({ id: 'screech', name: 'Screech', desc: 'An ear-splitting screech that lowers Defense.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ring', color: '#fda4af', effect: { type: 'defDrop', magnitude: 0.3, duration: 5 } }),
+  // Canon: Screech SHARPLY lowers Defense (two stages) — the harshest stat drop in the kit,
+  // and the visual is pure sound: jagged shock-rings ripping through the water.
+  screech: M({ id: 'screech', name: 'Screech', desc: 'An ear-splitting screech so harsh it sharply lowers Defense.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'ring', projSpeed: 26, color: '#fda4af', effect: { type: 'defDrop', magnitude: 0.45, duration: 6 } }),
   scaryFace: M({ id: 'scaryFace', name: 'Scary Face', desc: 'A frightening glare that slows the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'motes', color: '#f87171', effect: { type: 'slow', magnitude: 0.4, duration: 4 } }),
   amnesia: M({ id: 'amnesia', name: 'Amnesia', desc: 'Empties its mind to shrug off damage.', kind: 'utility', category: 'special', power: 0, cooldown: 7, range: 0, style: 'motes', color: '#ddd6fe', selfTarget: true, effect: { type: 'defUp', magnitude: 0.5, duration: 6 } }),
   charm: M({ id: 'charm', name: 'Charm', desc: 'A charming gaze that weakens the target.', kind: 'utility', category: 'special', power: 0, cooldown: 5, range: 8, style: 'motes', color: '#f9a8d4', effect: { type: 'atkDrop', magnitude: 0.3, duration: 5 } }),

@@ -75,6 +75,12 @@ export interface Entity {
   stunT: number; slowT: number; blindT: number;
   /** Heal-over-time: hp/sec remaining seconds. */
   hotRate: number; hotT: number;
+  /** Smokescreen concealment: seconds remaining / total — render fades the sprite in the cloud. */
+  concealT: number; concealDur: number;
+  /** Aqua Ring water veil: seconds remaining / total (visual shell around the regen). */
+  veilT: number; veilDur: number;
+  /** Cast anticipation: sim-time wind-up window — rear back until castAt, whip forward after. */
+  castFrom: number; castAt: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
   /** Who to retaliate against (entity id or -2 for player). */

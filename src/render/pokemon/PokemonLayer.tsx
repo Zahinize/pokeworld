@@ -223,6 +223,13 @@ export function PokemonLayer() {
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
+      // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
+      if (e.concealT > 0) {
+        const into = Math.max(e.concealDur, 0.001) - e.concealT;
+        const hide = Math.min(1, into / 0.3);
+        const back = Math.max(0, 1 - e.concealT / 0.9);
+        alpha *= Math.max(0.05, 1 - hide * (1 - back));
+      }
       // gentle idle bob so even resting Pokémon breathe
       y += Math.sin(time * 1.3 + e.phase * 7) * 0.06 * Math.min(1.5, e.species.size);
       tmpM.makeTranslation(e.x, y + scale * 0.5 - e.species.size * 0.5, e.z);
@@ -250,7 +257,18 @@ export function PokemonLayer() {
       const tPrev = tiltMemo.get(e.id) ?? 0;
       const tNow = tPrev + (tiltTarget - tPrev) * 0.06;
       tiltMemo.set(e.id, tNow);
-      b.aTilt.array[i] = tNow;
+      // cast anticipation: rear BACK through the wind-up, then whip FORWARD at release —
+      // unsmoothed on purpose, the snap is the point (force visibly launches the move)
+      let castTilt = 0;
+      if (e.castAt > 0 && eco.time < e.castAt + 0.3) {
+        if (eco.time < e.castAt) {
+          const wind = Math.min(1, (eco.time - e.castFrom) / Math.max(e.castAt - e.castFrom, 0.001));
+          castTilt = -f * 0.42 * wind * wind;
+        } else {
+          castTilt = f * 0.5 * (1 - (eco.time - e.castAt) / 0.3);
+        }
+      }
+      b.aTilt.array[i] = tNow + castTilt;
       if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);

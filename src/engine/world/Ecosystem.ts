@@ -131,6 +131,7 @@ export class Ecosystem {
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -357,6 +358,8 @@ export class Ecosystem {
       if (e.stunT > 0) e.stunT -= dt;
       if (e.slowT > 0) e.slowT -= dt;
       if (e.blindT > 0) e.blindT -= dt;
+      if (e.concealT > 0) e.concealT -= dt;
+      if (e.veilT > 0) e.veilT -= dt;
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
       if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;

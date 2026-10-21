@@ -441,6 +441,9 @@ export class GameSession {
     if (!this.arena || !this.eco) return;
     this.downedSpecies = [];
     this.setParty([speciesId]);
+    // the dojo reviews the species' TRUE kit — strip the companion all-damage override
+    const partner = this.eco.byId.get(this.activePartners[0]);
+    if (partner) partner.kitOverride = undefined;
   }
 
   /** Fire the companion's move at the dummy — guaranteed target, zero aim required. */
@@ -1133,7 +1136,8 @@ export class GameSession {
         case 'effect': {
           const t = eco.byId.get(ev.targetId);
           if (!t) break;
-          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect.toUpperCase();
+          // labels must stay inside the damage-number glyph atlas (no C, G…)
+          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect === 'conceal' ? 'POOF' : ev.effect.toUpperCase();
           this.pushNumber(label, ev.effect === 'defUp' || ev.effect === 'speedUp' ? '#7ff0c9' : '#ffd166', t.x, t.y + t.species.size * 0.6, t.z, false);
           break;
         }
