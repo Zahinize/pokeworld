@@ -204,9 +204,12 @@ class AudioManagerImpl {
         this.tone(900, 0.2, 0.06, 'triangle', 1600, 0, 0.4);
         this.tone(1350, 0.16, 0.04, 'sine', 2000, 0, 0.46);
         this.noiseBurst(0.12, 0.035, 3200, 2.2, 0.4); return;
-      case 'bubble': case 'bubbleBeam': // a train of glossy pops
-        for (let i = 0; i < 4; i++) this.tone(520 + i * 90 + Math.random() * 80, 0.12, 0.06, 'sine', 1100 + i * 150, 0, 0.4 + i * 0.09);
-        this.noiseBurst(0.25, 0.06, 1600, 1.4, 0.4); return;
+      case 'bubble': // one round bloop
+        this.tone(480, 0.16, 0.07, 'sine', 980, 0, 0.4); return;
+      case 'bubbleBeam': // ONE layered watery bloop — never a staccato pop train
+        this.tone(420, 0.2, 0.07, 'sine', 900, 0, 0.4);
+        this.tone(840, 0.16, 0.035, 'sine', 1500, 0, 0.4);
+        this.noiseBurst(0.15, 0.03, 1700, 1.3, 0.4); return;
       case 'aquaRing': // the healing veil: soft rising chimes inside a watery shimmer
         [523.25, 659.25, 783.99].forEach((f, i) => this.tone(f, 0.5, 0.07, 'sine', f * 1.01, 0, 0.4 + i * 0.16));
         this.noiseBurst(1.1, 0.05, 1300, 1.6, 0.4); return;
@@ -220,9 +223,10 @@ class AudioManagerImpl {
         this.tone(1560, 0.55, 0.08, 'sawtooth', 2520, 0, 0.12);
         this.noiseBurst(0.5, 0.08, 2800, 2.2, 0.1); return;
       }
-      case 'icicleSpear': // glassy crystal tings, one per icicle
-        for (let i = 0; i < 4; i++) this.tone(2100 + i * 160, 0.09, 0.07, 'sine', 1500, 0, 0.4 + i * 0.07);
-        this.noiseBurst(0.35, 0.05, 4200, 2, 0.4); return;
+      case 'icicleSpear': // one glassy crystal chime with a frost sparkle tail
+        this.tone(2100, 0.14, 0.07, 'sine', 1450, 0, 0.4);
+        this.tone(2650, 0.18, 0.04, 'sine', 2000, 0, 0.46);
+        this.noiseBurst(0.22, 0.035, 4200, 2, 0.4); return;
       case 'iceShard': // one heavy chunk of glass, hurled
         this.tone(1350, 0.12, 0.12, 'triangle', 850, 0, 0.4); this.noiseBurst(0.14, 0.12, 3200, 1.6, 0.4); return;
       case 'iceBeam': case 'freezeDry': { // shimmer builds with the circle, then the beam blasts
@@ -243,9 +247,8 @@ class AudioManagerImpl {
       case 'psychic': // eerie detuned shimmer pressing in
         this.tone(520, 0.9, 0.07, 'sine', 540, 0, 0.3); this.tone(524, 0.9, 0.07, 'sine', 505, 0, 0.3);
         this.tone(782, 0.7, 0.045, 'triangle', 760, 0, 0.45); return;
-      case 'pinMissile': // a rapid tick-tick-tick volley
-        for (let i = 0; i < 5; i++) this.tone(1450 + (i % 2) * 180, 0.035, 0.09, 'square', 900, 0, 0.4 + i * 0.055);
-        return;
+      case 'pinMissile': // one soft thwip for the whole volley
+        this.tone(1250, 0.1, 0.08, 'triangle', 720, 0, 0.4); this.noiseBurst(0.08, 0.05, 1900, 1.6, 0.4); return;
       case 'poisonSting': // a venomous zip
         this.tone(680, 0.16, 0.1, 'sawtooth', 1850, 0, 0.4); this.noiseBurst(0.12, 0.06, 2400, 2, 0.42); return;
       case 'poisonJab': // zip + the toxin-soaked thud
