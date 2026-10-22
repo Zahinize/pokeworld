@@ -449,6 +449,9 @@ export class GameSession {
   /** Fire the companion's move at the dummy — guaranteed target, zero aim required. */
   arenaCast(moveSlot: 0 | 1 = 0): boolean {
     if (!this.arena || !this.eco) return false;
+    // the dojo is entered via #arena, skipping the Enter-Reef click that unlocks WebAudio —
+    // this call IS inside the player's click, so it is the gesture that unlocks sound
+    Audio.init();
     const partner = this.eco.byId.get(this.activePartners[0]);
     const boss = this.eco.byId.get(this.arenaBossId);
     if (!partner || !boss) return false;
