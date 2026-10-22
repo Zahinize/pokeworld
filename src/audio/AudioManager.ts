@@ -198,8 +198,12 @@ class AudioManagerImpl {
    */
   moveCast(style: string, moveId?: string) {
     switch (moveId) {
-      case 'waterGun': // laminar squirt right at launch (0.4s wind-up)
-        this.noiseBurst(0.3, 0.2, 1100, 1.1, 0.4); this.tone(420, 0.22, 0.09, 'sine', 240, 0, 0.4); return;
+      case 'waterGun': // ONE quick watery squirt at launch — short and done
+        this.noiseBurst(0.14, 0.1, 700, 0.9, 0.4); this.tone(360, 0.12, 0.07, 'sine', 220, 0, 0.4); return;
+      case 'auroraBeam': // a quick crystal sweep, sparkly not laser-like
+        this.tone(900, 0.2, 0.06, 'triangle', 1600, 0, 0.4);
+        this.tone(1350, 0.16, 0.04, 'sine', 2000, 0, 0.46);
+        this.noiseBurst(0.12, 0.035, 3200, 2.2, 0.4); return;
       case 'bubble': case 'bubbleBeam': // a train of glossy pops
         for (let i = 0; i < 4; i++) this.tone(520 + i * 90 + Math.random() * 80, 0.12, 0.06, 'sine', 1100 + i * 150, 0, 0.4 + i * 0.09);
         this.noiseBurst(0.25, 0.06, 1600, 1.4, 0.4); return;
@@ -255,7 +259,7 @@ class AudioManagerImpl {
     switch (style) {
       case 'bubbles': this.bubble(0.8); this.bubble(1.1); this.tone(500, 0.12, 0.07, 'sine', 900); break;
       case 'jet': case 'geyser': this.noiseBurst(0.35, 0.22, 700, 0.7); this.tone(180, 0.25, 0.08, 'sine', 90); break;
-      case 'beam': this.tone(700, 0.35, 0.12, 'sawtooth', 1400); this.noiseBurst(0.3, 0.1, 2500, 2); break;
+      case 'beam': this.tone(750, 0.22, 0.08, 'triangle', 1400); this.noiseBurst(0.16, 0.06, 2500, 2); break;
       case 'darts': this.tone(1200, 0.06, 0.1, 'square', 800); this.tone(1100, 0.06, 0.08, 'square', 700, 0, 0.07); break;
       case 'ink': this.tone(220, 0.2, 0.12, 'sine', 110); this.noiseBurst(0.25, 0.12, 400, 0.8); break;
       case 'ring': case 'motes': this.tone(880, 0.25, 0.08, 'sine', 660); this.tone(1320, 0.2, 0.05, 'sine', undefined, 0, 0.08); break;
