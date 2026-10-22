@@ -63,7 +63,7 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   // mud travels as thick, opaque matter (murk layer, never additive)
   mudShot: { s: ST.mudRay, w: 1.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
   // Muddy Water, per canon: a breaking brown WAVE with sandy foam crashing over the target
-  muddyWater: { s: ST.wave, w: 2.4, c2: '#f1dcb0', blend: 1, impact: 'mud' },
+  muddyWater: { s: ST.wave, w: 2.8, c2: '#f1dcb0', blend: 1, impact: 'mud' },
   // plain straight pins, light blue shafts with dark blue tips — no ornament
   pinMissile: { s: ST.barb, w: 0.42, c2: '#1e40af', blend: 1, impact: 'spark', volley: [9, 1.0], spread: 0.55 },
   // ONE long venom sting of decent width — never a flurry of little lines
@@ -672,6 +672,18 @@ export function MoveProjectiles() {
         } else if (vis.s === ST.wave) {
           const x = v.x0 + (v.x1 - v.x0) * ease, y = v.y0 + (v.y1 - v.y0) * ease + 0.4, z = v.z0 + (v.z1 - v.z0) * ease;
           put(vis.blend, x, y, z, v.x1 - v.x0, 0, v.z1 - v.z0, vis.s, vis.w * 1.45, vis.w * 3.4, 1, seed, p);
+          if (vis.impact === 'mud') {
+            // the muddy flood: lumps of sludge tumble in the wake, and a silt haze
+            // hangs over the water the wave has already churned through
+            const tNow = state.clock.elapsedTime;
+            for (let k = 0; k < 3; k++) {
+              const lag = Math.max(0, ease - 0.16 - k * 0.15);
+              const bx = v.x0 + (v.x1 - v.x0) * lag, bz = v.z0 + (v.z1 - v.z0) * lag;
+              const by = y - 0.5 - k * 0.3 + Math.sin(tNow * 7 + k * 2.4 + seed * 9) * 0.3;
+              put(1, bx, by, bz, 0, 1, 0, ST.mud, 0.55 + k * 0.15, 0.8, Math.max(0, 1.1 - p), seed + k * 0.17, p);
+            }
+            if (p > 0.4) put(1, x, y + 0.4, z, 0, 1, 0, ST.ink, 1.4 + p * 2.2, 1, (1 - p) * 0.7 + 0.1, seed + 0.31, p);
+          }
         } else { // psy rings / discharge flash sit on their target point
           const x = vis.s === ST.flash ? v.x0 : v.x1, y = vis.s === ST.flash ? v.y0 : v.y1, z = vis.s === ST.flash ? v.z0 : v.z1;
           put(vis.blend, x, y, z, 0, 1, 0, vis.s, vis.w, vis.w, 1, seed, p);

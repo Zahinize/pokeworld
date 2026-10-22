@@ -1110,7 +1110,7 @@ export class GameSession {
         }
         case 'cast': {
           const e = eco.byId.get(ev.casterId);
-          if (near(e, 45)) Audio.moveCast(ev.style);
+          if (near(e, 45)) Audio.moveCast(ev.style, ev.moveId);
           break;
         }
         case 'moveHit': {
@@ -1141,6 +1141,7 @@ export class GameSession {
           if (!t) break;
           const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect === 'conceal' ? 'POOF' : ev.effect === 'freeze' ? 'FROZEN' : ev.effect.toUpperCase();
           this.pushNumber(label, ev.effect === 'defUp' || ev.effect === 'speedUp' ? '#7ff0c9' : '#ffd166', t.x, t.y + t.species.size * 0.6, t.z, false);
+          if (ev.effect === 'freeze' && near(t, 45)) Audio.freezeCrack();
           break;
         }
         case 'heal': {

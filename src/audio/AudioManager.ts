@@ -192,8 +192,66 @@ class AudioManagerImpl {
   }
   restore() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.3, 0.12, 'triangle', undefined, 0, i * 0.08)); }
 
-  /** Move cast sound by animation style — short, watery, anime-flavoured. */
-  moveCast(style: string) {
+  /**
+   * Move cast sound — per-move signatures for the redesigned moves (timed to their
+   * wind-ups: the cast event fires at wind-up START), falling back to style flavour.
+   */
+  moveCast(style: string, moveId?: string) {
+    switch (moveId) {
+      case 'waterGun': // laminar squirt right at launch (0.4s wind-up)
+        this.noiseBurst(0.3, 0.2, 1100, 1.1, 0.4); this.tone(420, 0.22, 0.09, 'sine', 240, 0, 0.4); return;
+      case 'bubble': case 'bubbleBeam': // a train of glossy pops
+        for (let i = 0; i < 4; i++) this.tone(520 + i * 90 + Math.random() * 80, 0.12, 0.06, 'sine', 1100 + i * 150, 0, 0.4 + i * 0.09);
+        this.noiseBurst(0.25, 0.06, 1600, 1.4, 0.4); return;
+      case 'aquaRing': // the healing veil: soft rising chimes inside a watery shimmer
+        [523.25, 659.25, 783.99].forEach((f, i) => this.tone(f, 0.5, 0.07, 'sine', f * 1.01, 0, 0.4 + i * 0.16));
+        this.noiseBurst(1.1, 0.05, 1300, 1.6, 0.4); return;
+      case 'smokescreen': // the vanish: a dark POOF and the water muffles
+        this.tone(190, 0.35, 0.14, 'sine', 70, 0, 0.4); this.noiseBurst(0.5, 0.16, 320, 0.7, 0.4); return;
+      case 'bite': case 'crunch': case 'superFang': // jaws SNAP at the strike (0.35s wind-up)
+        this.tone(950, 0.04, 0.2, 'square', 500, 0, 0.35); this.tone(130, 0.16, 0.16, 'triangle', 70, 0, 0.37);
+        this.noiseBurst(0.1, 0.12, 2200, 1.5, 0.35); return;
+      case 'screech': { // the ear-splitter: two detuned saws tearing upward
+        this.tone(1500, 0.55, 0.1, 'sawtooth', 2400, 0, 0.1);
+        this.tone(1560, 0.55, 0.08, 'sawtooth', 2520, 0, 0.12);
+        this.noiseBurst(0.5, 0.08, 2800, 2.2, 0.1); return;
+      }
+      case 'icicleSpear': // glassy crystal tings, one per icicle
+        for (let i = 0; i < 4; i++) this.tone(2100 + i * 160, 0.09, 0.07, 'sine', 1500, 0, 0.4 + i * 0.07);
+        this.noiseBurst(0.35, 0.05, 4200, 2, 0.4); return;
+      case 'iceShard': // one heavy chunk of glass, hurled
+        this.tone(1350, 0.12, 0.12, 'triangle', 850, 0, 0.4); this.noiseBurst(0.14, 0.12, 3200, 1.6, 0.4); return;
+      case 'iceBeam': case 'freezeDry': { // shimmer builds with the circle, then the beam blasts
+        const wind = moveId === 'iceBeam' ? 1.2 : 0.4;
+        this.tone(640, wind, 0.05, 'sine', 1900, 0, 0.05);
+        this.noiseBurst(wind, 0.05, 3600, 2.4, 0.05);
+        this.tone(880, 0.4, 0.12, 'sawtooth', 1500, 0, wind);
+        this.noiseBurst(0.35, 0.12, 2600, 1.6, wind); return;
+      }
+      case 'aquaJet': { // 1s of water gathering, then the body FIRES
+        this.tone(90, 1.0, 0.1, 'sine', 170, 0, 0.02);
+        this.noiseBurst(1.0, 0.1, 480, 0.7, 0.02);
+        this.noiseBurst(0.45, 0.28, 950, 0.7, 1.0); this.tone(220, 0.3, 0.12, 'triangle', 60, 0, 1.0); return;
+      }
+      case 'waterPulse': // a resonant sonic ping rolling out in rings
+        this.tone(440, 0.55, 0.1, 'sine', 330, 0, 0.35); this.tone(662, 0.45, 0.06, 'sine', 497, 0, 0.42);
+        this.noiseBurst(0.4, 0.06, 900, 1.8, 0.38); return;
+      case 'psychic': // eerie detuned shimmer pressing in
+        this.tone(520, 0.9, 0.07, 'sine', 540, 0, 0.3); this.tone(524, 0.9, 0.07, 'sine', 505, 0, 0.3);
+        this.tone(782, 0.7, 0.045, 'triangle', 760, 0, 0.45); return;
+      case 'pinMissile': // a rapid tick-tick-tick volley
+        for (let i = 0; i < 5; i++) this.tone(1450 + (i % 2) * 180, 0.035, 0.09, 'square', 900, 0, 0.4 + i * 0.055);
+        return;
+      case 'poisonSting': // a venomous zip
+        this.tone(680, 0.16, 0.1, 'sawtooth', 1850, 0, 0.4); this.noiseBurst(0.12, 0.06, 2400, 2, 0.42); return;
+      case 'poisonJab': // zip + the toxin-soaked thud
+        this.tone(620, 0.12, 0.09, 'sawtooth', 1500, 0, 0.3); this.tone(150, 0.18, 0.16, 'triangle', 80, 0, 0.37); return;
+      case 'mudShot': // a glug of heavy sludge
+        this.noiseBurst(0.35, 0.24, 300, 0.8, 0.4); this.tone(150, 0.3, 0.12, 'sine', 75, 0, 0.4); return;
+      case 'muddyWater': // the flood: a wide, dirty roar in two breaking layers
+        this.noiseBurst(0.8, 0.28, 340, 0.5, 0.4); this.tone(170, 0.6, 0.12, 'sine', 55, 0, 0.4);
+        this.noiseBurst(0.5, 0.18, 800, 0.8, 0.75); return;
+    }
     switch (style) {
       case 'bubbles': this.bubble(0.8); this.bubble(1.1); this.tone(500, 0.12, 0.07, 'sine', 900); break;
       case 'jet': case 'geyser': this.noiseBurst(0.35, 0.22, 700, 0.7); this.tone(180, 0.25, 0.08, 'sine', 90); break;
@@ -209,6 +267,12 @@ class AudioManagerImpl {
     }
   }
   moveHit() { this.tone(300, 0.1, 0.16, 'triangle', 160); this.noiseBurst(0.12, 0.14, 1200, 1); }
+  /** Frozen solid: a sharp crystalline CRACK with glass tones falling away. */
+  freezeCrack() {
+    this.noiseBurst(0.12, 0.2, 3600, 1.3);
+    [2400, 1800, 1200].forEach((f, i) => this.tone(f, 0.18, 0.1, 'triangle', f * 0.7, 0, 0.03 + i * 0.07));
+    this.tone(90, 0.4, 0.1, 'sine', 55, 0, 0.1);
+  }
 
   // ------------------------------------------------------------------ Pokémon cries (vendored ogg files)
   /** Decoded cries are ~200KB each; keep only a working set so long sessions don't grow unbounded. */
