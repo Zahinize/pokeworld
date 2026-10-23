@@ -223,6 +223,8 @@ export function PokemonLayer() {
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
+      // companion levels: partners fade out while the trainer is at the surface (catch mode)
+      if (e.role === 'partner' && session.partnerHideK > 0.01) alpha *= 1 - session.partnerHideK;
       // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
       if (e.concealT > 0) {
         const into = Math.max(e.concealDur, 0.001) - e.concealT;

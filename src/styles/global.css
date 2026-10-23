@@ -255,7 +255,12 @@ a { color: var(--aqua); }
 .party-cell .n { font-size: 11.5px; font-weight: 700; }
 .party-cell .slot { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 6px; background: rgba(255,255,255,.12); color: var(--muted); }
 .party-cell .slot.active { background: rgba(53,208,255,.25); color: var(--aqua); }
-.party-bar { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(104px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; width: 216px; }
+/* The team IS the combat UI in companion levels: bottom-centre, cards side by side,
+   on desktop, tablet and landscape phones alike (the ball chip owns this spot only at the surface). */
+.party-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(14px + var(--safe-bottom)); display: flex; flex-direction: row; align-items: flex-end; justify-content: center; gap: 8px; }
+.party-bar .party-card { width: 216px; }
+.auto-battle-chip { display: flex; align-items: center; gap: 5px; padding: 6px 10px; border-radius: 999px; font-size: 10.5px; font-weight: 800; letter-spacing: .06em; color: var(--muted); align-self: center; }
+.auto-battle-chip.on { color: var(--green, #4ade80); border-color: rgba(74,222,128,.45); }
 .party-card { padding: 8px 10px; border-radius: 14px; }
 .party-card.dueling { border-color: rgba(255,209,102,.55); box-shadow: 0 0 14px rgba(255,209,102,.25); }
 .party-card.empty { display: flex; align-items: center; justify-content: space-between; }
@@ -274,7 +279,8 @@ a { color: var(--aqua); }
 .reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
 .reserve-chip:hover { border-color: var(--line-strong); }
 .reserve-chip.down { opacity: .35; }
-.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(302px + var(--safe-bottom)); width: 196px; }
+.hud.touch .party-bar { bottom: calc(16px + var(--safe-bottom)); }
+.hud.touch .party-bar .party-card { width: 196px; }
 .hud.touch .move-btn { min-height: 44px; font-size: 12px; border-radius: 12px; justify-content: center; }
 .hud.touch .move-btn .mn { text-align: center; }
 .hud.touch .party-card { padding: 10px 12px; }
@@ -517,7 +523,8 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(26px + var(--safe-left)); }
   .touch-controls .sling-anchor { bottom: calc(109px + var(--safe-bottom)); right: calc(24px + var(--safe-right)); width: 72px; height: 72px; } /* center 145 */
   /* party box: tiny but fully functional, floating clear above the joystick */
-  .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
+  .hud.touch .party-bar { gap: 4px; bottom: calc(12px + var(--safe-bottom)); }
+  .hud.touch .party-bar .party-card { width: 148px; }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
   .hud.touch .party-card .pn { font-size: 10.5px; }
   .hud.touch .party-card img { width: 24px; height: 24px; }
@@ -559,7 +566,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .player-hp .ic { font-size: 13px; }
   .hud.touch .player-hp .bar { height: 6px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
-  .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
+  .hud.touch .party-bar { bottom: calc(12px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
   .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); left: calc(48px + var(--safe-left)); }
   .touch-controls .sling-anchor { bottom: calc(39px + var(--safe-bottom)); right: calc(40px + var(--safe-right)); } /* center 78 (base 78px ball) */

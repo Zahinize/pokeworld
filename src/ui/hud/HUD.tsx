@@ -104,6 +104,13 @@ function BallChip() {
   );
 }
 
+/** Ball controls live at bottom-centre — except underwater in companion levels, where the team fights. */
+function BallCatchControls() {
+  const catchMode = useStore((s) => s.hud.catchMode);
+  if (!catchMode) return null;
+  return <BallChip />;
+}
+
 /** First-run tutorial: one instruction at a time, progress dots, always skippable. */
 function TutorialBanner() {
   const tut = useStore((s) => s.hud.tutorial);
@@ -124,10 +131,18 @@ const MOVE_KEYS: [string, string][] = [['5', '6'], ['7', '8']];
 function PartyBar() {
   const party = useStore((s) => s.hud.party);
   const isTouch = useStore((s) => s.isTouch);
+  const catchMode = useStore((s) => s.hud.catchMode);
+  const autoBattle = useStore((s) => s.hud.autoBattle);
   if (!session.companionsEnabled || party.list.length === 0) return null;
+  if (catchMode) return null; // surfaced: the team stands down and the Poké Balls come out
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
+      <button className={`auto-battle-chip glass ${autoBattle ? 'on' : ''}`}
+        onClick={() => session.setAutoBattle(!autoBattle)}
+        title={autoBattle ? 'Your team engages nearby wild Pokémon on its own — tap to switch to manual' : `Manual: ${isTouch ? 'tap' : 'click'} a wild Pokémon to battle it — tap to re-enable auto`}>
+        <Ic icon={Swords} size={12} /> {autoBattle ? 'AUTO BATTLE' : 'MANUAL'}
+      </button>
       {party.active.map((a, slot) => a ? (
         <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
           <div className="row" style={{ gap: 8 }}>
@@ -433,7 +448,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
-          <BallChip />
+          <BallCatchControls />
         </div>
         <PlayerVitals />
         <PartyBar />

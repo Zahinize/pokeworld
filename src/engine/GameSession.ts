@@ -539,6 +539,8 @@ export class GameSession {
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
   throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
+    // companion levels catch at the SURFACE only — underwater, the team does the fighting
+    if (!this.catchingAllowed) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
     const inv = { ...store.save.inventory };
@@ -710,6 +712,65 @@ export class GameSession {
 
   /** Whether this level supports companions (levels 3+). */
   get companionsEnabled() { return !!this.level.companions; }
+
+  // ---------------------------------------------------------------- companion-level combat mode
+  /** Companion levels battle through partners underwater; balls come out only at the surface. */
+  get catchingAllowed() { return !this.companionsEnabled || !!this.eco?.playerAtSurface; }
+  /** Partners engage nearby wilds on their own (companion levels; toggleable). */
+  autoBattle = true;
+  /** 0 = partners fully visible, 1 = hidden (surfaced trainer); render fades with this. */
+  partnerHideK = 0;
+  private autoBattleAcc = 0;
+  private wasSurfaced = false;
+
+  setAutoBattle(v: boolean) { this.autoBattle = v; useStore.getState().setHud({ autoBattle: v }); }
+
+  /** Surface hand-off: partners stand down and fade; diving brings them straight back. */
+  private updateCombatMode(dt: number) {
+    if (!this.companionsEnabled || !this.eco) return;
+    const eco = this.eco;
+    const surfaced = eco.playerAtSurface;
+    if (surfaced !== this.wasSurfaced) {
+      this.wasSurfaced = surfaced;
+      if (surfaced) {
+        // stand the team down: clear duels and orders on BOTH sides so no invisible fights linger
+        for (const id of this.activePartners) {
+          const p = id >= 0 ? eco.byId.get(id) : undefined;
+          if (!p) continue;
+          if (p.duelWith >= 0) {
+            const foe = eco.byId.get(p.duelWith);
+            if (foe && foe.duelWith === p.id) { foe.duelWith = -1; if (foe.state === 'duel') { foe.state = 'wander'; foe.stateT = 0; } }
+          }
+          p.duelWith = -1; p.orderTarget = -1; p.orderMove = -1;
+          if (p.state === 'duel') { p.state = 'wander'; p.stateT = 0; }
+        }
+      }
+    }
+    const target = surfaced ? 1 : 0;
+    this.partnerHideK += (target - this.partnerHideK) * Math.min(1, dt * 5);
+    // auto-battle: idle partners pick a fight with whatever swims into their vicinity
+    if (!surfaced && this.autoBattle) {
+      this.autoBattleAcc += dt;
+      if (this.autoBattleAcc >= 0.6) {
+        this.autoBattleAcc = 0;
+        for (const id of this.activePartners) {
+          const partner = id >= 0 ? eco.byId.get(id) : undefined;
+          if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
+          if (partner.duelWith >= 0 || partner.orderTarget >= 0) continue; // already engaged
+          let best: Entity | null = null, bestD: number = COMBAT.AUTO_BATTLE_RANGE;
+          for (const e of eco.alive) {
+            if (e.role === 'partner' || e.state === 'ko' || e.state === 'caught' || e.state === 'removed' || e.state === 'faint' || e.state === 'captureAttempt') continue;
+            const d = len3(e.x - partner.x, e.y - partner.y, e.z - partner.z);
+            if (d < bestD) { bestD = d; best = e; }
+          }
+          if (!best) continue;
+          const kit = kitOf(partner);
+          const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
+          if (slot !== undefined) this.orderCast(partner, slot, best);
+        }
+      }
+    }
+  }
 
   /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
   setParty(tokens: string[]) {
@@ -938,6 +999,7 @@ export class GameSession {
     if (this.sky?.rampaging) { eco.bossCurrent = Math.max(eco.bossCurrent, SKY.RAMPAGE_STORM); this.rampageSurge = true; }
     else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
     this.updateSurfaceCombat(dt);
+    this.updateCombatMode(dt);
     this.balls.update(dt, eco, this.sky);
     // camera shake always decays (rampages shake on any level, not just boss waves)
     // and is hard-capped so no event can ever leave the camera trembling for long
@@ -1556,6 +1618,7 @@ export class GameSession {
       lureRemaining: eco.lureRemaining, lureCooldown: this.lureCooldown,
       predatorAlert: !!hunting, huntingSpecies: hunting ? hunting.species.id : null,
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,
+      catchMode: this.catchingAllowed, autoBattle: this.autoBattle,
     });
   }
 

@@ -65,8 +65,11 @@ export function CameraRig() {
         return;
       }
       if (session.arena) { session.arenaCast(e.button === 2 ? 1 : 0); return; } // dojo: left = move 1, right = move 2
-      if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
-      if (e.button === 2) { if (session.companionsEnabled) session.commandAttack(); else session.cycleBall(1); }
+      if (e.button === 0 && session.playing) {
+        if (!session.catchingAllowed) session.commandAttack(); // companion level, underwater: click a Pokémon = battle it
+        else { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
+      }
+      if (e.button === 2) { if (session.companionsEnabled && !session.catchingAllowed) session.commandAttack(); else if (!session.companionsEnabled) session.cycleBall(1); }
     };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {

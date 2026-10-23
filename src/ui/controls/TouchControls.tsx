@@ -26,6 +26,8 @@ export function TouchControls() {
   const ballType = useStore((s) => s.hud.ballType);
   const ballCount = useStore((s) => s.save.inventory[s.hud.ballType]);
   const hot = useStore((s) => s.hud.slingHot); // the drawn shot would HIT a wild: show it
+  // companion levels fight underwater and catch at the surface: no slingshot while diving
+  const catchMode = useStore((s) => s.hud.catchMode);
 
   useEffect(() => {
     const joy = joyRef.current!, knob = knobRef.current!, look = lookRef.current!, sling = slingRef.current!;
@@ -45,9 +47,15 @@ export function TouchControls() {
     };
     const onJoyUp = (e: PointerEvent) => { if (e.pointerId !== joyId) return; joyId = null; knob.style.transform = ''; session.input.strafe = 0; session.input.forward = 0; };
 
-    const onLookDown = (e: PointerEvent) => { if (lookId !== null) return; lookId = e.pointerId; lx = e.clientX; ly = e.clientY; look.setPointerCapture(e.pointerId); };
-    const onLookMove = (e: PointerEvent) => { if (e.pointerId !== lookId) return; session.input.lookDX += (e.clientX - lx) * 2.2 * sensitivity; session.input.lookDY += (e.clientY - ly) * 2.2 * sensitivity; lx = e.clientX; ly = e.clientY; };
-    const onLookUp = (e: PointerEvent) => { if (e.pointerId === lookId) lookId = null; };
+    let lookT = 0, lookMoved = 0;
+    const onLookDown = (e: PointerEvent) => { if (lookId !== null) return; lookId = e.pointerId; lx = e.clientX; ly = e.clientY; lookT = performance.now(); lookMoved = 0; look.setPointerCapture(e.pointerId); };
+    const onLookMove = (e: PointerEvent) => { if (e.pointerId !== lookId) return; lookMoved += Math.hypot(e.clientX - lx, e.clientY - ly); session.input.lookDX += (e.clientX - lx) * 2.2 * sensitivity; session.input.lookDY += (e.clientY - ly) * 2.2 * sensitivity; lx = e.clientX; ly = e.clientY; };
+    const onLookUp = (e: PointerEvent) => {
+      if (e.pointerId !== lookId) return;
+      lookId = null;
+      // companion level, underwater: a quick tap commands the team at whatever the crosshair covers
+      if (!session.catchingAllowed && lookMoved < 12 && performance.now() - lookT < 250) session.commandAttack();
+    };
 
     // ---- the slingshot ----
     const aim = session.slingAim;
@@ -119,7 +127,8 @@ export function TouchControls() {
     <div className="touch-controls">
       <div ref={lookRef} className="zone-look" />
       <div ref={joyRef} className="joy" aria-label="Move"><div ref={knobRef} className="knob" /></div>
-      <button ref={slingRef} className={`sling-anchor ${hot ? 'hot' : ''}`} aria-label="Touch and drag to aim, release to throw">
+      <button ref={slingRef} className={`sling-anchor ${hot ? 'hot' : ''}`} aria-label="Touch and drag to aim, release to throw"
+        style={catchMode ? undefined : { display: 'none' }}>
         <PokeballIcon ball={ballType} size={34} />
         <span className="sling-count">{ballCount}</span>
       </button>
