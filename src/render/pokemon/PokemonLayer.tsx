@@ -126,6 +126,71 @@ const tmpM = new THREE.Matrix4();
 const facingMemo = new Map<number, number>();
 const tiltMemo = new Map<number, number>();
 
+// ------------------------------------------------------------------ grounding shadows
+const SHADOW_CAP = 256;
+
+/**
+ * A soft blob shadow on the sea floor beneath every Pokémon: sharp and dark when the
+ * body is near the bottom, wide and faint when it swims high — the reef feels inhabited.
+ */
+export function PokemonShadows() {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  const { geo, mat, aAlpha, aSize } = useMemo(() => {
+    const geo = new THREE.PlaneGeometry(1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const mk = () => { const a = new THREE.InstancedBufferAttribute(new Float32Array(SHADOW_CAP), 1); a.setUsage(THREE.DynamicDrawUsage); return a; };
+    const aAlpha = mk(), aSize = mk();
+    geo.setAttribute('aAlpha', aAlpha); geo.setAttribute('aSize', aSize);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false,
+      vertexShader: /* glsl */ `
+        attribute float aAlpha; attribute float aSize;
+        varying vec2 vUv; varying float vA;
+        void main(){ vUv = uv; vA = aAlpha; vec4 w = instanceMatrix * vec4(position * aSize, 1.0); gl_Position = projectionMatrix * viewMatrix * w; }`,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUv; varying float vA;
+        void main(){
+          float d = length(vUv - 0.5) * 2.0;
+          float a = smoothstep(1.0, 0.2, d) * vA;
+          if (a < 0.012) discard;
+          gl_FragColor = vec4(0.008, 0.035, 0.07, a);
+        }`,
+    });
+    return { geo, mat, aAlpha, aSize };
+  }, []);
+  useEffect(() => () => { geo.dispose(); mat.dispose(); }, [geo, mat]);
+  const m = useMemo(() => new THREE.Matrix4(), []);
+
+  useFrame(() => {
+    const mesh = ref.current; const eco = session.eco;
+    if (!mesh) return;
+    let n = 0;
+    if (eco) {
+      for (const e of eco.alive) {
+        if (n >= SHADOW_CAP) break;
+        if (e.state === 'caught' || e.state === 'removed') continue;
+        const fy = floorY(e.x, e.z);
+        const h = e.y - fy;
+        if (h > 15) continue;                       // too high up: no shadow reaches the sand
+        const closeness = Math.max(0, 1 - h / 15);
+        let alpha = 0.5 * Math.pow(closeness, 1.5); // DARKER the nearer the bottom
+        if (e.role === 'partner') alpha *= 1 - session.partnerHideK;
+        if (e.state === 'ko') alpha *= Math.max(0, 1 - e.animT / 1.4);
+        if (alpha < 0.02) continue;
+        m.makeTranslation(e.x, fy + 0.07, e.z);
+        mesh.setMatrixAt(n, m);
+        aSize.array[n] = e.species.size * e.scaleMul * (1.2 + h * 0.07);
+        aAlpha.array[n] = alpha;
+        n++;
+      }
+    }
+    mesh.count = n;
+    mesh.instanceMatrix.needsUpdate = true;
+    aAlpha.needsUpdate = aSize.needsUpdate = true;
+  });
+  return <instancedMesh ref={ref} args={[geo, mat, SHADOW_CAP]} frustumCulled={false} renderOrder={2} />;
+}
+
 function makeBatch(sheet: SpriteSheet, capacity: number): SpeciesBatch {
   const geo = planeGeo.clone();
   const mk = (n: number, def = 0) => { const a = new THREE.InstancedBufferAttribute(new Float32Array(n).fill(def), 1); a.setUsage(THREE.DynamicDrawUsage); return a; };

@@ -85,6 +85,8 @@ export interface Entity {
   jetT: number; jetColor: string;
   /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
   frozenT: number;
+  /** Hit recoil: a brief knockback shove outside the cruise-speed clamp (decays fast). */
+  kbx: number; kby: number; kbz: number; kbT: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
   /** Who to retaliate against (entity id or -2 for player). */

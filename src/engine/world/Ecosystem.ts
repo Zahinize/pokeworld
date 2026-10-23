@@ -131,7 +131,7 @@ export class Ecosystem {
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
-      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', frozenT: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -197,6 +197,15 @@ export class Ecosystem {
     t.hp = Math.max(t.id === this.immortalId ? 1 : 0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
+    // hit recoil: shoved away from whatever hurt it — pain the player can SEE
+    const shover = this.byId.get(sourceId) ?? (by === 'ball' ? this.player : null);
+    if (shover && amount > 0 && t.state !== 'caught' && t.state !== 'removed') {
+      const dx = t.x - shover.x, dy = t.y - shover.y, dz = t.z - shover.z;
+      const d = len3(dx, dy, dz) || 1;
+      const pow = (2.2 + Math.min(4, (amount / t.maxHp) * 10)) / Math.max(1, t.species.size * 0.55); // giants barely budge
+      t.kbx = (dx / d) * pow; t.kby = (dy / d) * pow * 0.4; t.kbz = (dz / d) * pow;
+      t.kbT = 0.22;
+    }
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
@@ -608,6 +617,13 @@ export class Ecosystem {
       const ram = Math.max(e.species.burst * 2.0, 11);
       const jv = len3(e.vx, e.vy, e.vz) || 1e-4;
       e.vx *= ram / jv; e.vy *= ram / jv; e.vz *= ram / jv;
+    }
+    // hit recoil: a direct shove outside the cruise clamp, decaying in a blink
+    if (e.kbT > 0) {
+      e.kbT -= dt;
+      e.x += e.kbx * dt; e.y += e.kby * dt; e.z += e.kbz * dt;
+      const kk = Math.max(0, 1 - dt * 7);
+      e.kbx *= kk; e.kby *= kk; e.kbz *= kk;
     }
     if (this.bossCurrent > 0 && !e.isBoss) {
       // boss-event surge tosses the whole reef around

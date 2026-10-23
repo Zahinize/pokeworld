@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { SceneLighting, WaterDome, SeaFloor, Rocks, Corals, Kelp, Particles, LightShafts, Surface, QUALITY } from './env/Environment';
-import { PokemonLayer } from './pokemon/PokemonLayer';
+import { PokemonLayer, PokemonShadows } from './pokemon/PokemonLayer';
 import { PartnerTags } from './pokemon/PartnerTags';
 import { HealthBars } from './fx/HealthBars';
 import { Balls } from './balls/Balls';
@@ -93,6 +93,7 @@ export function Scene() {
         <SkyLifeLayer />
         <FeedCrumbs />
         <ThrowArc />
+        <PokemonShadows />
         <PokemonLayer />
         <PartnerTags />
         <HealthBars />
