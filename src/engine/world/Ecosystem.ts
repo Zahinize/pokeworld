@@ -620,8 +620,9 @@ export class Ecosystem {
     // Hard constraints
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
-    // companions may breach with a surfaced trainer (half their body rides above the waves)
-    const top = e.role === 'partner' && this.playerAtSurface ? e.species.size * 0.3 : -Math.max(0.8, e.species.size * 0.45);
+    // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
+    // so the open-air suffocation drain can never touch them
+    const top = -Math.max(0.8, e.species.size * 0.45);
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }

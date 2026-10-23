@@ -1370,6 +1370,9 @@ export class GameSession {
   private updateSurfaceCombat(dt: number) {
     const eco = this.eco, sky = this.sky;
     if (!eco || !sky || !this.companionsEnabled) return;
+    // surfaced trainer = the team is hidden and off-stage: no suffocation drain, no
+    // sky skirmishes — the PLAYER catches sky Pokémon with balls now
+    if (this.catchingAllowed) { this.surfaceDrainAcc.clear(); return; }
     for (const slot of [0, 1] as const) {
       const id = this.activePartners[slot];
       if (id < 0) continue;
