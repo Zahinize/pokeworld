@@ -19,6 +19,14 @@ export function OceanBackdrop() {
   );
 }
 
+/**
+ * The official type badge (vendored from PokeAPI's sprites), cropped by CSS to its round
+ * symbol — the 200×40 badge carries the circle on its left edge.
+ */
+export function TypeIcon({ type, size = 16 }: { type: string; size?: number }) {
+  return <img className="type-icon" src={`/sprites/types/${type}.png`} alt={type} title={type} style={{ width: size, height: size }} />;
+}
+
 export function SpriteImg({ id, size = 64, unseen = false, shiny = false, className = '', style }: { id: string; size?: number; unseen?: boolean; shiny?: boolean; className?: string; style?: React.CSSProperties }) {
   const s = SPECIES[id];
   if (!s) return null;

@@ -8,9 +8,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { SPECIES_LIST } from '@/data/species';
-import { SPECIES_MOVES, getMove } from '@/data/moves';
-import { Ic, Swords, LogOut, Target } from '../components/icons';
-import { SpriteImg } from '../components/common';
+import { SPECIES_MOVES, getMove, TYPE_COLORS } from '@/data/moves';
+import { Ic, LogOut, Target } from '../components/icons';
+import { SpriteImg, TypeIcon } from '../components/common';
 
 export function ArenaScreen({ onExit }: { onExit: () => void }) {
   const party = useStore((s) => s.hud.party);
@@ -60,10 +60,10 @@ export function ArenaScreen({ onExit }: { onExit: () => void }) {
           const mv = getMove(mid);
           const cd = active?.cd[i] ?? 0;
           return (
-            <button key={mid} className="glass arena-move" disabled={cd > 0}
+            <button key={mid} className="glass arena-move typed" disabled={cd > 0}
               onClick={() => session.arenaCast(i as 0 | 1)}
-              style={{ borderColor: mv.color }}>
-              <Ic icon={Swords} size={14} color={mv.color} />
+              style={{ '--tc': TYPE_COLORS[mv.type] } as React.CSSProperties}>
+              <TypeIcon type={mv.type} size={17} />
               <span>{mv.name}</span>
               {cd > 0 ? <b className="mono dim">{cd.toFixed(1)}s</b> : <b className="mono" style={{ color: mv.color }}>{i === 0 ? 'L-click' : 'R-click'}</b>}
             </button>

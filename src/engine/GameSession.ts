@@ -938,7 +938,7 @@ export class GameSession {
       const e = id >= 0 ? eco?.byId.get(id) : undefined;
       if (!e || e.state === 'ko' || e.state === 'removed') return null;
       const kit = kitOf(e);
-      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
+      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
     });
     // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
     let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;

@@ -275,6 +275,16 @@ a { color: var(--aqua); }
 .move-btn .mn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .move-btn .cd { font-variant-numeric: tabular-nums; color: var(--gold); }
 .move-btn .kbd { font-size: 9.5px; padding: 1px 4px; }
+/* The official PokeAPI type badge, cropped to its round symbol (circle sits on the badge's left edge) */
+.type-icon { object-fit: cover; object-position: left center; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.22), 0 1px 4px rgba(0,0,0,.35); }
+/* Typed move buttons: tinted by their move's elemental type (--tc) */
+.move-btn.typed { justify-content: flex-start; background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 30%, rgba(8,16,30,.4)), rgba(8,16,30,.55)); border-color: color-mix(in srgb, var(--tc) 55%, transparent); }
+.move-btn.typed .mn { flex: 1; text-align: left; }
+.move-btn.typed:hover:not(:disabled) { background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 48%, rgba(8,16,30,.3)), rgba(8,16,30,.45)); box-shadow: 0 0 10px color-mix(in srgb, var(--tc) 35%, transparent); }
+.move-btn.typed.cooling { background: rgba(255,255,255,.05); border-color: var(--line); }
+.move-btn.typed.cooling .type-icon { filter: grayscale(.8); opacity: .55; }
+.arena-move.typed { border-color: color-mix(in srgb, var(--tc) 60%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 26%, rgba(8,16,30,.5)), rgba(8,16,30,.6)); }
+.arena-move.typed:hover:not(:disabled) { box-shadow: 0 0 12px color-mix(in srgb, var(--tc) 40%, transparent); }
 .reserves { display: flex; gap: 4px; }
 .reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
 .reserve-chip:hover { border-color: var(--line-strong); }

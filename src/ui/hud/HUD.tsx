@@ -8,7 +8,8 @@ import { GAME } from '@/data/gameConfig';
 import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { objectiveDone } from '@/engine/sim/mission';
-import { PokeballIcon, SpriteImg, Panel } from '../components/common';
+import { PokeballIcon, SpriteImg, TypeIcon, Panel } from '../components/common';
+import { TYPE_COLORS, type MoveType } from '@/data/moves';
 import { Audio } from '@/audio/AudioManager';
 import { requestPointerLock } from '@/render/player/CameraRig';
 import { CollectionView } from '../screens/CollectionScreen';
@@ -155,8 +156,12 @@ function PartyBar() {
           <div className="moves">
             {a.moves.map((mv, mi) => {
               const cd = a.cd[mi];
+              const tc = TYPE_COLORS[a.moveTypes[mi] as MoveType] ?? '#94a3b8';
               return (
-                <button key={mi} className={`move-btn ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0} onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                <button key={mi} className={`move-btn typed ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0}
+                  style={{ '--tc': tc } as React.CSSProperties}
+                  onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                  <TypeIcon type={a.moveTypes[mi]} size={15} />
                   <span className="mn">{mv}</span>
                   {cd > 0 ? <span className="cd">{cd.toFixed(1)}</span> : !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
                 </button>

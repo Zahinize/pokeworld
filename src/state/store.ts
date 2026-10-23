@@ -42,7 +42,7 @@ export interface HudState {
   party: {
     list: string[];
     downed: string[];
-    active: ({ token: string; speciesId: string; shiny: boolean; hp: number; maxHp: number; moves: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
+    active: ({ token: string; speciesId: string; shiny: boolean; hp: number; maxHp: number; moves: [string, string]; moveTypes: [string, string]; cd: [number, number]; dueling: boolean } | null)[];
   };
   bossBar: { name: string; hp: number; maxHp: number } | null;
   bossIntro: { label: string; bosses: { speciesId: string; shiny: boolean }[]; text: string; final: boolean } | null;
