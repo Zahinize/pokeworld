@@ -475,7 +475,10 @@ export class GameSession {
     const boss = eco.byId.get(this.arenaBossId);
     if (boss) {
       boss.mcd[0] = 9; boss.mcd[1] = 9;              // the dummy never fights back
-      // …not even its giant charge lunge, whose CONTACT damage crushes point-blank attackers
+      // …not even its giant charge lunge: hold the charge countdown so one is never even
+      // SCHEDULED (knocking it out of 'charging' after the fact made the boss AI re-enter
+      // and re-announce the charge every think — an alarm+breach siren loop at ~10Hz)
+      boss.t2 = 999;
       if (boss.state === 'charging') { boss.state = 'wander'; boss.stateT = 0; }
       boss.vx *= 0.7; boss.vy *= 0.7; boss.vz *= 0.7; // and holds its ground
       boss.x += (this.arenaAnchor.x - boss.x) * 0.02;
