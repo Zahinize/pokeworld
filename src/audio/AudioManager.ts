@@ -198,12 +198,21 @@ class AudioManagerImpl {
    */
   moveCast(style: string, moveId?: string) {
     switch (moveId) {
-      case 'waterGun': // ONE quick watery squirt at launch — short and done
-        this.noiseBurst(0.14, 0.1, 700, 0.9, 0.4); this.tone(360, 0.12, 0.07, 'sine', 220, 0, 0.4); return;
-      case 'auroraBeam': // a quick crystal sweep, sparkly not laser-like
-        this.tone(900, 0.2, 0.06, 'triangle', 1600, 0, 0.4);
-        this.tone(1350, 0.16, 0.04, 'sine', 2000, 0, 0.46);
-        this.noiseBurst(0.12, 0.035, 3200, 2.2, 0.4); return;
+      case 'waterGun': // ONE clear watery squirt at launch — short and done
+        this.noiseBurst(0.22, 0.16, 800, 0.8, 0.4); this.tone(420, 0.2, 0.14, 'sine', 230, 0, 0.4); return;
+      case 'hydroPump': // a deep pressurized BLAST — low drop under a broad water roar
+        this.tone(220, 0.5, 0.18, 'sine', 70, 0, 0.4);
+        this.noiseBurst(0.55, 0.22, 550, 0.5, 0.4);
+        this.noiseBurst(0.4, 0.1, 1100, 0.7, 0.6); return;
+      case 'dragonPulse': // a draconic growl-pulse: detuned lows rising under a mystic shimmer
+        this.tone(160, 0.45, 0.1, 'sawtooth', 320, 0, 0.4);
+        this.tone(163, 0.45, 0.1, 'sawtooth', 326, 0, 0.4);
+        this.tone(980, 0.3, 0.07, 'sine', 1400, 0, 0.5); return;
+      case 'auroraBeam': // a prismatic chord blooming upward — overlapping, never staccato
+        this.tone(880, 0.35, 0.09, 'sine', 990, 0, 0.4);
+        this.tone(1100, 0.3, 0.09, 'sine', 1240, 0, 0.48);
+        this.tone(1320, 0.3, 0.08, 'triangle', 1480, 0, 0.56);
+        this.noiseBurst(0.3, 0.05, 3500, 2, 0.42); return;
       case 'bubble': // one round bloop
         this.tone(480, 0.16, 0.07, 'sine', 980, 0, 0.4); return;
       case 'bubbleBeam': // ONE layered watery bloop — never a staccato pop train
@@ -223,12 +232,14 @@ class AudioManagerImpl {
         this.tone(1560, 0.55, 0.08, 'sawtooth', 2520, 0, 0.12);
         this.noiseBurst(0.5, 0.08, 2800, 2.2, 0.1); return;
       }
-      case 'icicleSpear': // one glassy crystal chime with a frost sparkle tail
-        this.tone(2100, 0.14, 0.07, 'sine', 1450, 0, 0.4);
-        this.tone(2650, 0.18, 0.04, 'sine', 2000, 0, 0.46);
-        this.noiseBurst(0.22, 0.035, 4200, 2, 0.4); return;
-      case 'iceShard': // one heavy chunk of glass, hurled
-        this.tone(1350, 0.12, 0.12, 'triangle', 850, 0, 0.4); this.noiseBurst(0.14, 0.12, 3200, 1.6, 0.4); return;
+      case 'icicleSpear': // a bright crystal chime with a frost sparkle tail
+        this.tone(2000, 0.18, 0.13, 'sine', 1400, 0, 0.4);
+        this.tone(2600, 0.22, 0.08, 'sine', 2000, 0, 0.48);
+        this.noiseBurst(0.25, 0.06, 4200, 2, 0.4); return;
+      case 'iceShard': // one heavy chunk of glass, hurled hard
+        this.tone(1200, 0.16, 0.16, 'triangle', 700, 0, 0.4);
+        this.tone(320, 0.1, 0.12, 'sine', 180, 0, 0.4);
+        this.noiseBurst(0.12, 0.1, 2800, 1.5, 0.4); return;
       case 'iceBeam': case 'freezeDry': { // shimmer builds with the circle, then the beam blasts
         const wind = moveId === 'iceBeam' ? 1.2 : 0.4;
         this.tone(640, wind, 0.05, 'sine', 1900, 0, 0.05);
@@ -244,9 +255,10 @@ class AudioManagerImpl {
       case 'waterPulse': // a resonant sonic ping rolling out in rings
         this.tone(440, 0.55, 0.1, 'sine', 330, 0, 0.35); this.tone(662, 0.45, 0.06, 'sine', 497, 0, 0.42);
         this.noiseBurst(0.4, 0.06, 900, 1.8, 0.38); return;
-      case 'psychic': // eerie detuned shimmer pressing in
-        this.tone(520, 0.9, 0.07, 'sine', 540, 0, 0.3); this.tone(524, 0.9, 0.07, 'sine', 505, 0, 0.3);
-        this.tone(782, 0.7, 0.045, 'triangle', 760, 0, 0.45); return;
+      case 'psychic': // eerie detuned shimmer over a deep telekinetic pressure
+        this.tone(520, 0.9, 0.12, 'sine', 548, 0, 0.3); this.tone(524, 0.9, 0.12, 'sine', 500, 0, 0.3);
+        this.tone(782, 0.7, 0.08, 'triangle', 755, 0, 0.45);
+        this.tone(85, 0.6, 0.1, 'sine', 62, 0, 0.35); return;
       case 'pinMissile': // one soft thwip for the whole volley
         this.tone(1250, 0.1, 0.08, 'triangle', 720, 0, 0.4); this.noiseBurst(0.08, 0.05, 1900, 1.6, 0.4); return;
       case 'poisonSting': // a venomous zip
