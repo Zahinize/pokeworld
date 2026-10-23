@@ -177,9 +177,11 @@ export function PokemonShadows() {
         if (e.role === 'partner') alpha *= 1 - session.partnerHideK;
         if (e.state === 'ko') alpha *= Math.max(0, 1 - e.animT / 1.4);
         if (alpha < 0.02) continue;
-        m.makeTranslation(e.x, fy + 0.07, e.z);
+        // constant footprint, lifted off the sand: a big height-scaled quad gets sliced
+        // into polygons by sloping terrain — a fixed circle never does
+        m.makeTranslation(e.x, fy + 0.12, e.z);
         mesh.setMatrixAt(n, m);
-        aSize.array[n] = e.species.size * e.scaleMul * (1.2 + h * 0.07);
+        aSize.array[n] = e.species.size * e.scaleMul * 1.3;
         aAlpha.array[n] = alpha;
         n++;
       }

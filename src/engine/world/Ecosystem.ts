@@ -202,9 +202,9 @@ export class Ecosystem {
     if (shover && amount > 0 && t.state !== 'caught' && t.state !== 'removed') {
       const dx = t.x - shover.x, dy = t.y - shover.y, dz = t.z - shover.z;
       const d = len3(dx, dy, dz) || 1;
-      const pow = (2.2 + Math.min(4, (amount / t.maxHp) * 10)) / Math.max(1, t.species.size * 0.55); // giants barely budge
+      const pow = (4.5 + Math.min(6, (amount / t.maxHp) * 14)) / Math.max(1, t.species.size * 0.55); // giants barely budge
       t.kbx = (dx / d) * pow; t.kby = (dy / d) * pow * 0.4; t.kbz = (dz / d) * pow;
-      t.kbT = 0.22;
+      t.kbT = 0.25;
     }
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
     if (t.hp <= 0) {
@@ -622,7 +622,7 @@ export class Ecosystem {
     if (e.kbT > 0) {
       e.kbT -= dt;
       e.x += e.kbx * dt; e.y += e.kby * dt; e.z += e.kbz * dt;
-      const kk = Math.max(0, 1 - dt * 7);
+      const kk = Math.max(0, 1 - dt * 5);
       e.kbx *= kk; e.kby *= kk; e.kbz *= kk;
     }
     if (this.bossCurrent > 0 && !e.isBoss) {
