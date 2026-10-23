@@ -139,35 +139,38 @@ function PartyBar() {
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
-      <button className={`auto-battle-chip glass ${autoBattle ? 'on' : ''}`}
+      <button className={`auto-btn ${autoBattle ? 'on' : ''}`}
         onClick={() => session.setAutoBattle(!autoBattle)}
         title={autoBattle ? 'Your team engages nearby wild Pokémon on its own — tap to switch to manual' : `Manual: ${isTouch ? 'tap' : 'click'} a wild Pokémon to battle it — tap to re-enable auto`}>
-        <Ic icon={Swords} size={12} /> {autoBattle ? 'AUTO BATTLE' : 'MANUAL'}
+        <span className="burst"><Ic icon={autoBattle ? Play : Pause} size={20} /></span>
+        <span className="lbl">{autoBattle ? 'Auto' : 'Manual'}</span>
       </button>
       {party.active.map((a, slot) => a ? (
-        <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
-          <div className="row" style={{ gap: 8 }}>
-            <SpriteImg id={a.speciesId} shiny={a.shiny} size={40} />
-            <div className="grow">
-              <div className="pn">{a.shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag"><Ic icon={Swords} size={11} /></span>}</div>
-              <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
-            </div>
-          </div>
-          <div className="moves">
-            {a.moves.map((mv, mi) => {
-              const cd = a.cd[mi];
-              const tc = TYPE_COLORS[a.moveTypes[mi] as MoveType] ?? '#94a3b8';
-              return (
-                <button key={mi} className={`move-btn typed ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0}
-                  style={{ '--tc': tc } as React.CSSProperties}
-                  onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
-                  <TypeIcon type={a.moveTypes[mi]} size={15} />
-                  <span className="mn">{mv}</span>
-                  {cd > 0 ? <span className="cd">{cd.toFixed(1)}</span> : !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
-                </button>
-              );
-            })}
-          </div>
+        <div key={slot} className={`q-card s${slot} ${a.dueling ? 'dueling' : ''}`}>
+          {a.moves.map((mv, mi) => {
+            const cd = a.cd[mi];
+            const tc = TYPE_COLORS[a.moveTypes[mi] as MoveType] ?? '#94a3b8';
+            const tile = (
+              <button key={mi} className={`q-move ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0}
+                style={{ '--tc': tc } as React.CSSProperties}
+                onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                <span className="tile">
+                  <TypeIcon type={a.moveTypes[mi]} size={28} />
+                  {cd > 0 && <span className="cd">{Math.ceil(cd)}</span>}
+                  {cd <= 0 && !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
+                </span>
+                <span className="q-mn">{mv}</span>
+              </button>
+            );
+            // Quest layout: move tile · Pokémon · move tile
+            return mi === 0 ? [tile, (
+              <div key="mid" className="q-mid">
+                <SpriteImg id={a.speciesId} shiny={a.shiny} size={46} />
+                <span className="q-name">{a.shiny && <Ic icon={Sparkles} size={11} color="var(--gold)" />}{SPECIES[a.speciesId].name}</span>
+                <span className="q-hp"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></span>
+              </div>
+            )] : tile;
+          })}
         </div>
       ) : (
         <div key={slot} className="party-card glass empty">

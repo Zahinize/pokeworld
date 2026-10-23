@@ -1655,6 +1655,14 @@ export class GameSession {
     this.hintTimer += dt;
     const isTouch = store.isTouch;
     let hint: string | null = null;
+    // companion levels underwater: throwing is off, the TEAM fights — hint accordingly
+    if (!this.catchingAllowed) {
+      const teamHint = this.autoBattle
+        ? 'Your team battles nearby Pokémon on its own — surface to catch with Poké Balls'
+        : `${isTouch ? 'Tap' : 'Click'} a wild Pokémon to battle it — surface to catch with Poké Balls`;
+      if (this.elapsed > 2 && this.hintStep === 0 && teamHint !== store.hud.hint) store.setHud({ hint: teamHint });
+      return;
+    }
     if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Touch the Poké Ball and drag to aim — release to throw' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
     else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Pull further to throw harder · drag up to reach the sky' : 'Balls pick themselves — press 1–4 to override · Tab for the mission';
     else if (this.hintStep === 1) { this.hintStep = 2; }
