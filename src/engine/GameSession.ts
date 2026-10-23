@@ -716,14 +716,12 @@ export class GameSession {
   // ---------------------------------------------------------------- companion-level combat mode
   /** Companion levels battle through partners underwater; balls come out only at the surface. */
   get catchingAllowed() { return !this.companionsEnabled || !!this.eco?.playerAtSurface; }
-  /** Partners engage nearby wilds on their own (companion levels; toggleable). */
-  autoBattle = true;
+  /** The wild the player ordered the team onto: the fight persists until one side drops. */
+  focusTargetId = -1;
   /** 0 = partners fully visible, 1 = hidden (surfaced trainer); render fades with this. */
   partnerHideK = 0;
-  private autoBattleAcc = 0;
+  private focusAcc = 0;
   private wasSurfaced = false;
-
-  setAutoBattle(v: boolean) { this.autoBattle = v; useStore.getState().setHud({ autoBattle: v }); }
 
   /** Surface hand-off: partners stand down and fade; diving brings them straight back. */
   private updateCombatMode(dt: number) {
@@ -744,29 +742,26 @@ export class GameSession {
           p.duelWith = -1; p.orderTarget = -1; p.orderMove = -1;
           if (p.state === 'duel') { p.state = 'wander'; p.stateT = 0; }
         }
+        this.focusTargetId = -1; // surfacing is disengaging
       }
     }
     const target = surfaced ? 1 : 0;
     this.partnerHideK += (target - this.partnerHideK) * Math.min(1, dt * 5);
-    // auto-battle: idle partners pick a fight with whatever swims into their vicinity
-    if (!surfaced && this.autoBattle) {
-      this.autoBattleAcc += dt;
-      if (this.autoBattleAcc >= 0.6) {
-        this.autoBattleAcc = 0;
+    // commanded focus: once the player clicks a target, the team keeps the fight going —
+    // re-ordering whenever a partner idles — until the target (or the team) drops
+    if (!surfaced && this.focusTargetId >= 0) {
+      this.focusAcc += dt;
+      if (this.focusAcc >= 0.6) {
+        this.focusAcc = 0;
+        const t = eco.byId.get(this.focusTargetId);
+        if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') { this.focusTargetId = -1; return; }
         for (const id of this.activePartners) {
           const partner = id >= 0 ? eco.byId.get(id) : undefined;
           if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
-          if (partner.duelWith >= 0 || partner.orderTarget >= 0) continue; // already engaged
-          let best: Entity | null = null, bestD: number = COMBAT.AUTO_BATTLE_RANGE;
-          for (const e of eco.alive) {
-            if (e.role === 'partner' || e.state === 'ko' || e.state === 'caught' || e.state === 'removed' || e.state === 'faint' || e.state === 'captureAttempt') continue;
-            const d = len3(e.x - partner.x, e.y - partner.y, e.z - partner.z);
-            if (d < bestD) { bestD = d; best = e; }
-          }
-          if (!best) continue;
+          if (partner.duelWith >= 0 || partner.orderTarget >= 0) continue; // mid-fight already
           const kit = kitOf(partner);
           const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
-          if (slot !== undefined) this.orderCast(partner, slot, best);
+          if (slot !== undefined) this.orderCast(partner, slot, t);
         }
       }
     }
@@ -863,6 +858,8 @@ export class GameSession {
     const eco = this.eco;
     const target = this.aimedEntity(45);
     if (!target) return false;
+    // companion levels: the click marks the team's quarry — they fight it until it drops
+    if (this.companionsEnabled && !this.catchingAllowed) this.focusTargetId = target.id;
     let best: { partner: Entity; slot: 0 | 1; score: number } | null = null;
     for (const id of this.activePartners) {
       const partner = id >= 0 ? eco.byId.get(id) : undefined;
@@ -938,7 +935,7 @@ export class GameSession {
       const e = id >= 0 ? eco?.byId.get(id) : undefined;
       if (!e || e.state === 'ko' || e.state === 'removed') return null;
       const kit = kitOf(e);
-      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
+      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], cdMax: [kit[0].cooldown, kit[1].cooldown] as [number, number], dueling: e.duelWith >= 0 };
     });
     // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
     let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;
@@ -1618,7 +1615,7 @@ export class GameSession {
       lureRemaining: eco.lureRemaining, lureCooldown: this.lureCooldown,
       predatorAlert: !!hunting, huntingSpecies: hunting ? hunting.species.id : null,
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,
-      catchMode: this.catchingAllowed, autoBattle: this.autoBattle,
+      catchMode: this.catchingAllowed,
     });
   }
 
@@ -1657,9 +1654,7 @@ export class GameSession {
     let hint: string | null = null;
     // companion levels underwater: throwing is off, the TEAM fights — hint accordingly
     if (!this.catchingAllowed) {
-      const teamHint = this.autoBattle
-        ? 'Your team battles nearby Pokémon on its own — surface to catch with Poké Balls'
-        : `${isTouch ? 'Tap' : 'Click'} a wild Pokémon to battle it — surface to catch with Poké Balls`;
+      const teamHint = `${isTouch ? 'Tap' : 'Click'} a wild Pokémon — your team fights it until it drops · surface to catch with Poké Balls`;
       if (this.elapsed > 2 && this.hintStep === 0 && teamHint !== store.hud.hint) store.setHud({ hint: teamHint });
       return;
     }

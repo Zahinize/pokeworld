@@ -33,8 +33,6 @@ export const COMBAT = {
 
   /** Projectile/beam range multiplier by caster stage — evolved Pokémon strike from further away. */
   RANGE_STAGE_MULT: [1, 1.35, 1.7] as const,
-  /** Companion auto-battle: idle partners engage wilds that swim within this vicinity (m). */
-  AUTO_BATTLE_RANGE: 11,
 
   /** Duels. */
   DUEL_MAX_CONCURRENT: 4,

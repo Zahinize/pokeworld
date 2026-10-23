@@ -133,18 +133,11 @@ function PartyBar() {
   const party = useStore((s) => s.hud.party);
   const isTouch = useStore((s) => s.isTouch);
   const catchMode = useStore((s) => s.hud.catchMode);
-  const autoBattle = useStore((s) => s.hud.autoBattle);
   if (!session.companionsEnabled || party.list.length === 0) return null;
   if (catchMode) return null; // surfaced: the team stands down and the Poké Balls come out
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
-      <button className={`auto-btn ${autoBattle ? 'on' : ''}`}
-        onClick={() => session.setAutoBattle(!autoBattle)}
-        title={autoBattle ? 'Your team engages nearby wild Pokémon on its own — tap to switch to manual' : `Manual: ${isTouch ? 'tap' : 'click'} a wild Pokémon to battle it — tap to re-enable auto`}>
-        <span className="burst"><Ic icon={autoBattle ? Play : Pause} size={20} /></span>
-        <span className="lbl">{autoBattle ? 'Auto' : 'Manual'}</span>
-      </button>
       {party.active.map((a, slot) => a ? (
         <div key={slot} className={`q-card s${slot} ${a.dueling ? 'dueling' : ''}`}>
           {a.moves.map((mv, mi) => {
@@ -156,7 +149,7 @@ function PartyBar() {
                 onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
                 <span className="tile">
                   <TypeIcon type={a.moveTypes[mi]} size={28} />
-                  {cd > 0 && <span className="cd">{Math.ceil(cd)}</span>}
+                  {cd > 0 && <span className="cdp" style={{ background: `conic-gradient(rgba(5,11,23,.72) ${Math.min(1, cd / (a.cdMax[mi] || 1)) * 360}deg, transparent 0deg)` }} />}
                   {cd <= 0 && !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
                 </span>
                 <span className="q-mn">{mv}</span>
