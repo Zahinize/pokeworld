@@ -64,12 +64,13 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
     <>
       <OceanBackdrop />
       <div className="screen">
-        <div className="screen-inner" style={{ maxWidth: 620 }}>
-          <Panel style={{ padding: 26 }}>
+        <div className={`screen-inner ${level.companions ? 'brief-wide' : ''}`} style={level.companions ? undefined : { maxWidth: 640 }}>
+          <Panel className={`brief ${level.companions ? 'cols' : ''}`}>
+            <div className="brief-left">
             <div className="eyebrow">{level.title}</div>
-            <h1 className="title" style={{ margin: '4px 0 2px' }}>{level.subtitle}</h1>
+            <h1 className="title brief-title" style={{ margin: '4px 0 2px' }}>{level.subtitle}</h1>
             <p className="subtitle">Mission · {total} Pokémon required</p>
-            <div className="hr" style={{ margin: '16px 0' }} />
+            <div className="hr" style={{ margin: '14px 0' }} />
             <div className="mission-list">
               {m.schoolGroups.map((g, i) => <BriefRow key={`s${i}`} icon={Fish} label={`Schooling Fish${m.schoolGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `school-${i}`)} />)}
               {m.passiveGroups.map((g, i) => <BriefRow key={`p${i}`} icon={Waves} label={`Passive Drifters${m.passiveGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `passive-${i}`)} />)}
@@ -85,9 +86,13 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                 </div>
               ))}
             </div>
+            <p className="muted small brief-flavor">
+              The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.
+              {resume ? ' Resuming your previous dive.' : ''}
+            </p>
+            </div>
             {level.companions && (
-              <>
-                <div className="hr" style={{ margin: '16px 0' }} />
+              <div className="brief-right">
                 <div className="row between wrap">
                   <div>
                     <div className="eyebrow">Your Party</div>
@@ -105,7 +110,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                 {caught.length === 0 && bossTokens.length === 0 ? (
                   <p className="muted small" style={{ marginTop: 10 }}>You haven't caught any Pokémon yet — replay an earlier level to build a team.</p>
                 ) : (
-                  <>
+                  <div className="party-scroll">
                     <div className="party-grid">
                       {caught.map((sp) => {
                         const idx = party.indexOf(sp.id);
@@ -139,29 +144,27 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                         </div>
                       </>
                     )}
-                  </>
+                  </div>
                 )}
-              </>
-            )}
-            <p className="muted small" style={{ marginTop: 14 }}>
-              The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.
-              {resume ? ' Resuming your previous dive.' : ''}
-            </p>
-            <div className="hr" style={{ margin: '16px 0' }} />
-            {error ? (
-              <div className="row between"><span className="badge red">Could not prepare the reef: {error}</span><button className="btn ghost" onClick={onBack}>Back</button></div>
-            ) : (
-              <div className="row between wrap">
-                <div className="grow">
-                  <div className="progress"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-                  <div className="dim small" style={{ marginTop: 6 }}>{ready ? `Reef ready · seed #${session.seed.toString(16)}` : progress < 0.3 ? 'Fetching Pokémon data…' : 'Loading Pokémon…'}</div>
-                </div>
-                <div className="row">
-                  <button className="btn ghost" onClick={() => { Audio.uiClick(); onBack(); }}>← Back</button>
-                  <button className="btn primary big" disabled={!ready || (level.companions && party.length === 0)} onClick={() => { Audio.uiConfirm(); enter(); }}>{isTouch ? 'Dive in' : 'Enter Reef'} →</button>
-                </div>
               </div>
             )}
+            <div className="brief-foot">
+              <div className="hr" />
+              {error ? (
+                <div className="row between"><span className="badge red">Could not prepare the reef: {error}</span><button className="btn ghost" onClick={onBack}>Back</button></div>
+              ) : (
+                <div className="row between wrap">
+                  <div className="grow">
+                    <div className="progress"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+                    <div className="dim small" style={{ marginTop: 6 }}>{ready ? `Reef ready · seed #${session.seed.toString(16)}` : progress < 0.3 ? 'Fetching Pokémon data…' : 'Loading Pokémon…'}</div>
+                  </div>
+                  <div className="row">
+                    <button className="btn ghost" onClick={() => { Audio.uiClick(); onBack(); }}>← Back</button>
+                    <button className="btn primary big" disabled={!ready || (level.companions && party.length === 0)} onClick={() => { Audio.uiConfirm(); enter(); }}>{isTouch ? 'Dive in' : 'Enter Reef'} →</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </Panel>
         </div>
       </div>

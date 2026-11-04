@@ -67,6 +67,7 @@ a { color: var(--aqua); }
 .demo-scene .demo-scrim { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 12, 26, .48) 0%, rgba(3, 12, 26, .12) 28%, rgba(3, 12, 26, .12) 68%, rgba(3, 12, 26, .55) 100%); }
 @keyframes demoIn { from { opacity: 0; } to { opacity: 1; } }
 .screen-inner { width: min(100%, 960px); animation: fadeUp .5s ease both; }
+.screen-inner.wide { width: min(100%, 1280px); }
 .glass { background: var(--panel); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
 .glass.strong { background: var(--panel-strong); }
 .eyebrow { font-family: var(--font-display); font-weight: 800; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; color: var(--aqua); }
@@ -168,6 +169,59 @@ a { color: var(--aqua); }
 .objective .count small { color: var(--muted); font-weight: 700; margin-left: 6px; }
 .objective .guardian { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .objective .guardian.done { color: var(--green); }
+
+/* ---------- Mission brief: a console-style framed screen ----------
+   The panel is the frame: it caps at the viewport height and long content (the party
+   roster) scrolls INSIDE it, so the page itself never grows a scrollbar. */
+.screen-inner.brief-wide { width: min(100%, 1240px); }
+.brief { padding: 24px 26px; display: flex; flex-direction: column; max-height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
+.brief-title { font-size: clamp(26px, 3.4vw, 42px); }
+.brief-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.brief .mission-list { overflow: auto; min-height: 0; flex: none; }
+.brief-flavor { margin-top: 12px; }
+.brief-foot .hr { margin: 16px 0; }
+/* two-pane (companion levels): mission briefing left, team picker right, launch bar across the bottom */
+.brief.cols { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: 28px; height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
+.brief.cols .brief-left { grid-row: 1; grid-column: 1; }
+.brief.cols .brief-flavor { margin-top: auto; padding-top: 12px; }
+.brief.cols .brief-foot { grid-row: 2; grid-column: 1 / -1; }
+.brief-right { grid-row: 1; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); padding-left: 28px; }
+.brief-right .party-scroll { flex: 1; min-height: 0; overflow: auto; margin-top: 2px; padding: 2px 6px 6px 2px; }
+.brief .party-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+/* stacked frame (portrait phones & tablets, narrow windows): the roster becomes the scroll region */
+@media (max-width: 920px) and (orientation: portrait), (max-width: 640px) {
+  .brief.cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 0; }
+  .brief.cols .brief-left { grid-row: 1; grid-column: 1; }
+  .brief.cols .brief-right { grid-row: 2; grid-column: 1; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .brief.cols .brief-foot { grid-row: 3; grid-column: 1; }
+  .brief.cols .brief-flavor { display: none; }   /* keep the stacked frame tight */
+  .brief.cols .mission-list { max-height: 190px; }
+}
+/* phones & short landscape: smaller sprites and type so the frame fits without scrolling */
+@media (max-width: 760px), (max-height: 540px) {
+  .brief { padding: 14px 16px; }
+  .brief-title { font-size: clamp(20px, 4.5vw, 28px); }
+  .brief .subtitle { font-size: 12.5px; }
+  .brief .objective { padding: 5px 8px; }
+  .brief .objective .label { font-size: 12.5px; }
+  .brief .mission-list { gap: 5px; }
+  .brief .party-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+  .brief .party-cell { padding: 6px 4px; }
+  .brief .party-cell .sprite { width: 34px; height: 34px; }
+  .brief .party-cell .n { font-size: 10px; }
+  .brief-foot .hr { margin: 10px 0; }
+  .brief-foot .btn { min-height: 38px; }
+  .brief-foot .btn.big { min-height: 44px; font-size: 14px; padding: 0 18px; border-radius: 12px; }
+}
+/* landscape phones: keep the two panes, just slimmer */
+@media (max-height: 540px) and (orientation: landscape) {
+  .brief.cols { grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); column-gap: 16px; }
+  .brief-right { padding-left: 16px; }
+  .brief .eyebrow { font-size: 9.5px; }
+  .brief .subtitle { display: none; }
+  .brief.cols .brief-flavor { display: none; }
+  .brief-right > .row .muted.small { display: none; }   /* the party how-to copy: give its rows to the roster */
+}
 
 /* ---------- HUD ---------- */
 .hud { position: fixed; inset: 0; pointer-events: none; font-size: 14px; z-index: 22; }

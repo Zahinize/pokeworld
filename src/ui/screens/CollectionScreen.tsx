@@ -130,7 +130,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
     </div>
   ) : null;
   return (
-    <Panel className={embedded ? 'panel wide strong' : ''} style={{ padding: 22, maxHeight: embedded ? 'calc(100vh - 40px)' : undefined, overflow: 'auto', width: embedded ? undefined : '100%' }}>
+    <Panel className={embedded ? 'panel wide strong' : ''} style={{ padding: 22, maxHeight: embedded ? 'calc(100vh - 40px)' : 'calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom))', overflow: 'auto', width: embedded ? undefined : '100%' }}>
       <div className="row between wrap" style={{ marginBottom: 14 }}>
         <div>
           <div className="eyebrow">Field Guide</div>
@@ -174,8 +174,8 @@ export function CollectionScreen() {
   return (
     <>
       <OceanBackdrop />
-      <div className="screen" style={{ alignItems: 'start' }}>
-        <div className="screen-inner"><CollectionView onClose={() => setScreen('menu')} /></div>
+      <div className="screen">
+        <div className="screen-inner wide"><CollectionView onClose={() => setScreen('menu')} /></div>
       </div>
     </>
   );
