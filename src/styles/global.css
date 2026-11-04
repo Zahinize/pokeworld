@@ -176,7 +176,7 @@ a { color: var(--aqua); }
 .screen-inner.brief-wide { width: min(100%, 1240px); }
 .brief { padding: 24px 26px; display: flex; flex-direction: column; max-height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
 .brief-title { font-size: clamp(26px, 3.4vw, 42px); }
-.brief-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.brief-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
 .brief .mission-list { overflow: auto; min-height: 0; flex: none; }
 .brief-flavor { margin-top: 12px; }
 .brief-foot .hr { margin: 16px 0; }
@@ -184,10 +184,34 @@ a { color: var(--aqua); }
 .brief.cols { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: 28px; height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
 .brief.cols .brief-left { grid-row: 1; grid-column: 1; }
 .brief.cols .brief-flavor { margin-top: auto; padding-top: 12px; }
+/* tight heights: the lineup earns the flavor copy's rows */
+@media (max-height: 840px) { .brief.cols .brief-flavor { display: none; } }
 .brief.cols .brief-foot { grid-row: 2; grid-column: 1 / -1; }
 .brief-right { grid-row: 1; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); padding-left: 28px; }
 .brief-right .party-scroll { flex: 1; min-height: 0; overflow: auto; margin-top: 2px; padding: 2px 6px 6px 2px; }
 .brief .party-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+/* the mission is the headline act: bold rows with an accent bar, not a quiet checklist */
+.brief .objective { padding: 12px 14px; background: rgba(53,208,255,.07); border-color: rgba(53,208,255,.22); border-left: 3px solid var(--aqua); }
+.brief .objective .label { font-family: var(--font-display); font-weight: 800; font-size: 15.5px; }
+.brief .objective .count { font-size: 18px; color: var(--aqua); }
+.brief .objective.boss { background: rgba(244,63,94,.08); border-color: rgba(244,63,94,.35); border-left-color: var(--red); }
+.brief .objective.done { background: rgba(74,222,128,.08); border-color: rgba(74,222,128,.25); border-left-color: var(--green); }
+/* the chosen team, in battle order, under the mission */
+.lineup { display: flex; flex-direction: column; gap: 4px; }
+.lineup-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 10px; background: rgba(255,255,255,.045); border: 1px solid var(--line); min-height: 34px; }
+.lineup-row .ln { font-family: var(--font-display); font-weight: 900; font-size: 12px; color: var(--aqua); width: 14px; text-align: center; flex: none; }
+.lineup-row .nm { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineup-row .lr-active { margin-left: auto; font-size: 10px; padding: 2px 8px; }
+.lineup-row.empty { border-style: dashed; background: none; }
+.lineup-row.empty .ln { color: var(--dim); }
+.lineup-row.empty .nm { color: var(--dim); font-weight: 600; }
+/* roster sort dropdown + the sorted stat on every cell */
+.stat-filter { min-height: 32px; padding: 0 10px; border-radius: 10px; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.35); color: var(--aqua); font: 800 12.5px var(--font-body); cursor: pointer; color-scheme: dark; }
+.stat-filter:hover { background: rgba(53,208,255,.2); }
+.party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
+.boss-cell .stat { color: var(--gold); }
+.reef-status { color: var(--dim); }
+.reef-status.ready { color: var(--green); font-weight: 800; }
 /* stacked frame (portrait phones & tablets, narrow windows): the roster becomes the scroll region */
 @media (max-width: 920px) and (orientation: portrait), (max-width: 640px) {
   .brief.cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 0; }
@@ -196,6 +220,9 @@ a { color: var(--aqua); }
   .brief.cols .brief-foot { grid-row: 3; grid-column: 1; }
   .brief.cols .brief-flavor { display: none; }   /* keep the stacked frame tight */
   .brief.cols .mission-list { max-height: 190px; }
+  .brief.cols .lineup { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .brief.cols .lineup-row { min-width: 0; }
+  .brief.cols .lineup-row .lr-active { display: none; }   /* slots 1-2 are the actives; the number says it */
 }
 /* phones & short landscape: smaller sprites and type so the frame fits without scrolling */
 @media (max-width: 760px), (max-height: 540px) {
@@ -209,6 +236,13 @@ a { color: var(--aqua); }
   .brief .party-cell { padding: 6px 4px; }
   .brief .party-cell .sprite { width: 34px; height: 34px; }
   .brief .party-cell .n { font-size: 10px; }
+  .brief .party-cell .stat { font-size: 9px; }
+  .brief .objective .count { font-size: 14px; }
+  .brief .lineup-row { min-height: 26px; padding: 2px 8px; gap: 6px; }
+  .brief .lineup-row .nm { font-size: 11px; }
+  .brief .lineup-row img { width: 20px; height: 20px; }
+  .brief .lineup-row .lr-active { font-size: 9px; padding: 1px 6px; }
+  .stat-filter { min-height: 28px; font-size: 11px; padding: 0 7px; }
   .brief-foot .hr { margin: 10px 0; }
   .brief-foot .btn { min-height: 38px; }
   .brief-foot .btn.big { min-height: 44px; font-size: 14px; padding: 0 18px; border-radius: 12px; }
