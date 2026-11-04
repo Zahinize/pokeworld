@@ -10,6 +10,7 @@ import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { getSpecies } from '@/data/species';
 import { SKY } from '@/data/sky';
+import { sheetKey } from '../pokemon/sprites';
 import type { SpriteSheet } from '../pokemon/sprites';
 
 // ------------------------------------------------------------------ bird sprites
@@ -216,8 +217,10 @@ export function SkyLifeLayer() {
     // ensure batches (the ridden legendary draws from the same batches as wild birds)
     const counts = new Map<string, number>();
     for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) counts.set(b.speciesId, (counts.get(b.speciesId) ?? 0) + 1); }
+    // the mount uses its BACK sheet (you're on its back); falls back to front while it loads
     const ride = session.ride;
-    if (ride) counts.set(ride, (counts.get(ride) ?? 0) + 1);
+    const rideKey = ride ? (session.sheets.has(sheetKey(ride, 'back')) ? sheetKey(ride, 'back') : ride) : null;
+    if (rideKey) counts.set(rideKey, (counts.get(rideKey) ?? 0) + 1);
     for (const [sid, n] of counts) {
       let bt = batches.current.get(sid);
       const sheet = session.sheets.get(sid);
@@ -272,8 +275,8 @@ export function SkyLifeLayer() {
     }
     // the mount: your caught legendary is pinned to the BOTTOM of the view in camera space —
     // whatever way you look, its face is up at you and its body carries the screen's lower edge
-    if (ride) {
-      const bt = batches.current.get(ride);
+    if (ride && rideKey) {
+      const bt = batches.current.get(rideKey);
       if (bt && bt.mesh.count < bt.capacity) {
         const p = session.player;
         const sp = getSpecies(ride);

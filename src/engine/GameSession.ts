@@ -640,6 +640,8 @@ export class GameSession {
     if (!this.ride && !this.eco?.playerAtSurface) return;
     const sp = getSpecies(speciesId);
     if (!this.sheets.has(speciesId)) loadSpriteSheet(speciesId, 'front').then((sh) => this.sheets.set(speciesId, sh));
+    // you sit on its back, so you SEE its back — the back sheet is the riding view
+    if (!this.sheets.has(sheetKey(speciesId, 'back'))) loadSpriteSheet(speciesId, 'back').then((sh) => this.sheets.set(sheetKey(speciesId, 'back'), sh));
     this.ride = speciesId;
     this.player.rideSpeed = Math.max(SKY.RIDE.MIN_SPEED, sp.speed);
     // the bird scoops you out of the water
