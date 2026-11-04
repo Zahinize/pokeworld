@@ -6,6 +6,7 @@
 import type { Entity, EcoEvent, Vec3 } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
 import { getMove, isSupportive, movesFor, type MoveConfig as MC } from '@/data/moves';
+import { CAST_FLOURISH } from '@/data/personality';
 
 /** Contact styles keep their natural reach; everything that travels scales with the caster's stage. */
 const CONTACT_STYLES = new Set(['melee', 'dash']);
@@ -148,7 +149,11 @@ export class MoveSystem {
     const move = this.moveOf(e, slot);
     e.mcd[slot] = move.cooldown;
     this.host.events.push({ type: 'cast', casterId: e.id, moveId: move.id, style: move.style });
-    const at = this.host.time + (move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : CAST_WINDUP));
+    let windup = move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : CAST_WINDUP);
+    // species flourish: big signature casts stretch so the choreography reads (Gyarados's double revolve)
+    const fl = CAST_FLOURISH[e.species.id];
+    if (fl?.signatureWindup && move.kind === 'damage' && move.power >= 100) windup = Math.max(windup, fl.signatureWindup);
+    const at = this.host.time + windup;
     // anticipation window for the renderer: the sprite rears back until `at`, then whips forward
     e.castFrom = this.host.time; e.castAt = at;
     this.pending.push({ at, casterId: e.id, moveId: move.id, target, slot });

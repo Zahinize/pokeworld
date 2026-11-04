@@ -9,6 +9,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { COMBAT } from '@/data/combatConfig';
 import { sheetKey } from './sprites';
+import { CAST_FLOURISH, REVOLVE_PERIOD } from '@/data/personality';
 import { floorY } from '@/engine/world/terrain';
 import { GAME } from '@/data/gameConfig';
 import type { SpriteSheet } from './sprites';
@@ -127,6 +128,56 @@ const facingMemo = new Map<number, number>();
 const tiltMemo = new Map<number, number>();
 /** Partner pose: true while the partner is clearly swimming TOWARD the trainer (show its face). */
 const partnerFrontMemo = new Map<number, boolean>();
+
+// ------------------------------------------------------------------ cast flourishes
+interface FlourishPose {
+  back: boolean;        // show the back sheet this instant (revolve's far side)
+  flip: number | null;  // override the facing mirror (±1), or null to keep velocity facing
+  tilt: number;         // added in-plane roll
+  scale: number;        // multiplied onto sprite scale (squash / pulses)
+  keepCastTilt: boolean;// shiver layers OVER the rear-back; the others replace it
+}
+const flPose: FlourishPose = { back: false, flip: null, tilt: 0, scale: 1, keepCastTilt: false };
+
+/**
+ * The species' wind-up choreography at `now` — pure math on (entity, time) so the two keyOf
+ * passes and the instance loop all agree within a frame. Returns null outside a flourishing
+ * wind-up; the release whip after castAt is untouched.
+ */
+function flourishPose(e: Entity, now: number, f: number): FlourishPose | null {
+  const fl = CAST_FLOURISH[e.species.id];
+  if (!fl || e.castAt <= 0 || now >= e.castAt || now < e.castFrom) return null;
+  const dur = Math.max(e.castAt - e.castFrom, 0.001);
+  const p = (now - e.castFrom) / dur;
+  flPose.back = false; flPose.flip = null; flPose.tilt = 0; flPose.scale = 1; flPose.keepCastTilt = false;
+  switch (fl.kind) {
+    case 'revolve': {
+      // whole revolutions across the window (always lands facing front at release)
+      const revs = Math.max(1, Math.round(dur / REVOLVE_PERIOD));
+      const th = p * revs * Math.PI * 2;
+      const c = Math.cos(th);
+      flPose.back = c < 0;
+      flPose.flip = f * (Math.sin(th) >= 0 ? 1 : -1);
+      flPose.scale = 0.84 + 0.16 * Math.abs(c);           // foreshorten at the quarter turns
+      break;
+    }
+    case 'coil':
+      flPose.tilt = f * Math.sin(p * Math.PI) * 1.15;      // roll into a C…
+      flPose.scale = 1 - 0.12 * Math.sin(p * Math.PI);     // …and compress, spring on release
+      break;
+    case 'pump':
+      flPose.scale = 1 + 0.14 * Math.max(0, Math.sin(p * Math.PI * 4));  // two bell-pulses
+      break;
+    case 'shiver':
+      flPose.tilt = Math.sin(now * 42 + e.phase * 9) * 0.09 * Math.min(1, p * 3);
+      flPose.keepCastTilt = true;                          // tremble OVER the rear-back
+      break;
+    case 'twirl':
+      flPose.tilt = p * p * Math.PI * 6;                   // accelerating 3-turn spin
+      break;
+  }
+  return flPose;
+}
 
 // ------------------------------------------------------------------ grounding shadows
 const SHADOW_CAP = 256;
@@ -265,7 +316,9 @@ export function PokemonLayer() {
       return !front;
     };
     const keyOf = (e: (typeof eco.alive)[number]) => {
-      const back = e.role === 'partner' && partnerShowsBack(e);
+      // a flourishing wind-up owns the sheet (revolve shows its far side mid-spin)
+      const fl = flourishPose(e, eco.time, 1);
+      const back = fl ? fl.back : e.role === 'partner' && partnerShowsBack(e);
       if (e.isShiny) {
         if (back && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
         if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');
@@ -300,6 +353,9 @@ export function PokemonLayer() {
       let f = facingMemo.get(e.id) ?? 1;
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
+      // species cast flourish (revolve / coil / pump / shiver / twirl) during the wind-up
+      const fl = flourishPose(e, eco.time, f);
+      if (fl?.flip != null) f = fl.flip;
       // the reef giants shrink further as companions so they don't wall off the screen
       const partnerScale = e.role === 'partner' ? 0.62 * (COMBAT.COMPANION_GIANT_SHRINK[e.species.id] ?? 1) : 1;
       let alpha = 1, scale = e.species.size * e.scaleMul * partnerScale, y = e.y;
@@ -354,7 +410,13 @@ export function PokemonLayer() {
           castTilt = f * 0.6 * (1 - (eco.time - e.castAt) / 0.3);
         }
       }
-      b.aTilt.array[i] = tNow + castTilt;
+      if (fl) {
+        if (!fl.keepCastTilt && eco.time < e.castAt) castTilt = 0;  // the flourish IS the anticipation
+        b.aSize.array[i] = scale * fl.scale;
+        b.aTilt.array[i] = tNow + castTilt + fl.tilt;
+      } else {
+        b.aTilt.array[i] = tNow + castTilt;
+      }
       if (glow > 0.05 && haloN < halo.cap) {
         tmpM.makeTranslation(e.x, y, e.z);
         halo.mesh.setMatrixAt(haloN, tmpM);

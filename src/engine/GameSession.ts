@@ -25,6 +25,7 @@ import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { COMBAT } from '@/data/combatConfig';
+import { CAST_FLOURISH } from '@/data/personality';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
 import { getMove, isSupportive, movesFor } from '@/data/moves';
@@ -202,6 +203,10 @@ export class GameSession {
       preloadSpeciesData(ids, (d) => { hpDone = d; prog(); }),
       preloadSprites(ids, (d) => { spDone = d; prog(); }).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
     ]);
+    // the 'revolve' flourish fakes a spin with the back sheet — warm it for wild casters too (non-blocking)
+    for (const id of ids) if (CAST_FLOURISH[id]?.kind === 'revolve' && !this.sheets.has(sheetKey(id, 'back'))) {
+      loadSpriteSheet(id, 'back').then((sh) => this.sheets.set(sheetKey(id, 'back'), sh)).catch(() => {});
+    }
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     if (resume && resume.seed === this.seed) this.applyResume(resume);
