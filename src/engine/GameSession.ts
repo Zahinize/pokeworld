@@ -28,7 +28,7 @@ import { COMBAT } from '@/data/combatConfig';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
 import { getMove, isSupportive, movesFor } from '@/data/moves';
-import { SPECIES, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
+import { SPECIES, SPECIES_LIST, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
 import type { Entity } from './ai/types';
@@ -213,11 +213,14 @@ export class GameSession {
     this.timeOfDay = this.level.timeOfDay;
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
-    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0; this.ride = null;
     this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
     this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
-    this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
+    this.eco.onPlayerDamage = (amount, casterId) => {
+      const attacker = this.eco?.byId.get(casterId);
+      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: false } : undefined);
+    };
     this.prepareProgress = 1;
     this.phase = 'ready';
     const store = useStore.getState();
@@ -289,6 +292,7 @@ export class GameSession {
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
+    this.ride = null;
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
     this.tutorial = null; useStore.getState().setHud({ tutorial: null });
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
@@ -415,7 +419,7 @@ export class GameSession {
     this.player.reset(ps.x, ps.y, ps.z, 0);
     this.timeOfDay = 0.35; this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 2; this.hintTimer = 0;
-    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0; this.ride = null;
     this.bossWave = -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
     this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
@@ -572,21 +576,22 @@ export class GameSession {
   }
 
   /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. */
-  applyPlayerDamage(amount: number) {
+  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean }) {
     if (this.recoveringT > 0 || this.calmT > 0 || this.phase !== 'playing') return;
     this.playerHp = Math.max(0, this.playerHp - amount);
     this.regenGrace = COMBAT.PLAYER_REGEN_GRACE;
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, playerHitSeq: store.hud.playerHitSeq + 1 });
-    if (this.playerHp <= 0) this.beginRecovery();
+    if (this.playerHp <= 0) this.beginRecovery(by ?? null);
   }
 
-  private beginRecovery() {
+  private beginRecovery(by: { name: string; sky: boolean } | null = null) {
     this.clearSlingAim();
+    if (this.ride) this.dismount(true); // knocked off the bird
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
-    useStore.getState().setHud({ recovering: this.recoveringT });
+    useStore.getState().setHud({ recovering: this.recoveringT, koBy: by });
   }
 
   private finishRecovery() {
@@ -598,7 +603,60 @@ export class GameSession {
     this.recoveringT = 0;
     Audio.restore();
     const store = useStore.getState();
-    store.setHud({ playerHp: this.playerHp, recovering: 0 });
+    store.setHud({ playerHp: this.playerHp, recovering: 0, koBy: null });
+  }
+
+  // ------------------------------------------------------------------ Riding sky legendaries
+
+  /** Species id of the mount while airborne, or null. */
+  ride: string | null = null;
+
+  /** Caught sky legendaries — the rideable stable. */
+  get rideOptions(): string[] {
+    const col = useStore.getState().save.collection;
+    return SPECIES_LIST.filter((sp) => sp.skyOnly && sp.rarity === 'legendary' && (col[sp.id]?.caught ?? 0) > 0).map((sp) => sp.id);
+  }
+
+  /** B key / HUD chip: dismount if riding, mount straight away with one bird, else open the picker. */
+  toggleRide() {
+    if (this.phase !== 'playing' || this.recoveringT > 0) return;
+    const store = useStore.getState();
+    if (this.ride) { this.dismount(); return; }
+    if (store.hud.ridePicker) { store.setHud({ ridePicker: false }); return; }
+    const options = this.rideOptions;
+    if (options.length === 0) {
+      store.pushToast({ kind: 'warn', title: 'No sky legendary yet', body: 'Catch one crossing the sky, then ride it above the waves.', ttl: 4 });
+      return;
+    }
+    if (options.length === 1) { this.mount(options[0]); return; }
+    releasePointer();
+    store.setHud({ ridePicker: true });
+  }
+
+  /** Climb onto a caught sky legendary and take to the air. */
+  mount(speciesId: string) {
+    if (this.phase !== 'playing' || this.recoveringT > 0 || !this.rideOptions.includes(speciesId)) return;
+    const sp = getSpecies(speciesId);
+    if (!this.sheets.has(speciesId)) loadSpriteSheet(speciesId, 'front').then((sh) => this.sheets.set(speciesId, sh));
+    this.ride = speciesId;
+    this.player.rideSpeed = Math.max(SKY.RIDE.MIN_SPEED, sp.speed);
+    // the bird scoops you out of the water
+    this.player.y = Math.max(this.player.y, SKY.RIDE.ALT_MIN + 1.5);
+    this.player.vy = Math.max(this.player.vy, 4);
+    Audio.playCry(sp.dexId, 0.6);
+    const store = useStore.getState();
+    store.setHud({ ridePicker: false, riding: speciesId });
+    store.pushToast({ kind: 'event', title: `You're riding ${sp.name}!`, body: 'Fly where you look — press B to land.', speciesId, ttl: 5 });
+  }
+
+  /** Slide off the mount and splash back into the sea. */
+  dismount(silent = false) {
+    if (!this.ride) return;
+    this.ride = null;
+    this.player.rideSpeed = null;
+    this.player.vy = Math.min(this.player.vy, -2); // drop toward the water
+    if (!silent) Audio.breach();
+    useStore.getState().setHud({ riding: null, ridePicker: false });
   }
 
   // ------------------------------------------------------------------ Boss phases
@@ -639,8 +697,6 @@ export class GameSession {
       let bar: { name: string; hp: number; maxHp: number } | null = null;
       for (const id of alive) { const e = eco.byId.get(id)!; if (!bar || e.maxHp > bar.maxHp) bar = { name: tokenLabel(this.tok(e)), hp: Math.round(e.hp), maxHp: e.maxHp }; }
       useStore.getState().setHud({ bossBar: bar });
-      // defeat check: every party member downed while bosses live
-      if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
     }
   }
 
@@ -699,6 +755,7 @@ export class GameSession {
   }
 
   private triggerDefeat() {
+    this.dismount(true);
     this.phase = 'defeated';
     releasePointer();
     Audio.escape(); Audio.ko();
@@ -1004,6 +1061,8 @@ export class GameSession {
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
+    // Team wipe halts the run immediately in companion levels — boss battle or not
+    if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
       const [slot, at] = this.autoSend[i];
       if (eco.time < at) continue;
@@ -1458,7 +1517,7 @@ export class GameSession {
         this.pushNumber(`-${dmg}`, '#ff8091', sb.x, cy2 + 0.6, sb.z, true);
       }
     }
-    if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG);
+    if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG, { name: sp.name, sky: true });
     this.shakeT = Math.max(this.shakeT, 0.6);
     Audio.breach();
   }
@@ -1619,6 +1678,7 @@ export class GameSession {
       predatorAlert: !!hunting, huntingSpecies: hunting ? hunting.species.id : null,
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,
       catchMode: this.catchingAllowed,
+      riding: this.ride, rideAvail: this.rideOptions.length > 0,
     });
   }
 

@@ -31,10 +31,13 @@ export class PlayerController {
   private maxCur: number = GAME.SWIM_SPEED;
   sensitivity = 0.0022;
   invertY = false;
+  /** Mounted on a sky legendary: its cruise speed (m/s). null = swimming. While set, the
+   *  player flies — surface buoyancy is off and altitude is clamped to the ride band. */
+  rideSpeed: number | null = null;
 
   reset(x: number, y: number, z: number, yaw = 0) {
     this.x = x; this.y = y; this.z = z; this.vx = this.vy = this.vz = 0; this.yaw = yaw; this.pitch = 0;
-    this.sustainT = 0; this.autoSprint = false; this.maxCur = GAME.SWIM_SPEED;
+    this.sustainT = 0; this.autoSprint = false; this.maxCur = GAME.SWIM_SPEED; this.rideSpeed = null;
   }
 
   update(dt: number, input: InputState, obstacles: Obstacle[]) {
@@ -59,7 +62,10 @@ export class PlayerController {
     if (this.sustainT > GAME.AUTO_SPRINT_AFTER) this.autoSprint = true;
     else if (this.sustainT < GAME.AUTO_SPRINT_OFF) this.autoSprint = false;
     const effSprint = input.sprint || this.autoSprint;
-    const targetMax: number = effSprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
+    const riding = this.rideSpeed != null;
+    const targetMax: number = riding
+      ? this.rideSpeed! * (effSprint ? SKY.RIDE.SPRINT_MULT : 1)
+      : effSprint ? GAME.SWIM_SPRINT : GAME.SWIM_SPEED;
     // speeding up is eager; the cap never snaps down mid-swim
     const tau = targetMax >= this.maxCur ? GAME.SPEED_RAMP_TAU : GAME.SPEED_RAMP_TAU_DOWN;
     this.maxCur += (targetMax - this.maxCur) * (1 - Math.exp(-dt / tau));
@@ -69,10 +75,10 @@ export class PlayerController {
     let az = fz * input.forward + rz * input.strafe;
     const al = Math.hypot(ax, ay, az);
     if (al > 1) { ax /= al; ay /= al; az /= al; }
-    const accel = effSprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL;
+    const accel = (effSprint ? GAME.SWIM_SPRINT_ACCEL : GAME.SWIM_ACCEL) * (riding ? 2.2 : 1);
     this.vx += ax * accel * dt; this.vy += ay * accel * dt; this.vz += az * accel * dt;
-    // Damping (water resistance)
-    const damp = Math.exp(-GAME.SWIM_DAMPING * dt);
+    // Damping (water resistance; thinner in the air so a mount glides)
+    const damp = Math.exp(-GAME.SWIM_DAMPING * (riding ? 0.55 : 1) * dt);
     this.vx *= damp; this.vy *= damp; this.vz *= damp;
     const sp2 = Math.hypot(this.vx, this.vy, this.vz);
     if (sp2 > max) { const f = max / sp2; this.vx *= f; this.vy *= f; this.vz *= f; }
@@ -82,11 +88,17 @@ export class PlayerController {
     // Constraints
     const fy0 = floorY(this.x, this.z) + 1.2;
     if (this.y < fy0) { this.y = fy0; if (this.vy < 0) this.vy = 0; }
-    // Surface: a buoyancy spring lets the swimmer break the waterline and bob there, but never fly
-    if (this.y > SKY.BUOYANCY_BAND_Y) this.vy -= (this.y - SKY.BUOYANCY_BAND_Y) * SKY.BUOYANCY_K * dt;
-    // near the surface the wetsuit floats: bob at the waterline hands-free (a held dive key still wins)
-    else if (this.y > SKY.FLOAT_ZONE_Y && input.up >= 0) this.vy += (SKY.BUOYANCY_BAND_Y - this.y) * SKY.FLOAT_K * dt;
-    if (this.y > SKY.SURFACE_MAX_Y) { this.y = SKY.SURFACE_MAX_Y; if (this.vy > 0) this.vy = 0; }
+    if (riding) {
+      // On the wing: no buoyancy — fly free between just above the swell and the flock band
+      if (this.y < SKY.RIDE.ALT_MIN) { this.y = SKY.RIDE.ALT_MIN; if (this.vy < 0) this.vy = 0; }
+      if (this.y > SKY.RIDE.ALT_MAX) { this.y = SKY.RIDE.ALT_MAX; if (this.vy > 0) this.vy = 0; }
+    } else {
+      // Surface: a buoyancy spring lets the swimmer break the waterline and bob there, but never fly
+      if (this.y > SKY.BUOYANCY_BAND_Y) this.vy -= (this.y - SKY.BUOYANCY_BAND_Y) * SKY.BUOYANCY_K * dt;
+      // near the surface the wetsuit floats: bob at the waterline hands-free (a held dive key still wins)
+      else if (this.y > SKY.FLOAT_ZONE_Y && input.up >= 0) this.vy += (SKY.BUOYANCY_BAND_Y - this.y) * SKY.FLOAT_K * dt;
+      if (this.y > SKY.SURFACE_MAX_Y) { this.y = SKY.SURFACE_MAX_Y; if (this.vy > 0) this.vy = 0; }
+    }
     const r = Math.hypot(this.x, this.z);
     if (r > GAME.PLAYER_BOUNDS_RADIUS) { const f = GAME.PLAYER_BOUNDS_RADIUS / r; this.x *= f; this.z *= f; }
     for (let i = 0; i < obstacles.length; i++) {

@@ -54,6 +54,16 @@ export const SKY = {
    *  Master Ball included (expected ~5 Master Balls per catch). */
   LEGENDARY_CATCH_CAP: 0.2,
 
+  // ---- riding a caught sky legendary ----
+  RIDE: {
+    /** Flight band: from just above the swell up into the flock altitudes. */
+    ALT_MIN: 2.0,
+    ALT_MAX: 36,
+    SPRINT_MULT: 1.3,
+    /** Even a slow bird flies at least this fast (m/s) — riding must always feel airborne. */
+    MIN_SPEED: 9,
+  },
+
   /** Water Pokemon suffocate slowly in open air: HP lost per second while a companion is surfaced. */
   COMPANION_SURFACE_HP_DRAIN: 2,
   /** Extra reach on companion moves fired into the open air (nothing to attenuate them up there). */

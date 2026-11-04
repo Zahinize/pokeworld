@@ -213,9 +213,11 @@ export function SkyLifeLayer() {
     const L = session.lighting;
     const time = state.clock.elapsedTime;
 
-    // ensure batches
+    // ensure batches (the ridden legendary draws from the same batches as wild birds)
     const counts = new Map<string, number>();
     for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) counts.set(b.speciesId, (counts.get(b.speciesId) ?? 0) + 1); }
+    const ride = session.ride;
+    if (ride) counts.set(ride, (counts.get(ride) ?? 0) + 1);
     for (const [sid, n] of counts) {
       let bt = batches.current.get(sid);
       const sheet = session.sheets.get(sid);
@@ -264,6 +266,42 @@ export function SkyLifeLayer() {
             if (Math.random() < 0.4) pp.dark.emit(b.x - b.vx * 0.1, b.y - 0.4, b.z - b.vz * 0.1, size * 1.4, 1.5, 1.9);
           } else {
             pp.gold.emit(b.x - b.vx * 0.06, b.y, b.z - b.vz * 0.06, size * 1.2, 0.9, 1.5);
+          }
+        }
+      }
+    }
+    // the mount: your caught legendary flies under the camera, carrying you where you look
+    if (ride) {
+      const bt = batches.current.get(ride);
+      if (bt && bt.mesh.count < bt.capacity) {
+        const p = session.player;
+        const sp = getSpecies(ride);
+        const size = Math.min(4.6, sp.size * 0.8);
+        const [fx0, , fz0] = p.forward();
+        const fl = Math.hypot(fx0, fz0) || 1;
+        const ax = fx0 / fl, az = fz0 / fl;
+        const bob = Math.sin(time * 2.2) * 0.14;      // wingbeat ride
+        const i = bt.mesh.count++;
+        tmpM.makeTranslation(p.x + ax * size * 0.62, p.y - size * 0.52 + bob, p.z + az * size * 0.62);
+        bt.mesh.setMatrixAt(i, tmpM);
+        const camRightX = state.camera.matrixWorld.elements[0];
+        const camRightZ = state.camera.matrixWorld.elements[2];
+        const dotR = p.vx * camRightX + p.vz * camRightZ;
+        let fm = flipMemo.get(-7) ?? 1;
+        if (dotR > 0.6) fm = -1; else if (dotR < -0.6) fm = 1;
+        flipMemo.set(-7, fm);
+        bt.aPhase.array[i] = 0;
+        bt.aFlip.array[i] = fm;
+        bt.aAlpha.array[i] = 1;
+        bt.aSize.array[i] = size;
+        // its legendary wake streams behind you at speed
+        if (p.speed > 6) {
+          emitAcc.current += dt * SKY.SPARKLE_RATE * 0.7;
+          const yv = ride === 'yveltal';
+          while (emitAcc.current >= 1) {
+            emitAcc.current -= 1;
+            if (yv) pp.violet.emit(p.x - p.vx * 0.12, p.y - size * 0.3, p.z - p.vz * 0.12, size, 1.0, 1.4);
+            else pp.gold.emit(p.x - p.vx * 0.12, p.y - size * 0.3, p.z - p.vz * 0.12, size, 0.9, 1.3);
           }
         }
       }

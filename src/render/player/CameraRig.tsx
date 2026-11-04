@@ -48,6 +48,7 @@ export function CameraRig() {
         if (e.code === 'Digit0') session.swapSlotWithBest(1);
       }
       if (e.code === 'KeyQ' && !session.companionsEnabled) session.cycleBall(1);
+      if (e.code === 'KeyB') session.toggleRide();
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => { keys.current.delete(e.code); shift.current = e.shiftKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight'; };

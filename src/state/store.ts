@@ -39,6 +39,14 @@ export interface HudState {
   playerHp: number;
   playerHitSeq: number;
   recovering: number;
+  /** Who knocked the player out (shown on the recovery overlay); sky = a sky legendary did it. */
+  koBy: { name: string; sky: boolean } | null;
+  /** Riding a caught sky legendary: its species id while mounted. */
+  riding: string | null;
+  /** The player owns at least one rideable sky legendary. */
+  rideAvail: boolean;
+  /** The mount picker overlay is open. */
+  ridePicker: boolean;
   party: {
     list: string[];
     downed: string[];
@@ -114,7 +122,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, catchMode: true, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, catchMode: true, fps: 60, ecoSummary: [] },
   toasts: [],
   lastCatch: null,
   completeStats: null,

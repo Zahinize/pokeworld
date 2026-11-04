@@ -298,6 +298,10 @@ a { color: var(--aqua); }
 .chip b { color: var(--text); }
 .chip.alert { background: rgba(244,63,94,.22); border-color: rgba(244,63,94,.55); color: #ffd0d8; animation: pulse 1.2s ease-in-out infinite; }
 .chip.lure-active { background: rgba(179,136,255,.22); border-color: rgba(179,136,255,.55); color: #e6d9ff; }
+/* ride a caught sky legendary: the standing offer and the in-flight status */
+.chip.ride-chip { background: rgba(127,240,201,.12); border-color: rgba(127,240,201,.4); color: #d7fff0; cursor: pointer; }
+.chip.ride-chip:hover { background: rgba(127,240,201,.22); }
+.chip.ride-chip b { color: #7ff0c9; }
 .icon-btn { width: 42px; height: 42px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); display: grid; place-items: center; font-size: 18px; color: var(--text); }
 .crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
 .crosshair::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.75); box-shadow: 0 0 8px rgba(0,0,0,.5), inset 0 0 8px rgba(0,0,0,.3); }
