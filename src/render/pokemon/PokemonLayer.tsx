@@ -125,6 +125,8 @@ const planeGeo = new THREE.PlaneGeometry(1, 1);
 const tmpM = new THREE.Matrix4();
 const facingMemo = new Map<number, number>();
 const tiltMemo = new Map<number, number>();
+/** Partner pose: true while the partner is clearly swimming TOWARD the trainer (show its face). */
+const partnerFrontMemo = new Map<number, boolean>();
 
 // ------------------------------------------------------------------ grounding shadows
 const SHADOW_CAP = 256;
@@ -247,13 +249,28 @@ export function PokemonLayer() {
     const time = state.clock.elapsedTime;
     camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
 
-    // Count per batch key (partners swim ahead of you showing their backs; they turn for duels; shinies sparkle)
+    // Partners show their BACK while swimming with you or idling at your side, but their FRONT while
+    // catching up from behind — a lagging companion chasing the trainer should look at them, not away.
+    // Hysteresis on closing speed + distance keeps the sheet from flickering at the boundary.
+    const partnerShowsBack = (e: (typeof eco.alive)[number]) => {
+      if (e.duelWith >= 0) return false;                 // duels always face the opponent
+      const p = eco.player;
+      const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z;
+      const dist = Math.hypot(dx, dy, dz) || 0.001;
+      const closing = (e.vx * dx + e.vy * dy + e.vz * dz) / dist;   // m/s toward the trainer
+      let front = partnerFrontMemo.get(e.id) ?? false;
+      if (closing > 1.1 && dist > 3.5) front = true;                // clearly chasing from behind
+      else if (closing < 0.35 || dist < 2.2) front = false;         // arrived / idling / swimming along
+      partnerFrontMemo.set(e.id, front);
+      return !front;
+    };
     const keyOf = (e: (typeof eco.alive)[number]) => {
+      const back = e.role === 'partner' && partnerShowsBack(e);
       if (e.isShiny) {
-        if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
+        if (back && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
         if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');
       }
-      if (e.role === 'partner' && e.duelWith < 0 && session.sheets.has(sheetKey(e.species.id, 'back'))) return sheetKey(e.species.id, 'back');
+      if (back && session.sheets.has(sheetKey(e.species.id, 'back'))) return sheetKey(e.species.id, 'back');
       return e.species.id;
     };
     const counts = new Map<string, number>();
