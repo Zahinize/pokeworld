@@ -5,14 +5,15 @@
  * generic rear-back. All flourishes are driven through existing per-instance sprite levers
  * (sheet front/back, mirror flip, in-plane tilt, scale) — no new art, no new shader work.
  *
- *  - revolve: fakes a full yaw spin by cycling front → mirrored → back → back-mirrored with
- *    foreshortening squash (the Gyarados coil-up). Whole revolutions always land facing front.
+ *  - dance:   the dragon dance — an accelerating rising orbit around its own anchor, banking
+ *    into the turn with power visibly building as glow, landing home exactly at release.
+ *    Continuous motion only (like twirl, the benchmark): no sheet swaps, nothing pops.
  *  - coil:    rolls the body into a C and compresses, then springs on release (seahorses, eels).
  *  - pump:    two sharp bell-pulses of scale, jellyfish charging a jet.
  *  - shiver:  a tense high-frequency tremble layered over the normal rear-back (the ice crew).
  *  - twirl:   continuous accelerating in-plane rotation — Starmie literally spins to attack.
  */
-export type CastFlourishKind = 'revolve' | 'coil' | 'pump' | 'shiver' | 'twirl';
+export type CastFlourishKind = 'dance' | 'coil' | 'pump' | 'shiver' | 'twirl';
 
 export interface CastFlourish {
   kind: CastFlourishKind;
@@ -21,13 +22,13 @@ export interface CastFlourish {
   signatureWindup?: number;
 }
 
-/** Seconds per faked revolution: 4 pose changes per turn stay readable down to ~0.4s. */
-export const REVOLVE_PERIOD = 0.5;
+/** Seconds per dance orbit: signature wind-ups fit whole loops so the orbit lands home at release. */
+export const DANCE_PERIOD = 0.5;
 
 export const CAST_FLOURISH: Record<string, CastFlourish> = {
-  // the showpiece: two full coiling revolutions before the big blast
-  gyarados: { kind: 'revolve', signatureWindup: 1.0 },
-  basculegion: { kind: 'revolve' },
+  // the showpiece: two rising, quickening loops of the dragon dance before the big blast
+  gyarados: { kind: 'dance', signatureWindup: 1.0 },
+  basculegion: { kind: 'dance' },
 
   // serpents and seahorses wind into a coil and spring
   kingdra: { kind: 'coil' },

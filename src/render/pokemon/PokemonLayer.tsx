@@ -9,7 +9,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { COMBAT } from '@/data/combatConfig';
 import { sheetKey } from './sprites';
-import { CAST_FLOURISH, REVOLVE_PERIOD } from '@/data/personality';
+import { CAST_FLOURISH, DANCE_PERIOD } from '@/data/personality';
 import { floorY } from '@/engine/world/terrain';
 import { GAME } from '@/data/gameConfig';
 import type { SpriteSheet } from './sprites';
@@ -131,34 +131,41 @@ const partnerFrontMemo = new Map<number, boolean>();
 
 // ------------------------------------------------------------------ cast flourishes
 interface FlourishPose {
-  back: boolean;        // show the back sheet this instant (revolve's far side)
-  flip: number | null;  // override the facing mirror (±1), or null to keep velocity facing
   tilt: number;         // added in-plane roll
   scale: number;        // multiplied onto sprite scale (squash / pulses)
+  dx: number; dy: number; dz: number; // world-space offset from the entity's anchor
+  glow: number;         // charging-power aura (floors the instance glow)
   keepCastTilt: boolean;// shiver layers OVER the rear-back; the others replace it
 }
-const flPose: FlourishPose = { back: false, flip: null, tilt: 0, scale: 1, keepCastTilt: false };
+const flPose: FlourishPose = { tilt: 0, scale: 1, dx: 0, dy: 0, dz: 0, glow: 0, keepCastTilt: false };
 
 /**
- * The species' wind-up choreography at `now` — pure math on (entity, time) so the two keyOf
- * passes and the instance loop all agree within a frame. Returns null outside a flourishing
- * wind-up; the release whip after castAt is untouched.
+ * The species' wind-up choreography at `now` — continuous transforms only (tilt, scale,
+ * offset, glow), never sheet swaps: smooth motion is what makes the twirl read well.
+ * Pure math on (entity, time); null outside a flourishing wind-up. The release whip after
+ * castAt is untouched.
  */
 function flourishPose(e: Entity, now: number, f: number): FlourishPose | null {
   const fl = CAST_FLOURISH[e.species.id];
   if (!fl || e.castAt <= 0 || now >= e.castAt || now < e.castFrom) return null;
   const dur = Math.max(e.castAt - e.castFrom, 0.001);
   const p = (now - e.castFrom) / dur;
-  flPose.back = false; flPose.flip = null; flPose.tilt = 0; flPose.scale = 1; flPose.keepCastTilt = false;
+  flPose.tilt = 0; flPose.scale = 1; flPose.dx = 0; flPose.dy = 0; flPose.dz = 0; flPose.glow = 0; flPose.keepCastTilt = false;
   switch (fl.kind) {
-    case 'revolve': {
-      // whole revolutions across the window (always lands facing front at release)
-      const revs = Math.max(1, Math.round(dur / REVOLVE_PERIOD));
-      const th = p * revs * Math.PI * 2;
-      const c = Math.cos(th);
-      flPose.back = c < 0;
-      flPose.flip = f * (Math.sin(th) >= 0 ? 1 : -1);
-      flPose.scale = 0.84 + 0.16 * Math.abs(c);           // foreshorten at the quarter turns
+    case 'dance': {
+      // the dragon dance: a rising orbit that quickens toward the strike, banking into the
+      // turn, power building as glow. The radius envelope opens and closes, so the body
+      // leaves home gently and lands home EXACTLY at release — the whip fires from center.
+      const loops = Math.max(1, Math.round(dur / DANCE_PERIOD));
+      const ph = p * p * loops * Math.PI * 2;              // accelerating, like the twirl
+      const env = Math.sin(p * Math.PI);
+      const r = Math.min(1.1, e.species.size * 0.3 + 0.25) * env;
+      flPose.dx = Math.cos(ph + e.phase) * r;
+      flPose.dz = Math.sin(ph + e.phase) * r;
+      flPose.dy = 0.22 * Math.min(2.5, e.species.size) * env;  // lifts through the dance
+      flPose.tilt = f * Math.sin(ph) * 0.38;               // banks into the circle — the sway
+      flPose.scale = 1 + 0.05 * Math.sin(ph * 2);          // breath
+      flPose.glow = 0.5 * p;                               // power visibly gathering
       break;
     }
     case 'coil':
@@ -316,9 +323,7 @@ export function PokemonLayer() {
       return !front;
     };
     const keyOf = (e: (typeof eco.alive)[number]) => {
-      // a flourishing wind-up owns the sheet (revolve shows its far side mid-spin)
-      const fl = flourishPose(e, eco.time, 1);
-      const back = fl ? fl.back : e.role === 'partner' && partnerShowsBack(e);
+      const back = e.role === 'partner' && partnerShowsBack(e);
       if (e.isShiny) {
         if (back && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
         if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');
@@ -353,9 +358,8 @@ export function PokemonLayer() {
       let f = facingMemo.get(e.id) ?? 1;
       if (dot > 0.25) f = -1; else if (dot < -0.25) f = 1;
       facingMemo.set(e.id, f);
-      // species cast flourish (revolve / coil / pump / shiver / twirl) during the wind-up
+      // species cast flourish (dance / coil / pump / shiver / twirl) during the wind-up
       const fl = flourishPose(e, eco.time, f);
-      if (fl?.flip != null) f = fl.flip;
       // the reef giants shrink further as companions so they don't wall off the screen
       const partnerScale = e.role === 'partner' ? 0.62 * (COMBAT.COMPANION_GIANT_SHRINK[e.species.id] ?? 1) : 1;
       let alpha = 1, scale = e.species.size * e.scaleMul * partnerScale, y = e.y;
@@ -374,7 +378,7 @@ export function PokemonLayer() {
       }
       // gentle idle bob so even resting Pokémon breathe
       y += Math.sin(time * 1.3 + e.phase * 7) * 0.06 * Math.min(1.5, e.species.size);
-      tmpM.makeTranslation(e.x, y + scale * 0.5 - e.species.size * 0.5, e.z);
+      tmpM.makeTranslation(e.x + (fl?.dx ?? 0), y + scale * 0.5 - e.species.size * 0.5 + (fl?.dy ?? 0), e.z + (fl?.dz ?? 0));
       b.mesh.setMatrixAt(i, tmpM);
       b.aPhase.array[i] = e.phase * 10;
       b.aFlip.array[i] = f;
@@ -382,7 +386,7 @@ export function PokemonLayer() {
       b.aFlash.array[i] = e.flashT > 0 ? Math.min(1, e.flashT * 2.5) * 0.8 : 0;
       // partners keep their TRUE colors — their presence is marked by a golden halo, not a tint
       const shinyGlow = e.isShiny ? 0.22 + 0.12 * Math.sin(time * 3.5 + e.phase * 5) : 0;
-      const glow = Math.max(shinyGlow, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
+      const glow = Math.max(shinyGlow, fl?.glow ?? 0, e.isBoss ? 0.18 + night * 0.3 + (e.state === 'charging' ? 0.5 : 0)
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
         : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
 
@@ -418,7 +422,7 @@ export function PokemonLayer() {
         b.aTilt.array[i] = tNow + castTilt;
       }
       if (glow > 0.05 && haloN < halo.cap) {
-        tmpM.makeTranslation(e.x, y, e.z);
+        tmpM.makeTranslation(e.x + (fl?.dx ?? 0), y + (fl?.dy ?? 0), e.z + (fl?.dz ?? 0));
         halo.mesh.setMatrixAt(haloN, tmpM);
         halo.aSize.array[haloN] = e.species.size * 3.5 + 1.5;
         halo.aAlpha.array[haloN] = glow * 0.55;
