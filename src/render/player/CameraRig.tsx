@@ -32,6 +32,12 @@ export function CameraRig() {
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       keys.current.add(e.code);
       const s = store();
+      // the ride stable owns Z/X/C/V while open — pick a bird without pausing or clicking
+      if (s.hud.ridePicker) {
+        const idx = ['KeyZ', 'KeyX', 'KeyC', 'KeyV'].indexOf(e.code);
+        if (idx >= 0) { const id = session.rideOptions[idx]; if (id) session.mount(id); return; }
+        if (e.code === 'Escape') { s.setHud({ ridePicker: false }); return; }
+      }
       if (e.code === 'Tab') { e.preventDefault(); if (session.phase === 'playing' || session.phase === 'paused') s.setOverlay(s.overlay === 'mission' ? 'none' : 'mission'); }
       if (e.code === 'KeyE') session.activateLure();
       if (e.code === 'KeyM' && (session.phase === 'playing' || session.phase === 'paused')) { const st = store(); st.setSettings({ missionCollapsed: !st.save.settings.missionCollapsed }); }

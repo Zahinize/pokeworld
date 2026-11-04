@@ -617,25 +617,27 @@ export class GameSession {
     return SPECIES_LIST.filter((sp) => sp.skyOnly && sp.rarity === 'legendary' && (col[sp.id]?.caught ?? 0) > 0).map((sp) => sp.id);
   }
 
-  /** B key / HUD chip: dismount if riding, mount straight away with one bird, else open the picker. */
+  /** B key / HUD chip (surface only): dismount if riding, mount straight away with one bird,
+   *  else open the hotkey stable — gameplay never pauses, Z/X/C/V picks the bird. */
   toggleRide() {
     if (this.phase !== 'playing' || this.recoveringT > 0) return;
     const store = useStore.getState();
     if (this.ride) { this.dismount(); return; }
     if (store.hud.ridePicker) { store.setHud({ ridePicker: false }); return; }
+    if (!this.eco?.playerAtSurface) return;   // the call only works from the open air
     const options = this.rideOptions;
     if (options.length === 0) {
       store.pushToast({ kind: 'warn', title: 'No sky legendary yet', body: 'Catch one crossing the sky, then ride it above the waves.', ttl: 4 });
       return;
     }
     if (options.length === 1) { this.mount(options[0]); return; }
-    releasePointer();
     store.setHud({ ridePicker: true });
   }
 
-  /** Climb onto a caught sky legendary and take to the air. */
+  /** Climb onto a caught sky legendary and take to the air (from the surface). */
   mount(speciesId: string) {
     if (this.phase !== 'playing' || this.recoveringT > 0 || !this.rideOptions.includes(speciesId)) return;
+    if (!this.ride && !this.eco?.playerAtSurface) return;
     const sp = getSpecies(speciesId);
     if (!this.sheets.has(speciesId)) loadSpriteSheet(speciesId, 'front').then((sh) => this.sheets.set(speciesId, sh));
     this.ride = speciesId;
@@ -1679,6 +1681,8 @@ export class GameSession {
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,
       catchMode: this.catchingAllowed,
       riding: this.ride, rideAvail: this.rideOptions.length > 0,
+      // diving closes the stable — the call only works from the open air
+      ...(store.hud.ridePicker && !this.ride && !eco.playerAtSurface ? { ridePicker: false } : null),
     });
   }
 

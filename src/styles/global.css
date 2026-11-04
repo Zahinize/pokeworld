@@ -302,6 +302,13 @@ a { color: var(--aqua); }
 .chip.ride-chip { background: rgba(127,240,201,.12); border-color: rgba(127,240,201,.4); color: #d7fff0; cursor: pointer; }
 .chip.ride-chip:hover { background: rgba(127,240,201,.22); }
 .chip.ride-chip b { color: #7ff0c9; }
+/* the hotkey stable: pick a bird with Z/X/C/V while the dive keeps running */
+.ride-stable { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-color: rgba(127,240,201,.35); animation: fadeUp .25s ease both; }
+.ride-stable .eyebrow { color: #7ff0c9; }
+.ride-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 10px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--text); }
+.ride-row:hover { background: rgba(127,240,201,.14); border-color: rgba(127,240,201,.4); }
+.ride-row .rn { font-weight: 800; font-size: 13px; }
+.ride-row .rs { margin-left: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .icon-btn { width: 42px; height: 42px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); display: grid; place-items: center; font-size: 18px; color: var(--text); }
 .crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
 .crosshair::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.75); box-shadow: 0 0 8px rgba(0,0,0,.5), inset 0 0 8px rgba(0,0,0,.3); }

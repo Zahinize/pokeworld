@@ -270,28 +270,25 @@ export function SkyLifeLayer() {
         }
       }
     }
-    // the mount: your caught legendary flies under the camera, carrying you where you look
+    // the mount: your caught legendary is pinned to the BOTTOM of the view in camera space —
+    // whatever way you look, its face is up at you and its body carries the screen's lower edge
     if (ride) {
       const bt = batches.current.get(ride);
       if (bt && bt.mesh.count < bt.capacity) {
         const p = session.player;
         const sp = getSpecies(ride);
         const size = Math.min(4.6, sp.size * 0.8);
-        const [fx0, , fz0] = p.forward();
-        const fl = Math.hypot(fx0, fz0) || 1;
-        const ax = fx0 / fl, az = fz0 / fl;
-        const bob = Math.sin(time * 2.2) * 0.14;      // wingbeat ride
+        const ce = state.camera.matrixWorld.elements;
+        const cfx = -ce[8], cfy = -ce[9], cfz = -ce[10];   // camera forward
+        const cux = ce[4], cuy = ce[5], cuz = ce[6];       // camera up
+        const cp = state.camera.position;
+        const d = size * 0.8;                              // ahead of the lens…
+        const drop = size * 0.5 + Math.sin(time * 2.2) * 0.12;  // …and down to the screen's bottom, wingbeat bob
         const i = bt.mesh.count++;
-        tmpM.makeTranslation(p.x + ax * size * 0.62, p.y - size * 0.52 + bob, p.z + az * size * 0.62);
+        tmpM.makeTranslation(cp.x + cfx * d - cux * drop, cp.y + cfy * d - cuy * drop, cp.z + cfz * d - cuz * drop);
         bt.mesh.setMatrixAt(i, tmpM);
-        const camRightX = state.camera.matrixWorld.elements[0];
-        const camRightZ = state.camera.matrixWorld.elements[2];
-        const dotR = p.vx * camRightX + p.vz * camRightZ;
-        let fm = flipMemo.get(-7) ?? 1;
-        if (dotR > 0.6) fm = -1; else if (dotR < -0.6) fm = 1;
-        flipMemo.set(-7, fm);
         bt.aPhase.array[i] = 0;
-        bt.aFlip.array[i] = fm;
+        bt.aFlip.array[i] = 1;                             // its face stays on you — no mirror flicker
         bt.aAlpha.array[i] = 1;
         bt.aSize.array[i] = size;
         // its legendary wake streams behind you at speed

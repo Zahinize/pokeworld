@@ -241,33 +241,25 @@ function RecoveryOverlay() {
   );
 }
 
-/** Pick which caught sky legendary to ride (B opens it when you own more than one). */
-function RidePicker() {
+/** The hotkey stable: a corner panel that never pauses the dive — Z/X/C/V mounts (tap works on touch). */
+function RideStable({ isTouch }: { isTouch: boolean }) {
   const open = useStore((s) => s.hud.ridePicker);
-  const setHud = useStore((s) => s.setHud);
   if (!open) return null;
-  const options = session.rideOptions;
+  const options = session.rideOptions.slice(0, 4);
+  const KEYS = ['Z', 'X', 'C', 'V'];
   return (
-    <div className="overlay interactive" style={{ zIndex: 40 }} onClick={() => setHud({ ridePicker: false })}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: 'min(100%, 540px)' }}>
-        <Panel className="panel strong" style={{ padding: 20 }}>
-          <div className="row between" style={{ marginBottom: 8 }}>
-            <div><div className="eyebrow">Sky Legendaries</div><h2 className="title" style={{ fontSize: 24 }}>Choose your ride</h2></div>
-            <button className="btn ghost" style={{ minHeight: 34, padding: '0 12px' }} onClick={() => { Audio.uiClick(); setHud({ ridePicker: false }); }}>✕</button>
-          </div>
-          <div className="party-grid" style={{ maxHeight: 'none', overflow: 'visible' }}>
-            {options.map((id) => (
-              <button key={id} className="card clickable party-cell" onClick={() => { Audio.uiConfirm(); session.mount(id); }}>
-                <SpriteImg id={id} size={56} />
-                <span className="n">{SPECIES[id].name}</span>
-                <span className="stat">{Math.round(Math.max(9, SPECIES[id].speed))} m/s</span>
-              </button>
-            ))}
-          </div>
-          <p className="muted small" style={{ marginTop: 12 }}>Fly where you look, above the waves. Press <span className="kbd">B</span> again to land.</p>
-        </Panel>
-      </div>
-    </div>
+    <Panel className="ride-stable interactive strong">
+      <div className="eyebrow">Choose your ride</div>
+      {options.map((id, i) => (
+        <button key={id} className="ride-row" onClick={() => { Audio.uiConfirm(); session.mount(id); }}>
+          {!isTouch && <span className="kbd">{KEYS[i]}</span>}
+          <SpriteImg id={id} size={26} />
+          <span className="rn">{SPECIES[id].name}</span>
+          <span className="rs">{Math.round(Math.max(9, SPECIES[id].speed))} m/s</span>
+        </button>
+      ))}
+      <div className="dim small">{isTouch ? 'Tap to take off' : 'Press a key to take off · B closes'}</div>
+    </Panel>
   );
 }
 
@@ -377,13 +369,14 @@ function StatusChips() {
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert"><Ic icon={AlertTriangle} size={13} /> <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
       {hud.lureRemaining > 0 && <span className="chip lure-active"><Ic icon={Sparkles} size={13} /> {isTouch ? '' : 'Lure active · '}{Math.ceil(hud.lureRemaining)}s</span>}
-      {(hud.riding || hud.rideAvail) && (
+      {(hud.riding || (hud.rideAvail && hud.depth < 1.2)) && (
         <button className="chip ride-chip interactive" onClick={() => { Audio.uiClick(); session.toggleRide(); }}>
           {hud.riding
             ? <><SpriteImg id={hud.riding} size={22} /> Riding <b>{SPECIES[hud.riding].name}</b>{!isTouch && <span className="kbd">B</span>}</>
             : <>🕊 Ride a Sky Legendary{!isTouch && <span className="kbd">B</span>}</>}
         </button>
       )}
+      <RideStable isTouch={isTouch} />
       <RestoreBanner />
       <CatchCard />
       <Toasts />
@@ -507,7 +500,6 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
       )}
       <BossIntro />
       <RecoveryOverlay />
-      <RidePicker />
       {overlay === 'pause' && <PauseOverlay onQuit={onQuit} />}
       {overlay === 'collection' && <div className="overlay"><CollectionView embedded onClose={() => { setOverlay('pause'); }} /></div>}
       {overlay === 'settings' && <div className="overlay"><div style={{ width: 'min(100%, 600px)' }}><SettingsView embedded onClose={() => setOverlay('pause')} /></div></div>}
