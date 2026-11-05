@@ -280,13 +280,15 @@ export function SkyLifeLayer() {
       if (bt && bt.mesh.count < bt.capacity) {
         const p = session.player;
         const sp = getSpecies(ride);
-        const size = Math.min(4.6, sp.size * 0.8);
+        const size = Math.min(5.2, sp.size * 0.9);
         const ce = state.camera.matrixWorld.elements;
         const cfx = -ce[8], cfy = -ce[9], cfz = -ce[10];   // camera forward
         const cux = ce[4], cuy = ce[5], cuz = ce[6];       // camera up
         const cp = state.camera.position;
-        const d = size * 0.8;                              // ahead of the lens…
-        const drop = size * 0.5 + Math.sin(time * 2.2) * 0.12;  // …and down to the screen's bottom, wingbeat bob
+        // saddle view: close and low, so only the head, a bit of neck and the wing roots
+        // rise into the frame — the body is beneath you, out of shot, like a real mount
+        const d = size * 0.5;                              // right under the lens…
+        const drop = size * 0.34 + Math.sin(time * 2.2) * 0.1;  // …head cresting the frame, wingbeat bob
         const i = bt.mesh.count++;
         tmpM.makeTranslation(cp.x + cfx * d - cux * drop, cp.y + cfy * d - cuy * drop, cp.z + cfz * d - cuz * drop);
         bt.mesh.setMatrixAt(i, tmpM);
