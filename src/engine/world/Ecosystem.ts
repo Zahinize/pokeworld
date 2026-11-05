@@ -67,7 +67,7 @@ export class Ecosystem {
     this.ctx = {
       time: 0, isNight: false, nightness: 0, player: this.player, rng: rngFn, obstacles: this.obstacles,
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
-      predatorGraceOver: false, current: this.current,
+      predatorGraceOver: false, current: this.current, ferry: null,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
       cast: (e, slot, target) => this.moves.cast(e, slot, target),
       pickMove: (e, dist, preferUtility, damageOnly) => this.moves.pickMove(e, dist, preferUtility, damageOnly),
@@ -341,6 +341,10 @@ export class Ecosystem {
     // Rebuild spatial hash with live, interactable entities
     this.hash.clear();
     for (const e of this.alive) if (e.state !== 'ko' && e.state !== 'caught') this.hash.insert(e);
+
+    // A surfaced ferry Lapras draws the little ones to its side
+    ctx.ferry = null;
+    for (const e of this.alive) if (e.state === 'ferry') { ctx.ferry = e; break; }
 
     // Groups (~4Hz)
     this.groupThinkAcc += dt;

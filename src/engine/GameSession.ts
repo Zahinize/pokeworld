@@ -157,6 +157,7 @@ export class GameSession {
   private saveAcc = 0;
   private completeTimer = -1;
   private huntToastCooldown = 0;
+  private ballToastCooldown = 0;
   private hintStep = 0;
   private hintTimer = 0;
   private listeners = new Set<() => void>();
@@ -1089,6 +1090,7 @@ export class GameSession {
     this.updateRestoration();
     this.updateHints(dt);
     if (this.huntToastCooldown > 0) this.huntToastCooldown -= dt;
+    if (this.ballToastCooldown > 0) this.ballToastCooldown -= dt;
     if (this.phase === 'completing') {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
@@ -1286,7 +1288,21 @@ export class GameSession {
         }
         case 'alarm': {
           const g = eco.groups[ev.groupId];
-          if (g && near(eco.byId.get(g.memberIds[0]) ?? eco.byId.get(g.guardianId), 40)) Audio.alarm();
+          const first = g ? eco.byId.get(g.memberIds[0]) ?? eco.byId.get(g.guardianId) : undefined;
+          if (g && near(first, 40)) Audio.alarm();
+          // Wishiwashi answer alarm by massing, not fleeing — call it out the first time it's seen
+          if (g?.speciesId === 'wishiwashi' && g.memberIds.length >= 3 && near(first, 55) && this.ballToastCooldown <= 0) {
+            this.ballToastCooldown = 45;
+            store.pushToast({ kind: 'event', title: 'The Wishiwashi school forms up!', body: 'Alone they are nearly nothing — together they are a wall.', speciesId: 'wishiwashi', ttl: 4 });
+          }
+          break;
+        }
+        case 'ferry': {
+          const e = eco.byId.get(ev.entityId);
+          if (near(e, 90)) {
+            Audio.playCry(getSpecies('lapras').dexId, 0.3);
+            store.pushToast({ kind: 'event', title: 'A Lapras rises to the surface', body: 'The reef’s gentle ferry — the little ones are gathering alongside.', speciesId: 'lapras', ttl: 5 });
+          }
           break;
         }
         case 'huntStart': {
@@ -1548,6 +1564,29 @@ export class GameSession {
           break;
         }
         case 'legendaryVanish': break;
+        case 'dive': {
+          // a sea bird crashes through the surface after prey — splash, panic in the shallows,
+          // and sometimes it actually comes up with breakfast
+          if (p.y > -8 && len3(ev.x - p.x, ev.y - p.y, ev.z - p.z) < 90) Audio.miss(); // the plop carries near the surface
+          this.pushFx('hit', ev.x, 0, ev.z, 1.6, '#cfeaff');
+          const eco = this.eco;
+          if (eco) {
+            let snatched: Entity | null = null;
+            for (const t of eco.alive) {
+              if (t.y < -4 || t.species.stage !== 0 || t.species.size > 1.0 || t.role === 'partner') continue;
+              if (t.state === 'ko' || t.state === 'caught' || t.state === 'captureAttempt') continue;
+              const dd = len3(t.x - ev.x, 0, t.z - ev.z);
+              if (dd > SKY.DIVE.SCARE_RADIUS) continue;
+              const k = (SKY.DIVE.SCARE_RADIUS - dd) / SKY.DIVE.SCARE_RADIUS;
+              const dn = dd || 1;
+              t.vx += ((t.x - ev.x) / dn) * 4 * k; t.vy -= 2.5 * k; t.vz += ((t.z - ev.z) / dn) * 4 * k;
+              if (t.groupId >= 0) { const g = eco.groups[t.groupId]; g.alarm = Math.max(g.alarm, 0.6); }
+              if (!snatched && t.ambient && !t.objectiveId && dd < SKY.DIVE.SNATCH_RADIUS && t.y > -3) snatched = t;
+            }
+            if (snatched) { snatched.state = 'caught'; snatched.stateT = 0; snatched.animT = 0; } // the bird got one
+          }
+          break;
+        }
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true);

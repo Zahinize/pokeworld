@@ -8,7 +8,7 @@ export type EntityState =
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
-  | 'inflate' | 'support' | 'lured' | 'breach'
+  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferry'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -158,6 +158,7 @@ export type EcoEvent =
   | { type: 'reinforce'; speciesId: string; count: number; objectiveId?: string }
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
+  | { type: 'ferry'; entityId: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

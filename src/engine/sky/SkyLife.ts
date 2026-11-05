@@ -9,7 +9,7 @@ import { SKY } from '@/data/sky';
 import { RNG } from '../rng';
 import type { LightingState } from '../world/lighting';
 
-export type SkyBirdState = 'flying' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'rampage' | 'gone';
+export type SkyBirdState = 'flying' | 'diving' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'rampage' | 'gone';
 
 export interface SkyBird {
   id: number;
@@ -34,6 +34,8 @@ export interface SkyBird {
   failedBalls: number;
   // ducklett wander heading
   heading: number;
+  /** Dive-hunt: splash target and phase (0 none, 1 plunging, 2 climbing out). */
+  dtx: number; dtz: number; divePhase: 0 | 1 | 2;
 }
 
 interface Flock {
@@ -46,6 +48,8 @@ interface Flock {
   angVel: number;
   mode: 'circling' | 'exiting' | 'absent';
   cryT: number;
+  /** Seconds until one member folds its wings and plunges for a fish. */
+  diveT: number;
   /** Seconds until an absent flock (or a poached member) returns from the horizon. */
   refillT: number;
   exitBearing: number;
@@ -56,6 +60,7 @@ export type SkyEvent =
   | { type: 'legendaryEnter'; speciesId: string }
   | { type: 'legendaryVanish'; speciesId: string }
   | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number }
+  | { type: 'dive'; speciesId: string; birdId: number; x: number; y: number; z: number }
   | { type: 'legendaryRampage'; speciesId: string }
   | { type: 'legendaryBlast'; speciesId: string; birdId: number; x: number; y: number; z: number };
 
@@ -101,6 +106,7 @@ export class SkyLife {
         angle: this.rng.next() * Math.PI * 2,
         angVel: (spec.speed / this.rng.range(spec.orbitR[0], spec.orbitR[1])) * (this.rng.chance(0.5) ? 1 : -1),
         mode: 'circling', cryT: this.rng.range(SKY.FLOCK_CRY_PERIOD[0], SKY.FLOCK_CRY_PERIOD[1]),
+        diveT: this.rng.range(SKY.DIVE.PERIOD[0], SKY.DIVE.PERIOD[1]),
         refillT: 0, exitBearing: this.rng.next() * Math.PI * 2,
       };
       const n = this.rng.int(spec.count[0], spec.count[1]);
@@ -131,7 +137,7 @@ export class SkyLife {
       x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0,
       state: 'flying', stateT: 0, flockId, phase,
       r: rendered * 0.42 + 0.55, vis: rendered, legendary,
-      fade: 0, heading: 0,
+      fade: 0, heading: 0, dtx: 0, dtz: 0, divePhase: 0,
       hp: this.hpOf(speciesId), maxHp: this.hpOf(speciesId), failedBalls: 0,
     };
     this.birds.push(b);
@@ -145,7 +151,7 @@ export class SkyLife {
         const b = this.birds[i];
         b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
-        b.hp = b.maxHp; b.failedBalls = 0;
+        b.hp = b.maxHp; b.failedBalls = 0; b.divePhase = 0;
         return i;
       }
     }
@@ -190,10 +196,47 @@ export class SkyLife {
         const m = this.birds[f.members[this.rng.int(0, f.members.length - 1)]];
         if (m && m.state === 'flying') this.events.push({ type: 'cry', dexId: SPECIES[f.speciesId].dexId, x: m.x, y: m.y, z: m.z });
       }
+      // dive-hunt: now and then one bird folds its wings and plunges for a fish in the shallows
+      f.diveT -= dt;
+      if (f.diveT <= 0 && f.mode === 'circling') {
+        f.diveT = this.rng.range(SKY.DIVE.PERIOD[0], SKY.DIVE.PERIOD[1]);
+        const cand = f.members.map((i) => this.birds[i]).filter((b) => b.state === 'flying' && b.fade > 0.7);
+        if (cand.length) {
+          const b = cand[this.rng.int(0, cand.length - 1)];
+          const a = this.rng.next() * Math.PI * 2, r = this.rng.range(4, 14);
+          b.dtx = b.x + Math.cos(a) * r; b.dtz = b.z + Math.sin(a) * r;
+          b.state = 'diving'; b.divePhase = 1; b.stateT = 0;
+        }
+      }
       f.angle += f.angVel * dt;
       let anyLeft = false;
       for (let i = 0; i < f.members.length; i++) {
         const b = this.birds[f.members[i]];
+        if (b.state === 'diving') {
+          anyLeft = true;
+          b.stateT += dt;
+          if (b.divePhase === 1) {
+            // wings folded, straight down at the glitter under the surface
+            const k = Math.min(1, dt * 3.2);
+            const dx2 = b.dtx - b.x, dy2 = -0.3 - b.y, dz2 = b.dtz - b.z;
+            const dl = Math.hypot(dx2, dy2, dz2) || 1;
+            const sp = SKY.DIVE.PLUNGE_SPEED;
+            b.vx += ((dx2 / dl) * sp - b.vx) * k; b.vy += ((dy2 / dl) * sp - b.vy) * k; b.vz += ((dz2 / dl) * sp - b.vz) * k;
+            b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+            if (b.y <= 0.35 || b.stateT > 4) {
+              b.divePhase = 2; b.stateT = 0;
+              this.events.push({ type: 'dive', speciesId: b.speciesId, birdId: b.id, x: b.x, y: 0.1, z: b.z });
+            }
+          } else {
+            // climb out, prize or no prize — the wheel steering reels it back into formation
+            const k = Math.min(1, dt * 2.0);
+            b.vy += (8 - b.vy) * k;
+            b.vx *= 1 - Math.min(0.9, dt * 0.6); b.vz *= 1 - Math.min(0.9, dt * 0.6);
+            b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+            if (b.y >= f.alt - 3 || b.stateT > 6) { b.state = 'flying'; b.stateT = 0; b.divePhase = 0; }
+          }
+          continue;
+        }
         if (b.state !== 'flying' && b.state !== 'fleeing') { if (b.state !== 'gone') anyLeft = true; continue; }
         b.stateT += dt;
         if (b.state === 'fleeing' || f.mode === 'exiting') {
@@ -355,7 +398,7 @@ export class SkyLife {
   /** The first catchable bird whose hit sphere contains the point, or null. */
   hitTest(x: number, y: number, z: number): SkyBird | null {
     for (const b of this.birds) {
-      if (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage') continue;
+      if (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage') continue;
       if (b.fade < 0.5) continue; // half-materialized birds aren't solid yet
       // the sprite is drawn from b.y upward — test against the middle of the visible body
       const dx = b.x - x, dy = b.y + b.vis * 0.45 - y, dz = b.z - z;
@@ -428,7 +471,7 @@ export class SkyLife {
    *  a kill by a rampaging legendary's storm is just a death — no collection entry. */
   applyDamage(id: number, dmg: number, credit = true) {
     const b = this.birds.find((x) => x.id === id);
-    if (!b || (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage')) return;
+    if (!b || (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage')) return;
     b.hp -= dmg;
     if (b.hp <= 0) {
       b.hp = 0;

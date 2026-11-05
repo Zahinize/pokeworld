@@ -27,6 +27,17 @@ export const SKY = {
   ],
   /** Seconds between chatter cries per flock (random in range). */
   FLOCK_CRY_PERIOD: [7, 16] as [number, number],
+  /** Dive-hunting: every so often one flock member plunges through the surface after a small fish. */
+  DIVE: {
+    /** Seconds between dives per flock (random in range). */
+    PERIOD: [22, 48] as [number, number],
+    /** Plunge speed (m/s) — wings folded, a proper gannet strike. */
+    PLUNGE_SPEED: 26,
+    /** Shallow fish inside this radius of the splash scatter in panic. */
+    SCARE_RADIUS: 7,
+    /** An ambient stage-0 fish this close to the splash point gets snatched — breakfast. */
+    SNATCH_RADIUS: 2.4,
+  },
   FLOCK_CRY_VOLUME: 0.16,
   /** Flocks despawn past this radius when exiting at dusk. */
   EXIT_DESPAWN_R: 280,
