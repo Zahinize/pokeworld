@@ -29,5 +29,6 @@ export const LEVEL_2: LevelConfig = {
     defensive: 1,
   },
   playerStart: { zone: 'openReef', depth: 16 },
+  ferry: true,
   status: 'playable',
 };

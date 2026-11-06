@@ -742,7 +742,7 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT;
       seek(e, e.target.x, top, e.target.z, 2.0, 1.0);
       speed = s.burst * GAME.FERRY_RISE_SPEED_MULT;
-      e.wakeT = 0.6;
+      e.wakeT = 1.0;
       ferryCall(e, ctx, dt);
       const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
       const riseMax = ctx.time < 100 ? GAME.FERRY_FIRST_RISE_TIMEOUT : GAME.FERRY_RISE_TIMEOUT; // the first crossing may be long
@@ -784,7 +784,7 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT + Math.sin(ctx.time * 0.9 + e.phase) * 0.12;
       seek(e, e.target.x, top, e.target.z, 1.6, 2.0);
       speed = s.speed * GAME.FERRY_VOYAGE_SPEED_MULT;
-      e.wakeT = Math.max(e.wakeT, 0.6); // a steady bubble stream the whole way (the cast-off boil decays into it)
+      e.wakeT = Math.max(e.wakeT, 1.0); // a steady bubble stream the whole way (the cast-off boil decays into it; outlasts a far-LOD think gap)
       const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
       if (dh < 3 || e.stateT > GAME.FERRY_VOYAGE_MAX) {
         // journey's end: hold here while the riders hop off one by one
@@ -872,7 +872,7 @@ function pickVoyageTarget(e: Entity, ctx: SimContext) {
   const al = Math.hypot(ax, az);
   if (al < 1) { const a = ctx.rng() * Math.PI * 2; ax = Math.cos(a); az = Math.sin(a); } else { ax /= al; az /= al; }
   const want = GAME.FERRY_VOYAGE_DIST[0] + ctx.rng() * (GAME.FERRY_VOYAGE_DIST[1] - GAME.FERRY_VOYAGE_DIST[0]);
-  const lim = GAME.WORLD_RADIUS - 20;
+  const lim = GAME.WORLD_RADIUS - 10;   // a long crossing may run right out to the rim
   let best = -1, bx = e.x, bz = e.z;
   for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
     const c = Math.cos(off), s = Math.sin(off);

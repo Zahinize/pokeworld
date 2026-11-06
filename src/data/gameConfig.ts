@@ -80,13 +80,15 @@ export const GAME = {
    *  underneath — anchor (and so its guardian) tows along at anchor speed × the anchor mult. */
   FERRY_BOARDING: 10,
   /** A long, safe crossing: 100–150m straight AWAY from the trainer (back to the camera). */
-  FERRY_VOYAGE_DIST: [100, 150] as [number, number],
-  FERRY_VOYAGE_MAX: 75,
+  FERRY_VOYAGE_DIST: [150, 225] as [number, number],  // a proper crossing — the reef's edge is the only cap
+  FERRY_VOYAGE_MAX: 110,
+  /** Exactly one wild Lapras per ferry level (LevelConfig.ferry): the generator guarantees it,
+   *  reinforcements never add one, and a caught ferry is never replaced. */
   FERRY_VOYAGE_SPEED_MULT: 1.6,
   FERRY_ESCORT_ANCHOR_MULT: 4,
   /** The ferry call: while rising and boarding, Lapras sings out every few seconds at a varying
    *  pitch; up to FERRY_CALL_REPLIES nearby little ones answer (talk marks + soft cries). */
-  FERRY_CALL_PERIOD: [1.8, 3.2] as [number, number],
+  FERRY_CALL_PERIOD: [3.6, 6.4] as [number, number],   // half the cries of the first cut — a call, not a racket
   FERRY_CALL_RADIUS: 48,
   FERRY_CALL_REPLIES: 3,
   /** Bubble stream intensity: wakeT is refreshed to 0.6 while under way (6 motes/frame) and

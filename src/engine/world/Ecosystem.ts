@@ -707,6 +707,7 @@ export class Ecosystem {
   }
 
   private checkReinforcements() {
+    // (The ferry Lapras is never replaced: catch it and the level's ferry is yours for good.)
     // Ambient life migrates back in when a school has been thinned out by predators
     for (const g of this.groups) {
       if (g.kind !== 'ambientSchool' && g.kind !== 'drifters') continue;
@@ -772,8 +773,10 @@ export class Ecosystem {
         if (needGuardian && g.guardianSpeciesId) this.spawn({ speciesId: g.guardianSpeciesId, role: 'guardian', groupIndex: g.id, objectiveId: o.id, ambient: false, zone: g.zone, pos: { x: pos.x + 4, y: pos.y, z: pos.z } });
         this.events.push({ type: 'reinforce', speciesId: g.speciesId, count, objectiveId: o.id });
       } else {
-        for (let i = 0; i < needMembers; i++) {
-          const sid = this.rng.pick(o.candidateSpecies);
+        // never top up with a Lapras — the ferry is exactly one per dive, handled above
+        const pool = o.candidateSpecies.filter((id) => id !== 'lapras');
+        for (let i = 0; i < needMembers && pool.length > 0; i++) {
+          const sid = this.rng.pick(pool);
           const s = getSpecies(sid);
           const zone = this.rng.pick(s.habitat);
           this.spawn({ speciesId: sid, role: 'solo', groupIndex: -1, objectiveId: o.kind === 'stageCatch' ? undefined : o.id, ambient: o.kind === 'stageCatch', zone, pos: this.farSpawnPos(zone, sid) });

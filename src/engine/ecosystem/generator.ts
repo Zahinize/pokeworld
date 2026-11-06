@@ -236,6 +236,18 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     }
   });
 
+  // ---- The ferry: exactly ONE wild Lapras on ferry levels, none anywhere else ----
+  // Never less on a ferry level (a roster without one has no ferry at all) and never more (a
+  // rare roll that repeats when the curious pool runs dry). A surplus or off-level Lapras is
+  // turned into another explorer in place — spawn indices are referenced by groups, so nothing
+  // is ever removed.
+  {
+    let lapras = 0;
+    const allowed = level.ferry ? 1 : 0;
+    for (const sp of spawns) if (sp.speciesId === 'lapras') { lapras++; if (lapras > allowed) sp.speciesId = 'dewgong'; }
+    if (lapras === 0 && allowed > 0) { const s = getSpecies('lapras'); addSolo(s, 'solo', undefined, true); used.add(s.id); summary.curious.push(s.name); }
+  }
+
   // ---- Predators ----
   const predPool = SPAWNABLE.filter((s) => s.primary === 'predator');
   const preds: SpeciesConfig[] = [];

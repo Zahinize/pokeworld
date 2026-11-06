@@ -24,11 +24,15 @@ const FRAG = /* glsl */ `
 varying vec2 vUv; varying float vFade;
 float rbox(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
 void main(){
-  // bubble body in the upper 3/4, tail pointing down-left toward the speaker
+  // bubble body in the upper 3/4; the tail is a wedge whose wide base joins the body's
+  // underside and whose point drops down-left toward the speaker
   vec2 p = vUv - vec2(0.5, 0.62);
   float body = rbox(p, vec2(0.44, 0.27), 0.16);
   vec2 t = vUv - vec2(0.30, 0.22);
-  float tail = max(max(t.y - 0.14, -t.y - 0.1), max(t.x - 0.08 + t.y * 0.9, -t.x - 0.06 + t.y * 0.3));
+  float u = clamp((0.14 - t.y) / 0.24, 0.0, 1.0);     // 0 at the body, 1 at the tip
+  float w = 0.09 * (1.0 - u);                          // narrows to a point
+  float cx = -0.02 - 0.08 * u;                         // and drifts left on the way down
+  float tail = max(abs(t.x - cx) - w, max(t.y - 0.14, -t.y - 0.1));
   float d = min(body, tail);
   float fill = 1.0 - smoothstep(0.0, 0.02, d);
   float edge = 1.0 - smoothstep(0.03, 0.06, d);

@@ -53,5 +53,6 @@ export const LEVEL_4: LevelConfig = {
     },
   ],
   playerStart: { zone: 'openReef', depth: 18 },
+  ferry: true,
   status: 'playable',
 };
