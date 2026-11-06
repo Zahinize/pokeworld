@@ -1301,7 +1301,7 @@ export class GameSession {
         }
         case 'ferry': {
           const e = eco.byId.get(ev.entityId);
-          if (near(e, 90)) {
+          if (near(e, 180)) {   // the call carries: it may be setting out from the far side of the reef
             Audio.playCry(getSpecies('lapras').dexId, 0.3);
             store.pushToast({ kind: 'event', title: 'A Lapras rises to the surface', body: 'The reef’s gentle ferry — the little ones are gathering alongside.', speciesId: 'lapras', ttl: 5 });
           }
@@ -1325,6 +1325,11 @@ export class GameSession {
           // the ferry call: Lapras sings out at a different pitch each time
           const e = eco.byId.get(ev.entityId);
           if (e && near(e, 90)) Audio.playCry(getSpecies('lapras').dexId, 0.32, 0, ev.pitch);
+          break;
+        }
+        case 'ferryHop': {
+          // a rider leaves the water for the shell, or splashes back down at journey's end
+          if (near(eco.byId.get(ev.entityId), 70)) this.pushFx('splash', ev.x, GAME.SURFACE_Y, ev.z, ev.size * 0.55, '#e0f2fe');
           break;
         }
         case 'ferryReply': {

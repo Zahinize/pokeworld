@@ -58,7 +58,13 @@ export const GAME = {
    *  small fry paddle over and bob alongside. First surfacing after spawn and the rest between
    *  ferries (s); time held at the surface (s) — counted from ARRIVAL, the climb is on top of it;
    *  safety timeout for the climb (s). */
-  FERRY_FIRST: [35, 70] as [number, number],
+  /** The first ferry of a dive calls within 15s of entering (new dive or resume) and always comes
+   *  to the trainer, however far the Lapras spawned — it gets a longer climb to cover the distance. */
+  FERRY_FIRST: [6, 13] as [number, number],
+  /** The generator keeps the Lapras within this of the trainer's start point (a far spawn would
+   *  make that first climb a long crossing). */
+  FERRY_SPAWN_NEAR_START: 55,
+  FERRY_FIRST_RISE_TIMEOUT: 40,
   FERRY_PERIOD: [40, 55] as [number, number],   // + climb + boarding + a long voyage ≈ a ferry every 2–2.5 minutes
   /** With nobody aboard it idles this long at the surface, then dives. */
   FERRY_DURATION: 34,
@@ -86,6 +92,13 @@ export const GAME = {
   /** Bubble stream intensity: wakeT is refreshed to 0.6 while under way (6 motes/frame) and
    *  slammed to this at cast-off, so the ride starts in a boil that settles into a steady stream. */
   FERRY_SAIL_BUBBLES: 2.4,
+  /** Boarding is a queue of hops: riders wait beside the hull at the waterline and jump onto the
+   *  shell ONE AT A TIME (a scripted arc of HOP_DUR seconds, HOP_GAP between take-offs). At
+   *  journey's end they hop off into the sea the same way, then the ferry dives. */
+  FERRY_HOP_DUR: 0.55,
+  FERRY_HOP_GAP: 0.7,     // > HOP_DUR: each rider lands before the next one jumps
+  FERRY_HOP_HEIGHT: 1.1,
+  FERRY_DISEMBARK_MAX: 20,  // enough for a full shell (~18 riders × 0.75s) to get off one by one
   /** Amphibious riders up to this size clamber onto the shell, answering the call from this far
    *  (crabs on the sea floor have a long climb — they get more reach than the fry). */
   FERRY_RIDER_MAX_SIZE: 1.5,

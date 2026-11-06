@@ -9,6 +9,7 @@ import type { LevelConfig } from '@/data/levels';
 import { ZONES, ZONE_LIST } from '../world/zones';
 import { floorY } from '../world/terrain';
 import type { Obstacle } from '../world/terrain';
+import { GAME } from '@/data/gameConfig';
 import type { EntityRole, GroupKind, Vec3 } from '../ai/types';
 
 export interface SpawnSpec {
@@ -348,6 +349,27 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     for (const b of phase.bosses) {
       const name = phase.shiny ? `SHINY ${getSpecies(b).name}` : getSpecies(b).name;
       objectives.push({ id: `boss-${b}`, kind: 'boss', label: `Defeat ${name}`, speciesId: b, required: 1, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: [b] });
+    }
+  }
+
+  // The Lapras ferry calls within seconds of the dive and comes to the trainer — so a Lapras that
+  // rolled a berth on the far side of the reef is moved (with its little entourage) to within
+  // FERRY_SPAWN_NEAR_START of the start point, keeping its depth and floor clearance.
+  const lapIdx = spawns.findIndex((sp) => sp.speciesId === 'lapras');
+  if (lapIdx >= 0) {
+    const lp = spawns[lapIdx].pos;
+    const far = Math.hypot(lp.x - playerStart.x, lp.z - playerStart.z);
+    if (far > GAME.FERRY_SPAWN_NEAR_START) {
+      const a = rng.next() * Math.PI * 2, r = GAME.FERRY_SPAWN_NEAR_START * (0.55 + rng.next() * 0.4);
+      let nx = playerStart.x + Math.cos(a) * r, nz = playerStart.z + Math.sin(a) * r;
+      const rr = Math.hypot(nx, nz), lim = GAME.WORLD_RADIUS - 12;
+      if (rr > lim) { nx *= lim / rr; nz *= lim / rr; }
+      const dx = nx - lp.x, dz = nz - lp.z;
+      for (const sp of spawns) {
+        if (sp !== spawns[lapIdx] && Math.hypot(sp.pos.x - lp.x, sp.pos.z - lp.z) > 8) continue; // the entourage rides along
+        sp.pos.x += dx; sp.pos.z += dz;
+        sp.pos.y = Math.max(sp.pos.y, floorY(sp.pos.x, sp.pos.z) + getSpecies(sp.speciesId).size + 1.5);
+      }
     }
   }
 

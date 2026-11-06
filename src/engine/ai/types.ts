@@ -8,7 +8,7 @@ export type EntityState =
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
-  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry' | 'ferryVoyage'
+  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry' | 'ferryVoyage' | 'ferryDisembark'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -89,6 +89,11 @@ export interface Entity {
   aboardT: number;
   /** Talk mark: seconds the speech bubble stays up; talkDelay counts down to a reply mark. */
   talkT: number; talkDelay: number;
+  /** Ferry rider phase: 0 none · 1 waiting beside the hull · 2 hopping on · 3 seated · 4 hopping off. */
+  rideK: number;
+  /** Scripted hop (integrate step): seconds left / total, arc height, start point, and the
+   *  fixed landing point for a hop-off (a hop-on lands on the live seat instead). */
+  hopT: number; hopDur: number; hopH: number; hx: number; hy: number; hz: number; hx2: number; hy2: number; hz2: number;
   /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
   frozenT: number;
   /** Hit recoil: a brief knockback shove outside the cruise-speed clamp (decays fast). */
@@ -169,6 +174,7 @@ export type EcoEvent =
   | { type: 'ferrySail'; entityId: number; riders: number }
   | { type: 'ferryCall'; entityId: number; pitch: number }
   | { type: 'ferryReply'; entityId: number; delay: number }
+  | { type: 'ferryHop'; entityId: number; x: number; y: number; z: number; size: number; off: boolean }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

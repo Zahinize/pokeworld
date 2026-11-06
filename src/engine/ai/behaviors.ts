@@ -703,10 +703,10 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
   // little ones paddle over to ride in its wake (lore: it loves ferrying Pokémon across the sea).
   // The call comes from ANY free-roaming state — only the lure outranks it — and the climb is a
   // phase of its own, so the full surface window is spent in view.
-  if (s.id === 'lapras' && e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage') {
+  if (s.id === 'lapras' && e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage' && e.state !== 'ferryDisembark') {
     e.t2 -= dt;
     if (e.t2 <= 0 && !e.lured) {
-      pickFerrySite(e, ctx);
+      pickFerrySite(e, ctx, ctx.time < 60);   // the dive's first ferry always comes to the trainer
       e.state = 'ferryRise'; e.stateT = 0;
       ctx.events.push({ type: 'ferry', entityId: e.id });
     }
@@ -745,7 +745,8 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       e.wakeT = 0.6;
       ferryCall(e, ctx, dt);
       const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
-      if ((e.y > top - 0.9 && dh < 4) || e.stateT > GAME.FERRY_RISE_TIMEOUT) {
+      const riseMax = ctx.time < 100 ? GAME.FERRY_FIRST_RISE_TIMEOUT : GAME.FERRY_RISE_TIMEOUT; // the first crossing may be long
+      if ((e.y > top - 0.9 && dh < 4) || e.stateT > riseMax) {
         e.state = 'ferry'; e.stateT = 0;
         e.vy = Math.min(e.vy, 0.3); // kill the surge so it settles onto the water instead of leaping past it
         ctx.events.push({ type: 'ferrySurface', entityId: e.id }); // breaks the surface: a crown of spray
@@ -761,9 +762,12 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       ferryCall(e, ctx, dt); // sing out for passengers the whole time it waits
       if (e.stateT > GAME.FERRY_BOARDING) {
         // anyone aboard? then the ferry sets sail — a long crossing straight AWAY from the
-        // trainer, so it shows them its back as it carries the little ones off to safety
+        // trainer, so it shows them its back as it carries the little ones off to safety.
+        // It waits (within reason) for riders still queueing at the waterline to hop on.
         const riders = ferryRiders(e, ctx);
-        if (riders > 0) {
+        let queued = 0;
+        ctx.hash.query(e.x, e.y, e.z, s.size + 3, (o) => { if (o !== e && (o.rideK === 1 || o.rideK === 2)) queued++; });
+        if (riders > 0 && (queued === 0 || e.stateT > GAME.FERRY_BOARDING * 2.5)) {
           pickVoyageTarget(e, ctx);
           e.state = 'ferryVoyage'; e.stateT = 0;
           e.wakeT = GAME.FERRY_SAIL_BUBBLES; // cast-off: the water boils under the hull
@@ -783,8 +787,27 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       e.wakeT = Math.max(e.wakeT, 0.6); // a steady bubble stream the whole way (the cast-off boil decays into it)
       const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
       if (dh < 3 || e.stateT > GAME.FERRY_VOYAGE_MAX) {
-        // journey's end: the riders hop off and the ferry slips back under
-        e.state = 'wander'; e.stateT = 0; e.t2 = GAME.FERRY_PERIOD[0] + ctx.rng() * (GAME.FERRY_PERIOD[1] - GAME.FERRY_PERIOD[0]);
+        // journey's end: hold here while the riders hop off one by one
+        e.state = 'ferryDisembark'; e.stateT = 0;
+        e.target.x = e.x; e.target.z = e.z;
+      }
+      break;
+    }
+    case 'ferryDisembark': {
+      // hold ON the surface, barely drifting, until the last rider has splashed down (or the
+      // patience runs out) — then slip back under with a bubble trail
+      const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT + Math.sin(ctx.time * 0.9 + e.phase) * 0.12;
+      seek(e, e.target.x, top, e.target.z, 1.6, 0.5);
+      speed = s.speed * 0.3;
+      // nobody still seated or mid-air? then the last splash is behind us
+      let left = 0;
+      ctx.hash.query(e.x, e.y, e.z, s.size + 4, (o) => { if (o !== e && (o.rideK === 3 || o.rideK === 4 || (o.rideK === 2 && o.hopT > 0))) left++; });
+      if ((e.stateT > 0.5 && left === 0) || e.stateT > GAME.FERRY_DISEMBARK_MAX) {
+        e.state = 'wander'; e.stateT = 0;
+        e.t2 = GAME.FERRY_PERIOD[0] + ctx.rng() * (GAME.FERRY_PERIOD[1] - GAME.FERRY_PERIOD[0]);
+        pickPointInZone(e, ctx, 20, 40, e.target);
+        e.target.y = Math.min(e.target.y, -(s.depth[0] + 6));   // the dive: well down into its band
+        e.wakeT = 1.4;                                           // bubbles trail the descent
       }
       break;
     }
@@ -805,7 +828,7 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
     }
   }
 
-  if (e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage') { // the ferry is ALLOWED at the surface — don't spring it back down
+  if (e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage' && e.state !== 'ferryDisembark') { // the ferry is ALLOWED at the surface — don't spring it back down
     depthPreference(e, 0.5);
     floorAndSurface(e, s.size * 0.6 + 1);
   }
@@ -888,38 +911,101 @@ export function ferryRiders(f: Entity, ctx: SimContext): number {
   return n;
 }
 
-/** Ferry riders (lore): amphibious little Pokémon near a surfaced Lapras clamber onto its shell and
- *  ride above the waves. Returns false when this Pokémon isn't boarding right now, so its normal
- *  behavior runs instead. Runs before any role dispatch (Ecosystem.think). */
-export function ferryRiderThink(e: Entity, ctx: SimContext): boolean {
-  const f = ctx.ferry;
-  if (!f || e === f || e.lured || e.isBoss || e.role === 'partner' || NO_BOARD.has(e.state)) return false;
-  const s = e.species;
-  if (!s.amphibious || s.size > GAME.FERRY_RIDER_MAX_SIZE) return false;
-  if (f.y < GAME.SURFACE_Y - 1.0) return false;                        // the shell is still under way
-  if (len3(f.x - e.x, f.y - e.y, f.z - e.z) > GAME.FERRY_RIDER_RADIUS) return false;
-  e.aboardT = 1.0; // lifts the surface clamp while riding (refreshed every think)
-  accReset();
-  // a seat on the shell, fixed per rider: a small ring on the back, perched just above it
+/** A rider's seat on the shell, fixed per rider: a small ring on the back, perched just above it. */
+export function seatOf(f: Entity, e: Entity, out: Vec3): Vec3 {
   const a = e.phase * 3.1 + (e.id % 5) * 1.3;
   const r = f.species.size * (0.16 + 0.16 * ((e.id % 3) / 2));
-  const sx = f.x + Math.cos(a) * r, sz = f.z + Math.sin(a) * r;
-  const sy = f.y + f.species.size * 0.12 + s.size * 0.45;
-  seek(e, sx, sy, sz, 2.6, 0.25);
-  containWorld(e);
-  const ds = len3(sx - e.x, sy - e.y, sz - e.z);
-  // scramble aboard, then settle — but never slower than the hull, or a voyage leaves you behind
+  out.x = f.x + Math.cos(a) * r; out.z = f.z + Math.sin(a) * r;
+  out.y = f.y + f.species.size * 0.12 + e.species.size * 0.45;
+  return out;
+}
+
+/** One hop at a time per ferry: the gate opens FERRY_HOP_GAP after the last take-off. */
+const hopGate = new Map<number, number>();
+function hopGateOpen(f: Entity, ctx: SimContext): boolean {
+  const g = hopGate.get(f.id) ?? 0;
+  if (ctx.time < g && g - ctx.time < 10) return false;   // (a stale gate from an older reef can't block)
+  hopGate.set(f.id, ctx.time + GAME.FERRY_HOP_GAP);
+  return true;
+}
+
+function startHop(e: Entity, dur: number) {
+  e.hx = e.x; e.hy = e.y; e.hz = e.z;
+  e.hopDur = dur; e.hopT = dur; e.hopH = GAME.FERRY_HOP_HEIGHT + e.species.size * 0.3;
+  e.aboardT = dur + 0.6;
+}
+
+const seatTmp: Vec3 = { x: 0, y: 0, z: 0 };
+
+/** Ferry riders (lore): amphibious little Pokémon near a surfaced Lapras swim to its side, wait
+ *  their turn at the waterline and JUMP onto its shell one by one; at journey's end they jump off
+ *  into the sea the same way. Returns false when this Pokémon isn't riding right now, so its
+ *  normal behavior runs instead. Runs before any role dispatch (Ecosystem.think). */
+export function ferryRiderThink(e: Entity, ctx: SimContext): boolean {
+  const f = ctx.ferry;
+  if (!f || e === f || e.lured || e.isBoss || e.role === 'partner' || NO_BOARD.has(e.state)) { if (e.hopT <= 0) e.rideK = 0; return false; }
+  const s = e.species;
+  if (!s.amphibious || s.size > GAME.FERRY_RIDER_MAX_SIZE) return false;
+  if (e.hopT > 0) { e.aboardT = Math.max(e.aboardT, 1.0); accReset(); commit(e, 0); return true; }   // mid-air: the hop is scripted
   const hull = Math.hypot(f.vx, f.vz) * 1.35;
-  commit(e, Math.max(hull, ds > 1.5 ? s.burst : s.speed * 0.6));
+
+  if (f.state === 'ferryDisembark') {
+    // journey's end: seated riders hop off into the sea one by one; everyone else is already free
+    if (e.rideK !== 3) { e.rideK = 0; return false; }
+    e.aboardT = 1.0;
+    if (hopGateOpen(f, ctx)) {
+      const a = Math.atan2(e.z - f.z, e.x - f.x);
+      const r = f.species.size * 0.9 + s.size + 0.6;
+      e.hx2 = f.x + Math.cos(a) * r; e.hz2 = f.z + Math.sin(a) * r; e.hy2 = GAME.SURFACE_Y - 0.6 - s.size * 0.4;
+      e.rideK = 4; startHop(e, GAME.FERRY_HOP_DUR);
+      return true;
+    }
+    accReset(); seatOf(f, e, seatTmp); seek(e, seatTmp.x, seatTmp.y, seatTmp.z, 2.6, 0.25); commit(e, s.speed * 0.6);
+    return true;
+  }
+
+  if (f.y < GAME.SURFACE_Y - 1.0) return false;                        // the shell is still under way
+  if (len3(f.x - e.x, f.y - e.y, f.z - e.z) > GAME.FERRY_RIDER_RADIUS) { e.rideK = 0; return false; }
+  e.aboardT = 1.0; // lifts the surface clamp while riding (refreshed every think)
+  accReset();
+
+  if (e.rideK === 3) {
+    seatOf(f, e, seatTmp);
+    const ds = len3(seatTmp.x - e.x, seatTmp.y - e.y, seatTmp.z - e.z);
+    if (ds > 3.5) e.rideK = 1;   // "seated" but nowhere near a seat (a ferry that left without you): queue again
+    else {
+      // seated: hold the seat — never slower than the hull, or a voyage leaves you behind
+      seek(e, seatTmp.x, seatTmp.y, seatTmp.z, 2.6, 0.25);
+      containWorld(e);
+      commit(e, Math.max(hull, ds > 1.5 ? s.burst : s.speed * 0.6));
+      return true;
+    }
+  }
+
+  // waiting: swim to a spot beside the hull at the waterline (on your own side of it), then when
+  // the gate opens, jump — a clean arc over the hull's edge onto your seat
+  e.rideK = 1;
+  const a = Math.atan2(e.z - f.z, e.x - f.x);
+  const r = f.species.size * 0.75 + s.size * 0.5;
+  const wx = f.x + Math.cos(a) * r, wz = f.z + Math.sin(a) * r, wy = GAME.SURFACE_Y - 0.5 - s.size * 0.4;
+  const dw = len3(wx - e.x, wy - e.y, wz - e.z);
+  if (dw < 1.3 && hopGateOpen(f, ctx)) {
+    e.rideK = 2; startHop(e, GAME.FERRY_HOP_DUR);
+    ctx.events.push({ type: 'ferryHop', entityId: e.id, x: e.x, y: e.y, z: e.z, size: s.size, off: false });
+    return true;
+  }
+  seek(e, wx, wy, wz, 2.4, 0.3);
+  containWorld(e);
+  commit(e, Math.max(hull, dw > 1.5 ? s.burst : s.speed * 0.6));
   return true;
 }
 
 /** Where the ferry surfaces: off the trainer's shoulder when they're close (in full view, on the
  *  Lapras' side so it never swims through them), else beside the nearest calm school so the
  *  ride-along has company, else right where it is. */
-function pickFerrySite(e: Entity, ctx: SimContext) {
+function pickFerrySite(e: Entity, ctx: SimContext, toTrainer = false) {
   const p = ctx.player;
-  const pd = len3(p.x - e.x, p.y - e.y, p.z - e.z);
+  const pd = toTrainer ? 0 : len3(p.x - e.x, p.y - e.y, p.z - e.z);
   // nearest calm school (XZ) to a point, within r — the fry that will ride along live there
   const calmSchoolNear = (x: number, z: number, r: number): Group | null => {
     let best: Group | null = null, bestD: number = r;
@@ -933,9 +1019,11 @@ function pickFerrySite(e: Entity, ctx: SimContext) {
   if (pd < GAME.FERRY_SITE_PLAYER_R) {
     // in view of the trainer: beside the amphibious little ones near them if there are any (riders
     // on the shell are the headline), else at the school beside them (ride-along with company),
-    // else a few metres off their shoulder on the Lapras' side
+    // else a few metres off their shoulder on the Lapras' side. The dive's first ferry keeps all
+    // of that within ~20m so it surfaces right in front of them.
+    const nearR = toTrainer ? 22 : 45;
     let ax = 0, az = 0, an = 0;
-    ctx.hash.query(p.x, p.y, p.z, 45, (o) => {
+    ctx.hash.query(p.x, p.y, p.z, nearR, (o) => {
       if (!o.species.amphibious || o.species.size > GAME.FERRY_RIDER_MAX_SIZE || o.isBoss || o.role === 'partner' || NO_BOARD.has(o.state)) return;
       ax += o.x; az += o.z; an++;
     });
@@ -943,7 +1031,7 @@ function pickFerrySite(e: Entity, ctx: SimContext) {
       // between the trainer and the riders, so both are in frame
       e.target.x = (ax / an) * 0.6 + p.x * 0.4; e.target.z = (az / an) * 0.6 + p.z * 0.4; return;
     }
-    const g = calmSchoolNear(p.x, p.z, 40);
+    const g = calmSchoolNear(p.x, p.z, toTrainer ? 18 : 40);
     if (g) { e.target.x = g.anchor.x + 4; e.target.z = g.anchor.z; return; }
     const dx = e.x - p.x, dz = e.z - p.z; const d = Math.hypot(dx, dz) || 1;
     e.target.x = p.x + (dx / d) * GAME.FERRY_SITE_OFFSET; e.target.z = p.z + (dz / d) * GAME.FERRY_SITE_OFFSET;

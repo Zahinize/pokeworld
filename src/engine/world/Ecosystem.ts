@@ -5,7 +5,9 @@
  */
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
-import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink } from '../ai/behaviors';
+import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf } from '../ai/behaviors';
+
+const tmpSeat = { x: 0, y: 0, z: 0 };
 import type { GeneratedEcosystem, SpawnSpec, MissionObjective } from '../ecosystem/generator';
 import { SpatialHash } from '../spatialHash';
 import { RNG } from '../rng';
@@ -135,7 +137,7 @@ export class Ecosystem {
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
-      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -349,7 +351,7 @@ export class Ecosystem {
 
     // A surfaced ferry Lapras draws the little ones to its side
     ctx.ferry = null;
-    for (const e of this.alive) if (e.state === 'ferry' || e.state === 'ferryVoyage') { ctx.ferry = e; break; }
+    for (const e of this.alive) if (e.state === 'ferry' || e.state === 'ferryVoyage' || e.state === 'ferryDisembark') { ctx.ferry = e; break; }
 
     // Groups (~4Hz)
     this.groupThinkAcc += dt;
@@ -647,6 +649,21 @@ export class Ecosystem {
       e.vy += Math.sin(this.time * 0.7 + e.x * 0.05) * 0.9 * k;
       e.vz += Math.sin(this.time * 0.45 + e.phase * 2.0) * 2.2 * k;
     }
+    // ferry hop: a scripted arc — from the waterline onto the shell (rideK 2, landing on the LIVE
+    // seat so a drifting hull is still met) or off the shell into the sea (rideK 4, fixed splashdown)
+    if (e.hopT > 0) {
+      e.hopT -= dt;
+      const k = 1 - Math.max(0, e.hopT) / Math.max(0.01, e.hopDur);
+      let tx = e.hx2, ty = e.hy2, tz = e.hz2;
+      if (e.rideK === 2 && this.ctx.ferry) { seatOf(this.ctx.ferry, e, tmpSeat); tx = tmpSeat.x; ty = tmpSeat.y; tz = tmpSeat.z; }
+      const arc = Math.sin(k * Math.PI) * e.hopH;
+      e.x = e.hx + (tx - e.hx) * k; e.y = e.hy + (ty - e.hy) * k + arc; e.z = e.hz + (tz - e.hz) * k;
+      e.vx = e.vy = e.vz = 0;
+      if (e.hopT <= 0) {
+        if (e.rideK === 2) e.rideK = 3;
+        else { e.rideK = 0; this.events.push({ type: 'ferryHop', entityId: e.id, x: e.x, y: e.y, z: e.z, size: e.species.size, off: true }); }
+      }
+    }
     e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     // Hard constraints
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
@@ -654,7 +671,7 @@ export class Ecosystem {
     // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
     // so the open-air suffocation drain can never touch them — EXCEPT the Lapras ferry, which
     // comes all the way up and out, and the amphibious riders perched on its shell
-    const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.aboardT > 0;
+    const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.state === 'ferryDisembark' || e.aboardT > 0;
     const fer = this.ctx.ferry;
     const top = !ferrying ? -Math.max(0.8, e.species.size * 0.45)
       : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
