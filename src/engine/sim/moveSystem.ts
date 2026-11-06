@@ -6,6 +6,7 @@
 import type { Entity, EcoEvent, Vec3 } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
 import { getMove, isSupportive, movesFor, type MoveConfig as MC } from '@/data/moves';
+import { CAST_FLOURISH } from '@/data/personality';
 
 /** Contact styles keep their natural reach; everything that travels scales with the caster's stage. */
 const CONTACT_STYLES = new Set(['melee', 'dash']);
@@ -74,7 +75,10 @@ const PROJECTILE_SPEED = 18;
 /** Canonical pacing: beams snap across the reef, streams surge, lobbed globs arc slower. */
 const STYLE_SPEED: Record<string, number> = { beam: 34, jet: 24, darts: 26, bubbles: 14, ring: 16, crescent: 21, ink: 13, motes: 14 };
 const HOMING_RATE = 2.6; // rad/s steering toward the target
-const MELEE_WINDUP = 0.25;
+const MELEE_WINDUP = 0.35;
+/** Default wind-up before a move leaves the caster — long enough that the rear-back
+ *  anticipation reads as a deliberate, forceful throw (moves may override via chargeTime). */
+const CAST_WINDUP = 0.4;
 
 /** Player stats stand-in for damage computation (defenses only). */
 export const PLAYER_STATS: CombatStats = { maxHp: COMBAT.PLAYER_MAX_HP, atk: 100, def: COMBAT.PLAYER_DEF_NORM, spAtk: 100, spDef: COMBAT.PLAYER_DEF_NORM, speed: 100 };
@@ -99,13 +103,13 @@ export class MoveSystem {
 
   setTime(t: number) { this.host.time = t; }
 
-  /** Live wind-ups for the renderer (charge glow at the caster's mouth). */
-  charges(): { casterId: number; color: string; progress: number }[] {
-    const out: { casterId: number; color: string; progress: number }[] = [];
+  /** Live wind-ups for the renderer (charge glow / build-up at the caster). */
+  charges(): { casterId: number; moveId: string; color: string; progress: number }[] {
+    const out: { casterId: number; moveId: string; color: string; progress: number }[] = [];
     for (const p of this.pending) {
       const m = getMove(p.moveId);
       const total = m.chargeTime ?? 0.2;
-      out.push({ casterId: p.casterId, color: m.color, progress: Math.min(1, Math.max(0, 1 - (p.at - this.host.time) / total)) });
+      out.push({ casterId: p.casterId, moveId: p.moveId, color: m.color, progress: Math.min(1, Math.max(0, 1 - (p.at - this.host.time) / total)) });
     }
     return out;
   }
@@ -145,7 +149,13 @@ export class MoveSystem {
     const move = this.moveOf(e, slot);
     e.mcd[slot] = move.cooldown;
     this.host.events.push({ type: 'cast', casterId: e.id, moveId: move.id, style: move.style });
-    const at = this.host.time + (move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : 0.12));
+    let windup = move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : CAST_WINDUP);
+    // species flourish: big signature casts stretch so the choreography reads (Gyarados's double revolve)
+    const fl = CAST_FLOURISH[e.species.id];
+    if (fl?.signatureWindup && move.kind === 'damage' && move.power >= 100) windup = Math.max(windup, fl.signatureWindup);
+    const at = this.host.time + windup;
+    // anticipation window for the renderer: the sprite rears back until `at`, then whips forward
+    e.castFrom = this.host.time; e.castAt = at;
     this.pending.push({ at, casterId: e.id, moveId: move.id, target, slot });
     return true;
   }
@@ -171,6 +181,17 @@ export class MoveSystem {
       if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
         if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
+          if ((move.style === 'melee' || move.style === 'dash') && d > 0.3) {
+            // the attacker LUNGES: a surge of velocity carries it onto (and through) the target
+            const surge = move.style === 'dash' ? Math.min(16, d * 3.5 + 8) : Math.min(11, d * 2.8 + 4);
+            caster.vx += ((tp.x - caster.x) / d) * surge;
+            caster.vy += ((tp.y - caster.y) / d) * surge;
+            caster.vz += ((tp.z - caster.z) / d) * surge;
+          }
+          if (move.style === 'dash') {
+            // Aqua Jet family: the caster BECOMES the jet — a water comet wraps it through the ram
+            caster.jetT = 0.5; caster.jetColor = move.color;
+          }
           // canonical travel visuals: bursts sweep a wave at the target, geysers erupt beneath it, lightning drops from above
           if (move.style === 'burst') this.pushVisual('wave', move, caster.x, caster.y, caster.z, tp.x, tp.y, tp.z, 0.45);
           else if (move.style === 'geyser') this.pushVisual('wave', move, tp.x, tp.y - 2.5, tp.z, tp.x, tp.y, tp.z, 0.7);
@@ -232,7 +253,7 @@ export class MoveSystem {
     pr.x = caster.x + (dx / d) * caster.species.size * 0.5;
     pr.y = caster.y + (dy / d) * caster.species.size * 0.5;
     pr.z = caster.z + (dz / d) * caster.species.size * 0.5;
-    pr.speed = STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
+    pr.speed = move.projSpeed ?? STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
     pr.vx = (dx / d) * pr.speed; pr.vy = (dy / d) * pr.speed; pr.vz = (dz / d) * pr.speed;
     pr.casterId = caster.id; pr.target = target; pr.t = 0;
   }
@@ -293,9 +314,14 @@ export class MoveSystem {
         } else {
           target.hotRate = (target.maxHp * fx.magnitude) / fx.duration;
           target.hotT = fx.duration;
+          // the water veil wraps the body for as long as the regen runs (Aqua Ring)
+          target.veilT = target.veilDur = fx.duration;
         }
         break;
       }
+      case 'conceal': target.concealT = target.concealDur = fx.duration; break;
+      // frozen solid: a hard stun wearing a casing of ice (the renderer draws the block)
+      case 'freeze': target.stunT = Math.max(target.stunT, fx.duration); target.frozenT = Math.max(target.frozenT, fx.duration); break;
     }
     if (fx.type !== 'heal') h.events.push({ type: 'effect', targetId: target.id, effect: fx.type, magnitude: fx.magnitude });
   }

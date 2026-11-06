@@ -32,6 +32,12 @@ export function CameraRig() {
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       keys.current.add(e.code);
       const s = store();
+      // the ride stable owns Z/X/C/V while open — pick a bird without pausing or clicking
+      if (s.hud.ridePicker) {
+        const idx = ['KeyZ', 'KeyX', 'KeyC', 'KeyV'].indexOf(e.code);
+        if (idx >= 0) { const id = session.rideOptions[idx]; if (id) session.mount(id); return; }
+        if (e.code === 'Escape') { s.setHud({ ridePicker: false }); return; }
+      }
       if (e.code === 'Tab') { e.preventDefault(); if (session.phase === 'playing' || session.phase === 'paused') s.setOverlay(s.overlay === 'mission' ? 'none' : 'mission'); }
       if (e.code === 'KeyE') session.activateLure();
       if (e.code === 'KeyM' && (session.phase === 'playing' || session.phase === 'paused')) { const st = store(); st.setSettings({ missionCollapsed: !st.save.settings.missionCollapsed }); }
@@ -48,6 +54,7 @@ export function CameraRig() {
         if (e.code === 'Digit0') session.swapSlotWithBest(1);
       }
       if (e.code === 'KeyQ' && !session.companionsEnabled) session.cycleBall(1);
+      if (e.code === 'KeyB') session.toggleRide();
       if (e.code === 'Space' || e.code === 'ControlLeft' || e.code === 'ControlRight') e.preventDefault();
     };
     const onKeyUp = (e: KeyboardEvent) => { keys.current.delete(e.code); shift.current = e.shiftKey && e.code !== 'ShiftLeft' && e.code !== 'ShiftRight'; };
@@ -64,13 +71,17 @@ export function CameraRig() {
         if (session.phase === 'playing' || session.phase === 'paused') { requestPointerLock(); if (session.phase === 'paused') { session.resume(); store().setOverlay('none'); } }
         return;
       }
-      if (e.button === 0 && session.playing) { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
-      if (e.button === 2) { if (session.companionsEnabled) session.commandAttack(); else session.cycleBall(1); }
+      if (session.arena) { session.arenaCast(e.button === 2 ? 1 : 0); return; } // dojo: left = move 1, right = move 2
+      if (e.button === 0 && session.playing) {
+        if (!session.catchingAllowed) session.commandAttack(); // companion level, underwater: click a Pokémon = battle it
+        else { const [fx, fy, fz] = session.player.forward(); session.throwBall(fx, fy, fz); }
+      }
+      if (e.button === 2) { if (session.companionsEnabled && !session.catchingAllowed) session.commandAttack(); else if (!session.companionsEnabled) session.cycleBall(1); }
     };
     const onContext = (e: Event) => e.preventDefault();
     const onLockChange = () => {
       if (store().isTouch) return;
-      if (document.pointerLockElement !== el && session.phase === 'playing') { session.pause(); if (store().overlay === "none") store().setOverlay("pause"); }
+      if (document.pointerLockElement !== el && session.phase === 'playing' && !session.arena) { session.pause(); if (store().overlay === "none") store().setOverlay("pause"); }
     };
     const onVisibility = () => { if (document.hidden && session.playing) { session.pause(); store().setOverlay('pause'); } };
     window.addEventListener('keydown', onKeyDown); window.addEventListener('keyup', onKeyUp); window.addEventListener('blur', onBlur);

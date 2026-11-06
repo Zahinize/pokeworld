@@ -548,6 +548,19 @@ export const SPECIES: Record<string, SpeciesConfig> = {
   },
 };
 
+/**
+ * Realistic swim speeds: every species' hand-tuned cruise/burst is scaled by its PokeAPI
+ * Speed stat — mult = 1 + 0.5 × (stat / 136) — so the whole reef swims quicker (nobody
+ * slows down; Spheal +9%) while the genuinely fast feel fast (Barraskewda +50%).
+ * 136 is the roster's top Speed stat (Barraskewda).
+ */
+const SWIM_STAT_TOP = 136;
+for (const s of Object.values(SPECIES)) {
+  const m = 1 + 0.5 * Math.min(1, s.fallbackStats.speed / SWIM_STAT_TOP);
+  s.speed = Math.round(s.speed * m * 100) / 100;
+  s.burst = Math.round(s.burst * m * 100) / 100;
+}
+
 export const SPECIES_LIST: SpeciesConfig[] = Object.values(SPECIES);
 
 /**

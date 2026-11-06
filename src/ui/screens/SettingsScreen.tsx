@@ -13,7 +13,7 @@ export function SettingsView({ onClose, embedded = false }: { onClose: () => voi
   const resetAll = useStore((s) => s.resetAll);
   const [confirmReset, setConfirmReset] = useState(false);
   return (
-    <Panel className={embedded ? 'panel strong' : ''} style={{ padding: 22, width: embedded ? undefined : '100%' }}>
+    <Panel className={embedded ? 'panel strong' : ''} style={{ padding: 22, width: embedded ? undefined : '100%', maxHeight: 'calc(100dvh - 40px - var(--safe-top) - var(--safe-bottom))', overflow: 'auto' }}>
       <div className="row between" style={{ marginBottom: 10 }}>
         <div><div className="eyebrow">Settings</div><h1 className="title" style={{ fontSize: 'clamp(24px,4vw,36px)' }}>Options</h1></div>
         <button className="btn ghost" onClick={() => { Audio.uiClick(); onClose(); }}>{embedded ? '✕ Close' : '← Back'}</button>

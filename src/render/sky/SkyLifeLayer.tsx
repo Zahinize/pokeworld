@@ -10,6 +10,7 @@ import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { getSpecies } from '@/data/species';
 import { SKY } from '@/data/sky';
+import { sheetKey } from '../pokemon/sprites';
 import type { SpriteSheet } from '../pokemon/sprites';
 
 // ------------------------------------------------------------------ bird sprites
@@ -213,9 +214,13 @@ export function SkyLifeLayer() {
     const L = session.lighting;
     const time = state.clock.elapsedTime;
 
-    // ensure batches
+    // ensure batches (the ridden legendary draws from the same batches as wild birds)
     const counts = new Map<string, number>();
     for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) counts.set(b.speciesId, (counts.get(b.speciesId) ?? 0) + 1); }
+    // the mount uses its BACK sheet (you're on its back); falls back to front while it loads
+    const ride = session.ride;
+    const rideKey = ride ? (session.sheets.has(sheetKey(ride, 'back')) ? sheetKey(ride, 'back') : ride) : null;
+    if (rideKey) counts.set(rideKey, (counts.get(rideKey) ?? 0) + 1);
     for (const [sid, n] of counts) {
       let bt = batches.current.get(sid);
       const sheet = session.sheets.get(sid);
@@ -264,6 +269,41 @@ export function SkyLifeLayer() {
             if (Math.random() < 0.4) pp.dark.emit(b.x - b.vx * 0.1, b.y - 0.4, b.z - b.vz * 0.1, size * 1.4, 1.5, 1.9);
           } else {
             pp.gold.emit(b.x - b.vx * 0.06, b.y, b.z - b.vz * 0.06, size * 1.2, 0.9, 1.5);
+          }
+        }
+      }
+    }
+    // the mount: your caught legendary is pinned to the BOTTOM of the view in camera space —
+    // whatever way you look, its face is up at you and its body carries the screen's lower edge
+    if (ride && rideKey) {
+      const bt = batches.current.get(rideKey);
+      if (bt && bt.mesh.count < bt.capacity) {
+        const p = session.player;
+        const sp = getSpecies(ride);
+        const size = Math.min(5.2, sp.size * 0.9);
+        const ce = state.camera.matrixWorld.elements;
+        const cfx = -ce[8], cfy = -ce[9], cfz = -ce[10];   // camera forward
+        const cux = ce[4], cuy = ce[5], cuz = ce[6];       // camera up
+        const cp = state.camera.position;
+        // saddle view: close and low, so only the head, a bit of neck and the wing roots
+        // rise into the frame — the body is beneath you, out of shot, like a real mount
+        const d = size * 0.5;                              // right under the lens…
+        const drop = size * 0.34 + Math.sin(time * 2.2) * 0.1;  // …head cresting the frame, wingbeat bob
+        const i = bt.mesh.count++;
+        tmpM.makeTranslation(cp.x + cfx * d - cux * drop, cp.y + cfy * d - cuy * drop, cp.z + cfz * d - cuz * drop);
+        bt.mesh.setMatrixAt(i, tmpM);
+        bt.aPhase.array[i] = 0;
+        bt.aFlip.array[i] = 1;                             // its face stays on you — no mirror flicker
+        bt.aAlpha.array[i] = 1;
+        bt.aSize.array[i] = size;
+        // its legendary wake streams behind you at speed
+        if (p.speed > 6) {
+          emitAcc.current += dt * SKY.SPARKLE_RATE * 0.7;
+          const yv = ride === 'yveltal';
+          while (emitAcc.current >= 1) {
+            emitAcc.current -= 1;
+            if (yv) pp.violet.emit(p.x - p.vx * 0.12, p.y - size * 0.3, p.z - p.vz * 0.12, size, 1.0, 1.4);
+            else pp.gold.emit(p.x - p.vx * 0.12, p.y - size * 0.3, p.z - p.vz * 0.12, size, 0.9, 1.3);
           }
         }
       }

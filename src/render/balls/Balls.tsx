@@ -94,7 +94,15 @@ export function Balls() {
       if (n >= cap) break;
       let rx = 0, rz = 0;
       if (b.state === 'flying') { rx = b.spin; rz = b.spin * 0.3; }
-      else if (b.state === 'shaking') { const ph = (b.t % 0.65) / 0.65; rz = Math.sin(ph * Math.PI * 3) * 0.5 * Math.max(0, 1 - ph * 1.2); }
+      else if (b.state === 'shaking') {
+        // one crisp left-right rock per engine shake event (t = 0.65·k), NEVER more than
+        // b.shakes (≤3) wobbles total — the ball holds dead still between rocks
+        const idx = Math.floor(b.t / 0.65);
+        if (idx >= 1 && idx <= b.shakes) {
+          const ph = (b.t - idx * 0.65) / 0.45;
+          if (ph < 1) rz = Math.sin(ph * Math.PI * 2) * 0.55 * Math.sin(ph * Math.PI);
+        }
+      }
       let sy = 1;
       if (b.state === 'resting') sy = 1 - Math.max(0, (b.t - 4.3) / 0.7); // sink-away fade at the end of its life
       e.set(rx, 0, rz); q.setFromEuler(e); p.set(b.x, b.y, b.z); s.set(sy, sy, sy);

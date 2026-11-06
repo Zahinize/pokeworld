@@ -27,6 +27,17 @@ export const SKY = {
   ],
   /** Seconds between chatter cries per flock (random in range). */
   FLOCK_CRY_PERIOD: [7, 16] as [number, number],
+  /** Dive-hunting: every so often one flock member plunges through the surface after a small fish. */
+  DIVE: {
+    /** Seconds between dives per flock (random in range). */
+    PERIOD: [22, 48] as [number, number],
+    /** Plunge speed (m/s) — wings folded, a proper gannet strike. */
+    PLUNGE_SPEED: 26,
+    /** Shallow fish inside this radius of the splash scatter in panic. */
+    SCARE_RADIUS: 7,
+    /** An ambient stage-0 fish this close to the splash point gets snatched — breakfast. */
+    SNATCH_RADIUS: 2.4,
+  },
   FLOCK_CRY_VOLUME: 0.16,
   /** Flocks despawn past this radius when exiting at dusk. */
   EXIT_DESPAWN_R: 280,
@@ -53,6 +64,16 @@ export const SKY = {
   /** Sky legendaries are never certain: final catch probability caps here for EVERY ball,
    *  Master Ball included (expected ~5 Master Balls per catch). */
   LEGENDARY_CATCH_CAP: 0.2,
+
+  // ---- riding a caught sky legendary ----
+  RIDE: {
+    /** Flight band: from just above the swell up into the flock altitudes. */
+    ALT_MIN: 2.0,
+    ALT_MAX: 36,
+    SPRINT_MULT: 1.3,
+    /** Even a slow bird flies at least this fast (m/s) — riding must always feel airborne. */
+    MIN_SPEED: 9,
+  },
 
   /** Water Pokemon suffocate slowly in open air: HP lost per second while a companion is surfaced. */
   COMPANION_SURFACE_HP_DRAIN: 2,

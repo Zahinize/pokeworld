@@ -28,7 +28,7 @@ import { COMBAT } from '@/data/combatConfig';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
 import { getMove, isSupportive, movesFor } from '@/data/moves';
-import { SPECIES, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
+import { SPECIES, SPECIES_LIST, getSpecies, makeToken, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
 import type { Entity } from './ai/types';
@@ -71,6 +71,10 @@ export class GameSession {
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
   demo = false;
+  /** Move-testing arena (DEV): one companion, one immortal dummy boss, click to cast. */
+  arena = false;
+  arenaBossId = -1;
+  private arenaAnchor = { x: 0, y: -12, z: 0 };
   private demoPath: DemoPath | null = null;
   private demoLUT: Float32Array | null = null;
   private demoT = 0;
@@ -153,6 +157,7 @@ export class GameSession {
   private saveAcc = 0;
   private completeTimer = -1;
   private huntToastCooldown = 0;
+  private ballToastCooldown = 0;
   private hintStep = 0;
   private hintTimer = 0;
   private listeners = new Set<() => void>();
@@ -209,11 +214,14 @@ export class GameSession {
     this.timeOfDay = this.level.timeOfDay;
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
-    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0; this.ride = null;
     this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
     this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
-    this.eco.onPlayerDamage = (amount) => this.applyPlayerDamage(amount);
+    this.eco.onPlayerDamage = (amount, casterId) => {
+      const attacker = this.eco?.byId.get(casterId);
+      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: false } : undefined);
+    };
     this.prepareProgress = 1;
     this.phase = 'ready';
     const store = useStore.getState();
@@ -285,6 +293,7 @@ export class GameSession {
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
+    this.ride = null;
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
     this.tutorial = null; useStore.getState().setHud({ tutorial: null });
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
@@ -378,6 +387,122 @@ export class GameSession {
     }
   }
 
+  /**
+   * The move dojo: an empty reef, your chosen companion at your side, and an immortal
+   * Dondozo dummy 14m ahead. Clicks cast moves straight at the dummy (guaranteed homing),
+   * so every move's design/animation/feel can be reviewed without aiming or stakes.
+   * DEV playtesting rig — entered via #arena, never part of the campaign flow.
+   */
+  async startArena(): Promise<void> {
+    if (this.demo) this.endDemo();
+    if (this.arena) return;
+    this.phase = 'preparing';
+    this.level = {
+      ...getLevel(1), id: 99, name: 'Move Arena', title: 'MOVE ARENA', subtitle: 'The Dojo',
+      companions: true, bossPhases: [], timeOfDay: 0.35, dayCycleMinutes: 999,
+      spawn: { schools: 0, passiveGroups: 0, curious: 0, predators: 0, bottom: 0, defensive: 0, ambient: { schools: 0, drifters: 0, giants: 0, legendaryChance: 0 } },
+      mission: { schoolGroups: [], passiveGroups: [], curious: 0, bottom: 0, defensive: 0 },
+    };
+    this.seed = 777;
+    this.gen = generateEcosystem(this.level, this.seed);
+    await Promise.all([
+      preloadSpeciesData(['dondozo']),
+      preloadSprites(['dondozo']).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
+    ]);
+    this.eco = new Ecosystem(this.gen, maxHpOf);
+    this.eco.onPlayerDamage = () => {};
+    this.eco.time = GAME.PREDATOR_GRACE;
+    this.balls = new BallSystem();
+    this.sky = null;
+    this.mission = null;
+    this.tutorial = null;
+    const ps = this.gen.playerStart;
+    this.player.reset(ps.x, ps.y, ps.z, 0);
+    this.timeOfDay = 0.35; this.lighting = lightingAt(this.timeOfDay, this.lighting);
+    this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 2; this.hintTimer = 0;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0; this.ride = null;
+    this.bossWave = -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
+    this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
+    this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
+    this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
+    const [fx, , fz] = this.player.forward();
+    this.arenaAnchor = { x: ps.x + fx * 14, y: ps.y, z: ps.z + fz * 14 };
+    const boss = this.eco.spawnBoss('dondozo', this.arenaAnchor.x, this.arenaAnchor.z, false);
+    boss.y = this.arenaAnchor.y;
+    this.arenaBossId = boss.id;
+    this.eco.immortalId = boss.id; // the dummy survives any hit — HP clamps at 1 and refills
+    const store = useStore.getState();
+    store.setLevel(99, this.seed);
+    store.setMission(null);
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null });
+    this.arena = true;
+    this.phase = 'playing';
+    this.arenaSelect('corsola');
+    this.emit();
+  }
+
+  /** Swap the fielded test companion. */
+  arenaSelect(speciesId: string) {
+    if (!this.arena || !this.eco) return;
+    this.downedSpecies = [];
+    this.setParty([speciesId]);
+    // the dojo reviews the species' TRUE kit — strip the companion all-damage override
+    const partner = this.eco.byId.get(this.activePartners[0]);
+    if (partner) partner.kitOverride = undefined;
+  }
+
+  /** Fire the companion's move at the dummy — guaranteed target, zero aim required. */
+  arenaCast(moveSlot: 0 | 1 = 0): boolean {
+    if (!this.arena || !this.eco) return false;
+    // the dojo is entered via #arena, skipping the Enter-Reef click that unlocks WebAudio —
+    // this call IS inside the player's click, so it is the gesture that unlocks sound
+    Audio.init();
+    const partner = this.eco.byId.get(this.activePartners[0]);
+    const boss = this.eco.byId.get(this.arenaBossId);
+    if (!partner || !boss) return false;
+    if (!this.eco.moves.ready(partner, moveSlot)) return false;
+    const mv = kitOf(partner)[moveSlot];
+    if (isSupportive(mv)) return this.eco.moves.cast(partner, moveSlot, { kind: 'entity', id: partner.id });
+    return this.orderCast(partner, moveSlot, boss);
+  }
+
+  /** Fresh dummy on demand. */
+  arenaResetBoss() {
+    const boss = this.arena ? this.eco?.byId.get(this.arenaBossId) : undefined;
+    if (boss) boss.hp = boss.maxHp;
+  }
+
+  /** The dojo keeps everyone alive and the dummy anchored — a stage, not a fight. */
+  private arenaTick() {
+    const eco = this.eco;
+    if (!eco) return;
+    this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0;
+    const boss = eco.byId.get(this.arenaBossId);
+    if (boss) {
+      boss.mcd[0] = 9; boss.mcd[1] = 9;              // the dummy never fights back
+      // …not even its giant charge lunge: hold the charge countdown so one is never even
+      // SCHEDULED (knocking it out of 'charging' after the fact made the boss AI re-enter
+      // and re-announce the charge every think — an alarm+breach siren loop at ~10Hz)
+      boss.t2 = 999;
+      if (boss.state === 'charging') { boss.state = 'wander'; boss.stateT = 0; }
+      boss.vx *= 0.7; boss.vy *= 0.7; boss.vz *= 0.7; // and holds its ground
+      boss.x += (this.arenaAnchor.x - boss.x) * 0.02;
+      boss.y += (this.arenaAnchor.y - boss.y) * 0.02;
+      boss.z += (this.arenaAnchor.z - boss.z) * 0.02;
+      if (boss.hp < boss.maxHp * 0.06) boss.hp = boss.maxHp; // immortal punching bag
+    }
+    // safety floor only — a constant refill would hide what heal moves like Aqua Ring restore
+    const partner = eco.byId.get(this.activePartners[0]);
+    if (partner && partner.hp < partner.maxHp * 0.2) partner.hp = partner.maxHp;
+  }
+
+  endArena() {
+    if (!this.arena) return;
+    this.arena = false;
+    this.arenaBossId = -1;
+    this.end();
+  }
+
   endDemo() {
     if (!this.demo) return;
     this.demo = false;
@@ -419,6 +544,8 @@ export class GameSession {
   /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
   throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
+    // companion levels catch at the SURFACE only — underwater, the team does the fighting
+    if (!this.catchingAllowed) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
     const inv = { ...store.save.inventory };
@@ -450,21 +577,22 @@ export class GameSession {
   }
 
   /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. */
-  applyPlayerDamage(amount: number) {
+  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean }) {
     if (this.recoveringT > 0 || this.calmT > 0 || this.phase !== 'playing') return;
     this.playerHp = Math.max(0, this.playerHp - amount);
     this.regenGrace = COMBAT.PLAYER_REGEN_GRACE;
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, playerHitSeq: store.hud.playerHitSeq + 1 });
-    if (this.playerHp <= 0) this.beginRecovery();
+    if (this.playerHp <= 0) this.beginRecovery(by ?? null);
   }
 
-  private beginRecovery() {
+  private beginRecovery(by: { name: string; sky: boolean } | null = null) {
     this.clearSlingAim();
+    if (this.ride) this.dismount(true); // knocked off the bird
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
-    useStore.getState().setHud({ recovering: this.recoveringT });
+    useStore.getState().setHud({ recovering: this.recoveringT, koBy: by });
   }
 
   private finishRecovery() {
@@ -476,7 +604,64 @@ export class GameSession {
     this.recoveringT = 0;
     Audio.restore();
     const store = useStore.getState();
-    store.setHud({ playerHp: this.playerHp, recovering: 0 });
+    store.setHud({ playerHp: this.playerHp, recovering: 0, koBy: null });
+  }
+
+  // ------------------------------------------------------------------ Riding sky legendaries
+
+  /** Species id of the mount while airborne, or null. */
+  ride: string | null = null;
+
+  /** Caught sky legendaries — the rideable stable. */
+  get rideOptions(): string[] {
+    const col = useStore.getState().save.collection;
+    return SPECIES_LIST.filter((sp) => sp.skyOnly && sp.rarity === 'legendary' && (col[sp.id]?.caught ?? 0) > 0).map((sp) => sp.id);
+  }
+
+  /** B key / HUD chip (surface only): dismount if riding, mount straight away with one bird,
+   *  else open the hotkey stable — gameplay never pauses, Z/X/C/V picks the bird. */
+  toggleRide() {
+    if (this.phase !== 'playing' || this.recoveringT > 0) return;
+    const store = useStore.getState();
+    if (this.ride) { this.dismount(); return; }
+    if (store.hud.ridePicker) { store.setHud({ ridePicker: false }); return; }
+    if (!this.eco?.playerAtSurface) return;   // the call only works from the open air
+    const options = this.rideOptions;
+    if (options.length === 0) {
+      store.pushToast({ kind: 'warn', title: 'No sky legendary yet', body: 'Catch one crossing the sky, then ride it above the waves.', ttl: 4 });
+      return;
+    }
+    if (options.length === 1) { this.mount(options[0]); return; }
+    store.setHud({ ridePicker: true });
+  }
+
+  /** Climb onto a caught sky legendary and take to the air (from the surface). */
+  mount(speciesId: string) {
+    if (this.phase !== 'playing' || this.recoveringT > 0 || !this.rideOptions.includes(speciesId)) return;
+    if (!this.ride && !this.eco?.playerAtSurface) return;
+    const sp = getSpecies(speciesId);
+    if (!this.sheets.has(speciesId)) loadSpriteSheet(speciesId, 'front').then((sh) => this.sheets.set(speciesId, sh));
+    // you sit on its back, so you SEE its back — the back sheet is the riding view
+    if (!this.sheets.has(sheetKey(speciesId, 'back'))) loadSpriteSheet(speciesId, 'back').then((sh) => this.sheets.set(sheetKey(speciesId, 'back'), sh));
+    this.ride = speciesId;
+    this.player.rideSpeed = Math.max(SKY.RIDE.MIN_SPEED, sp.speed);
+    // the bird scoops you out of the water
+    this.player.y = Math.max(this.player.y, SKY.RIDE.ALT_MIN + 1.5);
+    this.player.vy = Math.max(this.player.vy, 4);
+    Audio.playCry(sp.dexId, 0.6);
+    const store = useStore.getState();
+    store.setHud({ ridePicker: false, riding: speciesId });
+    store.pushToast({ kind: 'event', title: `You're riding ${sp.name}!`, body: 'Fly where you look — press B to land.', speciesId, ttl: 5 });
+  }
+
+  /** Slide off the mount and splash back into the sea. */
+  dismount(silent = false) {
+    if (!this.ride) return;
+    this.ride = null;
+    this.player.rideSpeed = null;
+    this.player.vy = Math.min(this.player.vy, -2); // drop toward the water
+    if (!silent) Audio.breach();
+    useStore.getState().setHud({ riding: null, ridePicker: false });
   }
 
   // ------------------------------------------------------------------ Boss phases
@@ -517,8 +702,6 @@ export class GameSession {
       let bar: { name: string; hp: number; maxHp: number } | null = null;
       for (const id of alive) { const e = eco.byId.get(id)!; if (!bar || e.maxHp > bar.maxHp) bar = { name: tokenLabel(this.tok(e)), hp: Math.round(e.hp), maxHp: e.maxHp }; }
       useStore.getState().setHud({ bossBar: bar });
-      // defeat check: every party member downed while bosses live
-      if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
     }
   }
 
@@ -577,6 +760,7 @@ export class GameSession {
   }
 
   private triggerDefeat() {
+    this.dismount(true);
     this.phase = 'defeated';
     releasePointer();
     Audio.escape(); Audio.ko();
@@ -590,6 +774,60 @@ export class GameSession {
 
   /** Whether this level supports companions (levels 3+). */
   get companionsEnabled() { return !!this.level.companions; }
+
+  // ---------------------------------------------------------------- companion-level combat mode
+  /** Companion levels battle through partners underwater; balls come out only at the surface. */
+  get catchingAllowed() { return !this.companionsEnabled || !!this.eco?.playerAtSurface; }
+  /** The wild the player ordered the team onto: the fight persists until one side drops. */
+  focusTargetId = -1;
+  /** 0 = partners fully visible, 1 = hidden (surfaced trainer); render fades with this. */
+  partnerHideK = 0;
+  private focusAcc = 0;
+  private wasSurfaced = false;
+
+  /** Surface hand-off: partners stand down and fade; diving brings them straight back. */
+  private updateCombatMode(dt: number) {
+    if (!this.companionsEnabled || !this.eco) return;
+    const eco = this.eco;
+    const surfaced = eco.playerAtSurface;
+    if (surfaced !== this.wasSurfaced) {
+      this.wasSurfaced = surfaced;
+      if (surfaced) {
+        // stand the team down: clear duels and orders on BOTH sides so no invisible fights linger
+        for (const id of this.activePartners) {
+          const p = id >= 0 ? eco.byId.get(id) : undefined;
+          if (!p) continue;
+          if (p.duelWith >= 0) {
+            const foe = eco.byId.get(p.duelWith);
+            if (foe && foe.duelWith === p.id) { foe.duelWith = -1; if (foe.state === 'duel') { foe.state = 'wander'; foe.stateT = 0; } }
+          }
+          p.duelWith = -1; p.orderTarget = -1; p.orderMove = -1;
+          if (p.state === 'duel') { p.state = 'wander'; p.stateT = 0; }
+        }
+        this.focusTargetId = -1; // surfacing is disengaging
+      }
+    }
+    const target = surfaced ? 1 : 0;
+    this.partnerHideK += (target - this.partnerHideK) * Math.min(1, dt * 5);
+    // commanded focus: once the player clicks a target, the team keeps the fight going —
+    // re-ordering whenever a partner idles — until the target (or the team) drops
+    if (!surfaced && this.focusTargetId >= 0) {
+      this.focusAcc += dt;
+      if (this.focusAcc >= 0.6) {
+        this.focusAcc = 0;
+        const t = eco.byId.get(this.focusTargetId);
+        if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') { this.focusTargetId = -1; return; }
+        for (const id of this.activePartners) {
+          const partner = id >= 0 ? eco.byId.get(id) : undefined;
+          if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
+          if (partner.duelWith >= 0 || partner.orderTarget >= 0) continue; // mid-fight already
+          const kit = kitOf(partner);
+          const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
+          if (slot !== undefined) this.orderCast(partner, slot, t);
+        }
+      }
+    }
+  }
 
   /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
   setParty(tokens: string[]) {
@@ -682,6 +920,8 @@ export class GameSession {
     const eco = this.eco;
     const target = this.aimedEntity(45);
     if (!target) return false;
+    // companion levels: the click marks the team's quarry — they fight it until it drops
+    if (this.companionsEnabled && !this.catchingAllowed) this.focusTargetId = target.id;
     let best: { partner: Entity; slot: 0 | 1; score: number } | null = null;
     for (const id of this.activePartners) {
       const partner = id >= 0 ? eco.byId.get(id) : undefined;
@@ -757,7 +997,7 @@ export class GameSession {
       const e = id >= 0 ? eco?.byId.get(id) : undefined;
       if (!e || e.state === 'ko' || e.state === 'removed') return null;
       const kit = kitOf(e);
-      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], dueling: e.duelWith >= 0 };
+      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], cdMax: [kit[0].cooldown, kit[1].cooldown] as [number, number], dueling: e.duelWith >= 0 };
     });
     // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
     let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;
@@ -818,6 +1058,7 @@ export class GameSession {
     if (this.sky?.rampaging) { eco.bossCurrent = Math.max(eco.bossCurrent, SKY.RAMPAGE_STORM); this.rampageSurge = true; }
     else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
     this.updateSurfaceCombat(dt);
+    this.updateCombatMode(dt);
     this.balls.update(dt, eco, this.sky);
     // camera shake always decays (rampages shake on any level, not just boss waves)
     // and is hard-capped so no event can ever leave the camera trembling for long
@@ -825,6 +1066,8 @@ export class GameSession {
     if (this.lureCooldown > 0) this.lureCooldown = Math.max(0, this.lureCooldown - dt);
     if (this.swapCooldownT > 0) this.swapCooldownT -= dt;
     if (this.bossWave >= 0 || this.bossPhaseActive) this.updateBossPhase(dt);
+    // Team wipe halts the run immediately in companion levels — boss battle or not
+    if (this.companionsEnabled && this.party.length > 0 && this.downedSpecies.length >= this.party.length && this.phase === 'playing') this.triggerDefeat();
     for (let i = this.autoSend.length - 1; i >= 0; i--) {
       const [slot, at] = this.autoSend[i];
       if (eco.time < at) continue;
@@ -838,14 +1081,16 @@ export class GameSession {
     this.handleBallEvents();
     this.handleSkyEvents();
     this.updateTutorial(dt);
+    if (this.arena) this.arenaTick();
     // Throttled UI / audio / persistence
     this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
-    this.seenAcc += dt; if (this.seenAcc > 2) { this.seenAcc = 0; this.updateSeen(); }
-    this.saveAcc += dt; if (this.saveAcc > 20) { this.saveAcc = 0; this.persistRun(); }
+    this.seenAcc += dt; if (this.seenAcc > 2 && !this.arena) { this.seenAcc = 0; this.updateSeen(); }
+    this.saveAcc += dt; if (this.saveAcc > 20 && !this.arena) { this.saveAcc = 0; this.persistRun(); }
     this.updateRestoration();
     this.updateHints(dt);
     if (this.huntToastCooldown > 0) this.huntToastCooldown -= dt;
+    if (this.ballToastCooldown > 0) this.ballToastCooldown -= dt;
     if (this.phase === 'completing') {
       this.completeTimer -= dt;
       if (this.completeTimer <= 0) this.finishLevel();
@@ -995,7 +1240,7 @@ export class GameSession {
         }
         case 'cast': {
           const e = eco.byId.get(ev.casterId);
-          if (near(e, 45)) Audio.moveCast(ev.style);
+          if (near(e, 45)) Audio.moveCast(ev.style, ev.moveId);
           break;
         }
         case 'moveHit': {
@@ -1024,8 +1269,9 @@ export class GameSession {
         case 'effect': {
           const t = eco.byId.get(ev.targetId);
           if (!t) break;
-          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect.toUpperCase();
+          const label = ev.effect === 'defDrop' ? 'DEF↓' : ev.effect === 'atkDrop' ? 'ATK↓' : ev.effect === 'defUp' ? 'DEF↑' : ev.effect === 'speedUp' ? 'SPD↑' : ev.effect === 'conceal' ? 'POOF' : ev.effect === 'freeze' ? 'FROZEN' : ev.effect.toUpperCase();
           this.pushNumber(label, ev.effect === 'defUp' || ev.effect === 'speedUp' ? '#7ff0c9' : '#ffd166', t.x, t.y + t.species.size * 0.6, t.z, false);
+          if (ev.effect === 'freeze' && near(t, 45)) Audio.freezeCrack();
           break;
         }
         case 'heal': {
@@ -1042,7 +1288,21 @@ export class GameSession {
         }
         case 'alarm': {
           const g = eco.groups[ev.groupId];
-          if (g && near(eco.byId.get(g.memberIds[0]) ?? eco.byId.get(g.guardianId), 40)) Audio.alarm();
+          const first = g ? eco.byId.get(g.memberIds[0]) ?? eco.byId.get(g.guardianId) : undefined;
+          if (g && near(first, 40)) Audio.alarm();
+          // Wishiwashi answer alarm by massing, not fleeing — call it out the first time it's seen
+          if (g?.speciesId === 'wishiwashi' && g.memberIds.length >= 3 && near(first, 55) && this.ballToastCooldown <= 0) {
+            this.ballToastCooldown = 45;
+            store.pushToast({ kind: 'event', title: 'The Wishiwashi school forms up!', body: 'Alone they are nearly nothing — together they are a wall.', speciesId: 'wishiwashi', ttl: 4 });
+          }
+          break;
+        }
+        case 'ferry': {
+          const e = eco.byId.get(ev.entityId);
+          if (near(e, 90)) {
+            Audio.playCry(getSpecies('lapras').dexId, 0.3);
+            store.pushToast({ kind: 'event', title: 'A Lapras rises to the surface', body: 'The reef’s gentle ferry — the little ones are gathering alongside.', speciesId: 'lapras', ttl: 5 });
+          }
           break;
         }
         case 'huntStart': {
@@ -1189,6 +1449,9 @@ export class GameSession {
   private updateSurfaceCombat(dt: number) {
     const eco = this.eco, sky = this.sky;
     if (!eco || !sky || !this.companionsEnabled) return;
+    // surfaced trainer = the team is hidden and off-stage: no suffocation drain, no
+    // sky skirmishes — the PLAYER catches sky Pokémon with balls now
+    if (this.catchingAllowed) { this.surfaceDrainAcc.clear(); return; }
     for (const slot of [0, 1] as const) {
       const id = this.activePartners[slot];
       if (id < 0) continue;
@@ -1274,7 +1537,7 @@ export class GameSession {
         this.pushNumber(`-${dmg}`, '#ff8091', sb.x, cy2 + 0.6, sb.z, true);
       }
     }
-    if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG);
+    if (len3(p.x - tx, p.y - ty, p.z - tz) < R + 1.5) this.applyPlayerDamage(SKY.RAMPAGE_PLAYER_DMG, { name: sp.name, sky: true });
     this.shakeT = Math.max(this.shakeT, 0.6);
     Audio.breach();
   }
@@ -1301,6 +1564,29 @@ export class GameSession {
           break;
         }
         case 'legendaryVanish': break;
+        case 'dive': {
+          // a sea bird crashes through the surface after prey — splash, panic in the shallows,
+          // and sometimes it actually comes up with breakfast
+          if (p.y > -8 && len3(ev.x - p.x, ev.y - p.y, ev.z - p.z) < 90) Audio.miss(); // the plop carries near the surface
+          this.pushFx('hit', ev.x, 0, ev.z, 1.6, '#cfeaff');
+          const eco = this.eco;
+          if (eco) {
+            let snatched: Entity | null = null;
+            for (const t of eco.alive) {
+              if (t.y < -4 || t.species.stage !== 0 || t.species.size > 1.0 || t.role === 'partner') continue;
+              if (t.state === 'ko' || t.state === 'caught' || t.state === 'captureAttempt') continue;
+              const dd = len3(t.x - ev.x, 0, t.z - ev.z);
+              if (dd > SKY.DIVE.SCARE_RADIUS) continue;
+              const k = (SKY.DIVE.SCARE_RADIUS - dd) / SKY.DIVE.SCARE_RADIUS;
+              const dn = dd || 1;
+              t.vx += ((t.x - ev.x) / dn) * 4 * k; t.vy -= 2.5 * k; t.vz += ((t.z - ev.z) / dn) * 4 * k;
+              if (t.groupId >= 0) { const g = eco.groups[t.groupId]; g.alarm = Math.max(g.alarm, 0.6); }
+              if (!snatched && t.ambient && !t.objectiveId && dd < SKY.DIVE.SNATCH_RADIUS && t.y > -3) snatched = t;
+            }
+            if (snatched) { snatched.state = 'caught'; snatched.stateT = 0; snatched.animT = 0; } // the bird got one
+          }
+          break;
+        }
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true);
@@ -1434,6 +1720,10 @@ export class GameSession {
       lureRemaining: eco.lureRemaining, lureCooldown: this.lureCooldown,
       predatorAlert: !!hunting, huntingSpecies: hunting ? hunting.species.id : null,
       timeOfDay: this.timeOfDay, zoneLabel: zone.label, depth: -p.y, atRisk, nearestTarget: nearest,
+      catchMode: this.catchingAllowed,
+      riding: this.ride, rideAvail: this.rideOptions.length > 0,
+      // diving closes the stable — the call only works from the open air
+      ...(store.hud.ridePicker && !this.ride && !eco.playerAtSurface ? { ridePicker: false } : null),
     });
   }
 
@@ -1461,6 +1751,7 @@ export class GameSession {
 
   private updateHints(dt: number) {
     const store = useStore.getState();
+    if (this.arena) { if (store.hud.hint) store.setHud({ hint: null }); return; }
     // the tutorial banner IS the hint while it runs — never two instructions at once.
     // And once the tutorial has been completed (or skipped), the hints retire for good:
     // the tutorial covers every control a player needs.
@@ -1469,6 +1760,12 @@ export class GameSession {
     this.hintTimer += dt;
     const isTouch = store.isTouch;
     let hint: string | null = null;
+    // companion levels underwater: throwing is off, the TEAM fights — hint accordingly
+    if (!this.catchingAllowed) {
+      const teamHint = `${isTouch ? 'Tap' : 'Click'} a wild Pokémon — your team fights it until it drops · surface to catch with Poké Balls`;
+      if (this.elapsed > 2 && this.hintStep === 0 && teamHint !== store.hud.hint) store.setHud({ hint: teamHint });
+      return;
+    }
     if (this.hintStep === 0) hint = this.elapsed > 2 ? (isTouch ? 'Touch the Poké Ball and drag to aim — release to throw' : 'Click to throw a Poké Ball at the Pokémon in your crosshair') : null;
     else if (this.hintStep === 1 && this.hintTimer < 8) hint = isTouch ? 'Pull further to throw harder · drag up to reach the sky' : 'Balls pick themselves — press 1–4 to override · Tab for the mission';
     else if (this.hintStep === 1) { this.hintStep = 2; }

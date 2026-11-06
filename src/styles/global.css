@@ -67,6 +67,7 @@ a { color: var(--aqua); }
 .demo-scene .demo-scrim { position: fixed; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 12, 26, .48) 0%, rgba(3, 12, 26, .12) 28%, rgba(3, 12, 26, .12) 68%, rgba(3, 12, 26, .55) 100%); }
 @keyframes demoIn { from { opacity: 0; } to { opacity: 1; } }
 .screen-inner { width: min(100%, 960px); animation: fadeUp .5s ease both; }
+.screen-inner.wide { width: min(100%, 1280px); }
 .glass { background: var(--panel); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.06); }
 .glass.strong { background: var(--panel-strong); }
 .eyebrow { font-family: var(--font-display); font-weight: 800; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; color: var(--aqua); }
@@ -169,6 +170,93 @@ a { color: var(--aqua); }
 .objective .guardian { font-size: 11.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .objective .guardian.done { color: var(--green); }
 
+/* ---------- Mission brief: a console-style framed screen ----------
+   The panel is the frame: it caps at the viewport height and long content (the party
+   roster) scrolls INSIDE it, so the page itself never grows a scrollbar. */
+.screen-inner.brief-wide { width: min(100%, 1240px); }
+.brief { padding: 24px 26px; display: flex; flex-direction: column; max-height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
+.brief-title { font-size: clamp(26px, 3.4vw, 42px); }
+.brief-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
+.brief .mission-list { overflow: auto; min-height: 0; flex: none; }
+.brief-flavor { margin-top: 12px; }
+.brief-foot .hr { margin: 16px 0; }
+/* two-pane (companion levels): mission briefing left, team picker right, launch bar across the bottom */
+.brief.cols { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: 28px; height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
+.brief.cols .brief-left { grid-row: 1; grid-column: 1; }
+.brief.cols .brief-flavor { margin-top: auto; padding-top: 12px; }
+/* tight heights: the lineup earns the flavor copy's rows */
+@media (max-height: 840px) { .brief.cols .brief-flavor { display: none; } }
+.brief.cols .brief-foot { grid-row: 2; grid-column: 1 / -1; }
+.brief-right { grid-row: 1; grid-column: 2; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-left: 1px solid var(--line); padding-left: 28px; }
+.brief-right .party-scroll { flex: 1; min-height: 0; overflow: auto; margin-top: 2px; padding: 2px 6px 6px 2px; }
+.brief .party-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+/* the mission is the headline act: bold rows with an accent bar, not a quiet checklist */
+.brief .objective { padding: 12px 14px; background: rgba(53,208,255,.07); border-color: rgba(53,208,255,.22); border-left: 3px solid var(--aqua); }
+.brief .objective .label { font-family: var(--font-display); font-weight: 800; font-size: 15.5px; }
+.brief .objective .count { font-size: 18px; color: var(--aqua); }
+.brief .objective.boss { background: rgba(244,63,94,.08); border-color: rgba(244,63,94,.35); border-left-color: var(--red); }
+.brief .objective.done { background: rgba(74,222,128,.08); border-color: rgba(74,222,128,.25); border-left-color: var(--green); }
+/* the chosen team, in battle order, under the mission */
+.lineup { display: flex; flex-direction: column; gap: 4px; }
+.lineup-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; border-radius: 10px; background: rgba(255,255,255,.045); border: 1px solid var(--line); min-height: 34px; }
+.lineup-row .ln { font-family: var(--font-display); font-weight: 900; font-size: 12px; color: var(--aqua); width: 14px; text-align: center; flex: none; }
+.lineup-row .nm { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineup-row .lr-active { margin-left: auto; font-size: 10px; padding: 2px 8px; }
+.lineup-row.empty { border-style: dashed; background: none; }
+.lineup-row.empty .ln { color: var(--dim); }
+.lineup-row.empty .nm { color: var(--dim); font-weight: 600; }
+/* roster sort dropdown + the sorted stat on every cell */
+.stat-filter { min-height: 32px; padding: 0 10px; border-radius: 10px; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.35); color: var(--aqua); font: 800 12.5px var(--font-body); cursor: pointer; color-scheme: dark; }
+.stat-filter:hover { background: rgba(53,208,255,.2); }
+.party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
+.boss-cell .stat { color: var(--gold); }
+.reef-status { color: var(--dim); }
+.reef-status.ready { color: var(--green); font-weight: 800; }
+/* stacked frame (portrait phones & tablets, narrow windows): the roster becomes the scroll region */
+@media (max-width: 920px) and (orientation: portrait), (max-width: 640px) {
+  .brief.cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; column-gap: 0; }
+  .brief.cols .brief-left { grid-row: 1; grid-column: 1; }
+  .brief.cols .brief-right { grid-row: 2; grid-column: 1; border-left: 0; padding-left: 0; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  .brief.cols .brief-foot { grid-row: 3; grid-column: 1; }
+  .brief.cols .brief-flavor { display: none; }   /* keep the stacked frame tight */
+  .brief.cols .mission-list { max-height: 190px; }
+  .brief.cols .lineup { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .brief.cols .lineup-row { min-width: 0; }
+  .brief.cols .lineup-row .lr-active { display: none; }   /* slots 1-2 are the actives; the number says it */
+}
+/* phones & short landscape: smaller sprites and type so the frame fits without scrolling */
+@media (max-width: 760px), (max-height: 540px) {
+  .brief { padding: 14px 16px; }
+  .brief-title { font-size: clamp(20px, 4.5vw, 28px); }
+  .brief .subtitle { font-size: 12.5px; }
+  .brief .objective { padding: 5px 8px; }
+  .brief .objective .label { font-size: 12.5px; }
+  .brief .mission-list { gap: 5px; }
+  .brief .party-grid { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; }
+  .brief .party-cell { padding: 6px 4px; }
+  .brief .party-cell .sprite { width: 34px; height: 34px; }
+  .brief .party-cell .n { font-size: 10px; }
+  .brief .party-cell .stat { font-size: 9px; }
+  .brief .objective .count { font-size: 14px; }
+  .brief .lineup-row { min-height: 26px; padding: 2px 8px; gap: 6px; }
+  .brief .lineup-row .nm { font-size: 11px; }
+  .brief .lineup-row img { width: 20px; height: 20px; }
+  .brief .lineup-row .lr-active { font-size: 9px; padding: 1px 6px; }
+  .stat-filter { min-height: 28px; font-size: 11px; padding: 0 7px; }
+  .brief-foot .hr { margin: 10px 0; }
+  .brief-foot .btn { min-height: 38px; }
+  .brief-foot .btn.big { min-height: 44px; font-size: 14px; padding: 0 18px; border-radius: 12px; }
+}
+/* landscape phones: keep the two panes, just slimmer */
+@media (max-height: 540px) and (orientation: landscape) {
+  .brief.cols { grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); column-gap: 16px; }
+  .brief-right { padding-left: 16px; }
+  .brief .eyebrow { font-size: 9.5px; }
+  .brief .subtitle { display: none; }
+  .brief.cols .brief-flavor { display: none; }
+  .brief-right > .row .muted.small { display: none; }   /* the party how-to copy: give its rows to the roster */
+}
+
 /* ---------- HUD ---------- */
 .hud { position: fixed; inset: 0; pointer-events: none; font-size: 14px; z-index: 22; }
 .hud * { pointer-events: none; }
@@ -210,6 +298,17 @@ a { color: var(--aqua); }
 .chip b { color: var(--text); }
 .chip.alert { background: rgba(244,63,94,.22); border-color: rgba(244,63,94,.55); color: #ffd0d8; animation: pulse 1.2s ease-in-out infinite; }
 .chip.lure-active { background: rgba(179,136,255,.22); border-color: rgba(179,136,255,.55); color: #e6d9ff; }
+/* ride a caught sky legendary: the standing offer and the in-flight status */
+.chip.ride-chip { background: rgba(127,240,201,.12); border-color: rgba(127,240,201,.4); color: #d7fff0; cursor: pointer; }
+.chip.ride-chip:hover { background: rgba(127,240,201,.22); }
+.chip.ride-chip b { color: #7ff0c9; }
+/* the hotkey stable: pick a bird with Z/X/C/V while the dive keeps running */
+.ride-stable { display: flex; flex-direction: column; gap: 5px; padding: 10px 12px; border-color: rgba(127,240,201,.35); animation: fadeUp .25s ease both; }
+.ride-stable .eyebrow { color: #7ff0c9; }
+.ride-row { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 10px; background: rgba(255,255,255,.05); border: 1px solid var(--line); color: var(--text); }
+.ride-row:hover { background: rgba(127,240,201,.14); border-color: rgba(127,240,201,.4); }
+.ride-row .rn { font-weight: 800; font-size: 13px; }
+.ride-row .rs { margin-left: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .icon-btn { width: 42px; height: 42px; border-radius: 12px; background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); display: grid; place-items: center; font-size: 18px; color: var(--text); }
 .crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); }
 .crosshair::before { content: ''; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.75); box-shadow: 0 0 8px rgba(0,0,0,.5), inset 0 0 8px rgba(0,0,0,.3); }
@@ -255,7 +354,30 @@ a { color: var(--aqua); }
 .party-cell .n { font-size: 11.5px; font-weight: 700; }
 .party-cell .slot { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 800; padding: 2px 5px; border-radius: 6px; background: rgba(255,255,255,.12); color: var(--muted); }
 .party-cell .slot.active { background: rgba(53,208,255,.25); color: var(--aqua); }
-.party-bar { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(104px + var(--safe-bottom)); display: flex; flex-direction: column; gap: 6px; width: 216px; }
+/* The team IS the combat UI in companion levels: bottom-centre, cards side by side,
+   on desktop, tablet and landscape phones alike (the ball chip owns this spot only at the surface). */
+.party-bar { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(14px + var(--safe-bottom)); display: flex; flex-direction: row; align-items: flex-end; justify-content: center; gap: 8px; }
+.party-bar .party-card { width: 216px; }
+/* ---- Pokémon-Quest-style battle cards: one chunky colored card per fielded Pokémon,
+   move TILES left and right, the Pokémon itself in the middle, Auto floating alongside */
+.q-card { display: flex; align-items: stretch; gap: 8px; padding: 8px 10px; border-radius: 16px; border: 2px solid rgba(255,255,255,.28); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.q-card.s0 { background: linear-gradient(180deg, #e06a3c, #c74e2a); }
+.q-card.s1 { background: linear-gradient(180deg, #4e9ad9, #2f6fb0); }
+.q-card.dueling { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.55), 0 4px 16px rgba(0,0,0,.4); }
+.q-mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 76px; }
+.q-name { font-size: 11.5px; font-weight: 900; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.4); white-space: nowrap; }
+.q-hp { width: 64px; height: 5px; border-radius: 3px; background: rgba(0,0,0,.35); overflow: hidden; }
+.q-hp i { display: block; height: 100%; border-radius: 3px; transition: width .2s; }
+.q-move { display: flex; flex-direction: column; align-items: center; gap: 3px; background: none; border: none; padding: 0; color: #fff; }
+.q-move .tile { position: relative; overflow: hidden; display: block; width: 50px; height: 50px; border-radius: 13px; background: linear-gradient(180deg, color-mix(in srgb, var(--tc) 80%, #fff), color-mix(in srgb, var(--tc) 85%, #000)); border: 2px solid rgba(255,255,255,.45); box-shadow: inset 0 -3px 0 rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.3); }
+/* cooldown: a radial sweep that unwinds clockwise as the move recharges */
+.q-move .cdp { position: absolute; inset: 0; pointer-events: none; }
+/* absolute centering: immune to grid rounding at any browser zoom level */
+.q-move .tile .type-icon { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 30px !important; height: 30px !important; }
+.q-move .q-mn { font-size: 10.5px; font-weight: 800; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.45); max-width: 70px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.q-move:hover:not(:disabled) .tile { filter: brightness(1.15); }
+.q-move.cooling .tile { filter: saturate(.55) brightness(.85); }
+.q-move .kbd { position: absolute; top: -4px; right: -4px; font-size: 9px; padding: 0 4px; }
 .party-card { padding: 8px 10px; border-radius: 14px; }
 .party-card.dueling { border-color: rgba(255,209,102,.55); box-shadow: 0 0 14px rgba(255,209,102,.25); }
 .party-card.empty { display: flex; align-items: center; justify-content: space-between; }
@@ -270,11 +392,22 @@ a { color: var(--aqua); }
 .move-btn .mn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .move-btn .cd { font-variant-numeric: tabular-nums; color: var(--gold); }
 .move-btn .kbd { font-size: 9.5px; padding: 1px 4px; }
+/* The official PokeAPI type symbol (pre-cropped square) */
+.type-icon { object-fit: contain; border-radius: 50%; flex: none; box-shadow: 0 0 0 1px rgba(255,255,255,.22), 0 1px 4px rgba(0,0,0,.35); }
+/* Typed move buttons: tinted by their move's elemental type (--tc) */
+.move-btn.typed { justify-content: flex-start; background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 30%, rgba(8,16,30,.4)), rgba(8,16,30,.55)); border-color: color-mix(in srgb, var(--tc) 55%, transparent); }
+.move-btn.typed .mn { flex: 1; text-align: left; }
+.move-btn.typed:hover:not(:disabled) { background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 48%, rgba(8,16,30,.3)), rgba(8,16,30,.45)); box-shadow: 0 0 10px color-mix(in srgb, var(--tc) 35%, transparent); }
+.move-btn.typed.cooling { background: rgba(255,255,255,.05); border-color: var(--line); }
+.move-btn.typed.cooling .type-icon { filter: grayscale(.8); opacity: .55; }
+.arena-move.typed { border-color: color-mix(in srgb, var(--tc) 60%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--tc) 26%, rgba(8,16,30,.5)), rgba(8,16,30,.6)); }
+.arena-move.typed:hover:not(:disabled) { box-shadow: 0 0 12px color-mix(in srgb, var(--tc) 40%, transparent); }
 .reserves { display: flex; gap: 4px; }
 .reserve-chip { width: 36px; height: 36px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
 .reserve-chip:hover { border-color: var(--line-strong); }
 .reserve-chip.down { opacity: .35; }
-.hud.touch .party-bar { left: calc(14px + var(--safe-left)); bottom: calc(302px + var(--safe-bottom)); width: 196px; }
+.hud.touch .party-bar { bottom: calc(16px + var(--safe-bottom)); }
+.hud.touch .party-bar .party-card { width: 196px; }
 .hud.touch .move-btn { min-height: 44px; font-size: 12px; border-radius: 12px; justify-content: center; }
 .hud.touch .move-btn .mn { text-align: center; }
 .hud.touch .party-card { padding: 10px 12px; }
@@ -422,6 +555,21 @@ details.vet[open] summary { margin-bottom: 10px; }
 input[type=range] { accent-color: var(--aqua); width: 150px; }
 
 /* Touch controls */
+/* The move dojo (DEV #arena) */
+.arena-hud { position: fixed; inset: 0; z-index: 23; pointer-events: none; }
+.arena-hud .interactive { pointer-events: auto; }
+.arena-top { position: absolute; top: calc(14px + var(--safe-top)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 14px; }
+.arena-top select { background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; font: 700 13.5px var(--font-body, sans-serif); }
+.arena-boss { position: absolute; top: calc(74px + var(--safe-top)); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; width: 240px; }
+.arena-boss .bar { flex: 1; height: 8px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; border: 1px solid var(--line); }
+.arena-boss .bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #f43f5e, #fb923c); transition: width .15s ease; }
+.arena-boss b { font-size: 12px; min-width: 34px; text-align: right; }
+.arena-moves { position: absolute; bottom: calc(26px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; gap: 12px; }
+.arena-move { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 14px; color: var(--text); font-weight: 800; font-size: 14px; border-width: 1px; transition: transform .12s ease, box-shadow .2s; }
+.arena-move:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0,0,0,.3); }
+.arena-move:disabled { opacity: .5; }
+.arena-hint { position: absolute; bottom: calc(86px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); background: rgba(0,0,0,.3); padding: 5px 12px; border-radius: 999px; white-space: nowrap; }
+
 /* phones play in landscape: the in-game portrait gate, above every HUD layer */
 .rotate-gate { position: fixed; inset: 0; z-index: 46; display: grid; place-items: center; text-align: center; padding: 24px; background: radial-gradient(120% 100% at 50% 18%, #0a2a44 0%, #051a2c 55%, #03101e 100%); animation: fadeUp .25s ease both; }
 .rotate-gate .phone { display: inline-block; animation: tiltPhone 2.2s ease-in-out infinite; transform-origin: 50% 60%; margin-bottom: 18px; filter: drop-shadow(0 0 18px rgba(53,208,255,.4)); }
@@ -502,7 +650,8 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .touch-controls .joy { width: 100px; height: 100px; bottom: calc(95px + var(--safe-bottom)); left: calc(26px + var(--safe-left)); }
   .touch-controls .sling-anchor { bottom: calc(109px + var(--safe-bottom)); right: calc(24px + var(--safe-right)); width: 72px; height: 72px; } /* center 145 */
   /* party box: tiny but fully functional, floating clear above the joystick */
-  .hud.touch .party-bar { width: 148px; gap: 4px; bottom: calc(224px + var(--safe-bottom)); left: calc(10px + var(--safe-left)); }
+  .hud.touch .party-bar { gap: 4px; bottom: calc(12px + var(--safe-bottom)); }
+  .hud.touch .party-bar .party-card { width: 148px; }
   .hud.touch .party-card { padding: 4px 6px; border-radius: 10px; }
   .hud.touch .party-card .pn { font-size: 10.5px; }
   .hud.touch .party-card img { width: 24px; height: 24px; }
@@ -544,7 +693,7 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .hud.touch .player-hp .ic { font-size: 13px; }
   .hud.touch .player-hp .bar { height: 6px; }
   .hud.touch .player-hp b { font-size: 11px; min-width: 22px; }
-  .hud.touch .party-bar { bottom: calc(126px + var(--safe-bottom)); }
+  .hud.touch .party-bar { bottom: calc(12px + var(--safe-bottom)); }
   /* wide screen: the centered tray clears both side columns, so controls drop back down */
   .touch-controls .joy { bottom: calc(22px + var(--safe-bottom)); left: calc(48px + var(--safe-left)); }
   .touch-controls .sling-anchor { bottom: calc(39px + var(--safe-bottom)); right: calc(40px + var(--safe-right)); } /* center 78 (base 78px ball) */

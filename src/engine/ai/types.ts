@@ -8,7 +8,7 @@ export type EntityState =
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
-  | 'inflate' | 'support' | 'lured' | 'breach'
+  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferry'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -73,8 +73,20 @@ export interface Entity {
   defStage: number; defStageUntil: number;
   /** Status timers (seconds remaining). */
   stunT: number; slowT: number; blindT: number;
-  /** Heal-over-time: hp/sec remaining seconds. */
-  hotRate: number; hotT: number;
+  /** Heal-over-time: hp/sec, remaining seconds, and HP accrued since the last green tick. */
+  hotRate: number; hotT: number; hotAcc: number;
+  /** Smokescreen concealment: seconds remaining / total — render fades the sprite in the cloud. */
+  concealT: number; concealDur: number;
+  /** Aqua Ring water veil: seconds remaining / total (visual shell around the regen). */
+  veilT: number; veilDur: number;
+  /** Cast anticipation: sim-time wind-up window — rear back until castAt, whip forward after. */
+  castFrom: number; castAt: number;
+  /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
+  jetT: number; jetColor: string;
+  /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
+  frozenT: number;
+  /** Hit recoil: a brief knockback shove outside the cruise-speed clamp (decays fast). */
+  kbx: number; kby: number; kbz: number; kbT: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
   /** Who to retaliate against (entity id or -2 for player). */
@@ -146,6 +158,7 @@ export type EcoEvent =
   | { type: 'reinforce'; speciesId: string; count: number; objectiveId?: string }
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
+  | { type: 'ferry'; entityId: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

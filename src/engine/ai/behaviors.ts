@@ -27,6 +27,8 @@ export interface SimContext {
   events: EcoEvent[];
   predatorGraceOver: boolean;
   current: Vec3;
+  /** A Lapras currently idling at the surface as the reef's ferry (small species bob alongside). */
+  ferry: Entity | null;
   damage(target: Entity, fraction: number, by: 'predator' | 'ball', sourceId: number): void;
   /** Cast a move (slot 0/1) at a target. Returns false when not ready/in range. */
   cast(e: Entity, slot: 0 | 1, target: MoveTarget): boolean;
@@ -124,7 +126,11 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   // State transitions
   const baseState = isSchool ? 'school' : 'drift';
   const feeding = g.feedUntil > ctx.time;
+  // Wishiwashi never scatter: under threat the school CONTRACTS into a rolling ball (lore —
+  // alone it is the weakest Pokémon alive; together they are a wall)
+  const balled = s.id === 'wishiwashi' && g.alarm > 0.05 && g.memberIds.length >= 3 && !e.lured;
   if (e.lured) e.state = 'lured';
+  else if (balled) { if (e.state !== 'school') { e.state = 'school'; e.stateT = 0; } }
   else if (g.alarm > 0.05 && e.state !== 'scatter') { e.state = 'scatter'; e.stateT = 0; }
   else if (g.alarm <= 0.05 && e.state === 'scatter') { e.state = baseState; e.stateT = 0; }
   else if (e.state === 'lured') { e.state = baseState; e.stateT = 0; }
@@ -136,10 +142,21 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const full = e.lod === 0;
   const maxN = e.lod === 0 ? 12 : 6;
 
+  // Lapras ferry: calm little surface species paddle over and bob alongside the gentle giant.
+  // While aboard, the depth band and the school anchor both let go — shore leave.
+  const ferrying = !!ctx.ferry && !scattering && !balled && !e.lured && e.state !== 'feed' && s.size <= 1.05
+    && len3(ctx.ferry.x - e.x, ctx.ferry.y - e.y, ctx.ferry.z - e.z) < 22;
+  if (ferrying) {
+    const f = ctx.ferry!;
+    const a = e.phase + ctx.time * 0.25;
+    const r = f.species.size * 1.1 + s.size + 0.6;
+    seek(e, f.x + Math.cos(a) * r, f.y + 0.35 + Math.sin(ctx.time * 1.6 + e.phase * 5) * 0.18, f.z + Math.sin(a) * r, 2.2, 0.4);
+  }
+
   // Boids among same group
   if (e.lod < 2) {
     let cx = 0, cy = 0, cz = 0, n = 0, ax = 0, ay = 0, az = 0;
-    const sepD = s.size * 1.1 + 0.45;
+    const sepD = (s.size * 1.1 + 0.45) * (balled ? 0.55 : 1); // the ball packs scale to scale
     const R = isSchool ? 6 : 7;
     ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
       if (o === e || o.groupId !== g.id || n >= maxN) return;
@@ -163,7 +180,16 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   }
 
   // Leader / anchor attraction — stronger the further you drift from the group
-  {
+  if (balled) {
+    // school ball: each fish takes a slot on a slowly-rolling sphere around the anchor,
+    // and the massed school fights as one — attack and defense surge while it holds
+    const swirl = ctx.time * 1.9;
+    const ringR = Math.max(0.8, Math.min(2.4, g.memberIds.length * 0.16));
+    const ay2 = Math.sin(e.phase * 3.7) * ringR * 0.55;
+    seek(e, g.anchor.x + Math.cos(swirl + e.phase) * ringR, g.anchor.y + ay2, g.anchor.z + Math.sin(swirl + e.phase) * ringR, 2.2, 0.3);
+    e.atkStage = Math.max(e.atkStage, 1.5); e.atkStageUntil = Math.max(e.atkStageUntil, ctx.time + 1.2);
+    e.defStage = Math.max(e.defStage, 1.6); e.defStageUntil = Math.max(e.defStageUntil, ctx.time + 1.2);
+  } else if (!ferrying) {
     const dA = len3(g.anchor.x - e.x, g.anchor.y - e.y, g.anchor.z - e.z);
     const over = Math.max(0, dA - g.radius);
     const w = (isSchool ? 0.5 : 0.35) + over * (e.lod === 2 ? 0.6 : 0.18);
@@ -181,7 +207,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     const d = len3(tp.x - e.x, tp.y - e.y, tp.z - e.z);
     if (d < 22) fleeFrom(e, tp.x, tp.y, tp.z, 2.6 * (1 - d / 24) + 0.4);
   }
-  if (disturb > 0) fleeFrom(e, ctx.player.x, ctx.player.y, ctx.player.z, 1.4 * disturb);
+  if (disturb > 0 && !balled) fleeFrom(e, ctx.player.x, ctx.player.y, ctx.player.z, 1.4 * disturb);
 
   // Lure: circle the player while keeping group structure
   if (e.lured) {
@@ -214,7 +240,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
   acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
   if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  if (e.state !== 'feed') depthPreference(e, 0.8); // feeding suspends the comfort band entirely
+  if (e.state !== 'feed' && !ferrying) depthPreference(e, 0.8); // feeding & ferry visits suspend the comfort band entirely
   floorAndSurface(e, e.state === 'feed' ? s.size * 0.35 : s.size * 0.6 + 0.8); // grazers press right down to the sand
   if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
   containWorld(e);
@@ -224,7 +250,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
   const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
   const feedMult = e.state === 'feed' ? (atTable ? (isSchool ? GAME.FEED_SPEED_MULT : 0.65) : 1.3) : 1;
-  const speed = (scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
+  const speed = (balled ? s.burst * 0.85 : scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
   commit(e, speed);
 }
 
@@ -297,8 +323,13 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
     if (m && m.state === 'feed') ctx.events.push({ type: 'feedChatter', entityId: m.id });
   }
 
+  // a balled Wishiwashi school stands its ground — the anchor freezes instead of running
+  const holdBall = g.speciesId === 'wishiwashi' && g.alarm > 0.05 && g.memberIds.length >= 3;
   if (lured) {
     g.anchorTarget.x = ctx.player.x; g.anchorTarget.y = ctx.player.y; g.anchorTarget.z = ctx.player.z;
+  } else if (holdBall) {
+    g.anchorTarget.x = g.anchor.x; g.anchorTarget.y = g.anchor.y; g.anchorTarget.z = g.anchor.z;
+    g.nextAnchorChange = Math.max(g.nextAnchorChange, ctx.time + 4);
   } else if (g.alarm > 0.3 && g.threatId !== -1 && threatPos(ctx, g.threatId, tp)) {
     // move the school away from the threat
     const dx = g.anchor.x - tp.x, dz = g.anchor.z - tp.z;
@@ -436,7 +467,11 @@ const CIRCLERS = new Set(['sharpedo', 'gyarados', 'veluza']);
 
 function preyWeight(p: Entity, prey: Entity): number {
   if (prey.behavior === 'predator' || prey.behavior === 'giant' || prey.behavior === 'bottom') return 0;
-  if (prey.role === 'partner') return prey.hp < prey.maxHp * 0.6 ? 0.25 : 0.12; // companions travel with a scary trainer
+  if (prey.role === 'partner') {
+    // blood in the water: a wounded companion draws the frenzy despite its scary trainer
+    const wound = 1 - prey.hp / prey.maxHp;
+    return wound > 0.05 ? 0.3 * (1 + wound * 4) : 0.12;
+  }
   if (prey.state === 'captureAttempt' || prey.state === 'ko' || prey.state === 'caught' || prey.state === 'removed') return 0;
   if (prey.species.size > p.species.size * 0.9) return 0;
   let w = p.species.prey?.includes(prey.species.id) ? 1.0 : prey.species.stage === 0 ? 0.25 : prey.species.stage === 1 ? 0.07 : 0.02;
@@ -520,6 +555,16 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
           else {
             e.targetId = (best as Entity).id; e.state = 'approach'; e.stateT = 0;
             ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
+            if (s.id === 'carvanha') {
+              // the whole shoal piles on at once — one Carvanha's hunt is every Carvanha's hunt
+              const preyEnt = best as Entity;
+              ctx.hash.query(e.x, e.y, e.z, 35, (o) => {
+                if (o === e || o.species.id !== 'carvanha' || (o.state !== 'patrol' && o.state !== 'retreat')) return;
+                if (preyWeight(o, preyEnt) <= 0) return;
+                o.targetId = preyEnt.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
+                ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyEnt.id });
+              });
+            }
           }
         }
       }
@@ -528,6 +573,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'approach': {
       seek(e, target!.x, target!.y, target!.z, 1.6);
       speed = s.speed * 1.5;
+      if (1 - target!.hp / target!.maxHp > 0.3) speed *= 1.15; // frenzy: wounded prey quickens the chase
       if (tdist < 9) {
         if (CIRCLERS.has(s.id)) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
         else { e.state = 'rush'; e.stateT = 0; }
@@ -601,6 +647,17 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
   if (e.lured) { e.state = 'lured'; }
   else if (e.state === 'lured') { e.state = 'leave'; e.stateT = 0; pickPointInZone(e, ctx, 30, 70, e.target); }
 
+  // Lapras ferry cycle: every few minutes it rises and idles at the waterline, and the reef's
+  // little ones paddle over to ride in its wake (lore: it loves ferrying Pokémon across the sea)
+  if (s.id === 'lapras') {
+    e.t2 -= dt;
+    if (e.t2 <= 0 && e.state === 'wander') {
+      e.state = 'ferry'; e.stateT = 0;
+      e.target.x = e.x; e.target.z = e.z;
+      ctx.events.push({ type: 'ferry', entityId: e.id });
+    }
+  }
+
   switch (e.state) {
     case 'investigate': {
       seek(e, p.x, p.y, p.z, 1.5, 6);
@@ -625,6 +682,14 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       speed = s.speed * 1.1;
       break;
     }
+    case 'ferry': {
+      // hold at the waterline with a slow drifting circle — shell just breaking the swell
+      const drift = ctx.time * 0.12 + e.phase;
+      seek(e, e.target.x + Math.cos(drift) * 2.5, -s.size * 0.42, e.target.z + Math.sin(drift) * 2.5, 1.6, 0.5);
+      speed = s.speed * 0.5;
+      if (e.stateT > 26) { e.state = 'wander'; e.stateT = 0; e.t2 = 160 + ctx.rng() * 200; }
+      break;
+    }
     case 'leave':
     case 'wander':
     default: {
@@ -642,8 +707,10 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
     }
   }
 
-  depthPreference(e, 0.5);
-  floorAndSurface(e, s.size * 0.6 + 1);
+  if (e.state !== 'ferry') { // the ferry is ALLOWED at the surface — don't spring it back down
+    depthPreference(e, 0.5);
+    floorAndSurface(e, s.size * 0.6 + 1);
+  }
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, 2);
   commit(e, speed * activityFactor(e, ctx));
@@ -855,8 +922,18 @@ export function soloDrifterThink(e: Entity, ctx: SimContext, dt: number) {
 
   if (e.state === 'support') {
     const t = ctx.byId.get(e.targetId);
-    if (!t || t.state === 'removed' || t.hpBarT <= 0 || e.stateT > 14) { e.state = 'drift'; e.stateT = 0; e.t1 = 30 + ctx.rng() * 30; }
-    else { seek(e, t.x + 1.5, t.y + 0.5, t.z, 1.4, 2.5); speed = s.speed * 1.2; }
+    const done = !t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || t.hp >= t.maxHp * 0.98 || e.stateT > 20;
+    if (done) { e.state = 'drift'; e.stateT = 0; e.t1 = 25 + ctx.rng() * 25; }
+    else {
+      const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
+      seek(e, t.x + 1.2, t.y + 0.4, t.z, 1.4, 1.2);
+      speed = d > 2.5 ? s.burst * 0.8 : s.speed * 1.2; // a nurse HURRIES all the way to the bedside
+      // the nurse's embrace: close enough, its membrane knits the patient's wounds (lore)
+      if (d < 3.5 && t.hotT <= 0.4) {
+        t.hotRate = Math.max(2, t.maxHp * 0.05); t.hotT = 1.6; t.hotAcc = 0;
+        t.veilT = Math.max(t.veilT, 1.2); t.veilDur = Math.max(t.veilDur, 1.2);
+      }
+    }
   } else if (e.state === 'flee') {
     if (threatPos(ctx, e.threatId, tp)) fleeFrom(e, tp.x, tp.y, tp.z, 2);
     speed = s.burst;
@@ -873,8 +950,14 @@ export function soloDrifterThink(e: Entity, ctx: SimContext, dt: number) {
     accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
     acc.y += Math.sin(ctx.time * 0.9 + e.phase) * 0.25;
     if (support && e.t1 <= 0 && e.lod < 2) {
-      let best: Entity | null = null, bestD = Infinity;
-      ctx.hash.query(e.x, e.y, e.z, 30, (o, d2) => { if (o !== e && o.hpBarT > 0 && o.behavior !== 'predator' && d2 < bestD) { bestD = d2; best = o; } });
+      // seek out the most-wounded patient nearby — companions very much included
+      let best: Entity | null = null, bestR = 0.9;
+      ctx.hash.query(e.x, e.y, e.z, 30, (o) => {
+        if (o === e || o.isBoss || o.behavior === 'predator') return;
+        if (o.state === 'ko' || o.state === 'caught' || o.state === 'captureAttempt') return;
+        const r = o.hp / o.maxHp;
+        if (r < bestR) { bestR = r; best = o; }
+      });
       if (best) { e.targetId = (best as Entity).id; e.state = 'support'; e.stateT = 0; }
       else e.t1 = 5;
     }

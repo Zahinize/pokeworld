@@ -67,7 +67,7 @@ export class Ecosystem {
     this.ctx = {
       time: 0, isNight: false, nightness: 0, player: this.player, rng: rngFn, obstacles: this.obstacles,
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
-      predatorGraceOver: false, current: this.current,
+      predatorGraceOver: false, current: this.current, ferry: null,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
       cast: (e, slot, target) => this.moves.cast(e, slot, target),
       pickMove: (e, dist, preferUtility, damageOnly) => this.moves.pickMove(e, dist, preferUtility, damageOnly),
@@ -130,7 +130,8 @@ export class Ecosystem {
       lured: false, lureOrbit: this.rng.next() * Math.PI * 2, facing: 1, zone: sp.zone, t1: behavior === 'bottom' ? 10 + this.rng.next() * 30 : 0, t2: 120 + this.rng.next() * 200,
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
-      stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0,
+      stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -156,12 +157,15 @@ export class Ecosystem {
   }
 
   /** Absolute damage from a move (MoveSystem). */
+  /** The move-dojo dummy: this entity's HP clamps at 1 — it can never be knocked out. */
+  immortalId = -1;
+
   damageAbs(t: Entity, amount: number, sourceId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
     this.applyDamage(t, amount, 'predator', sourceId);
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
     const src = this.byId.get(sourceId);
-    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant') this.maybeRetaliate(t, sourceId);
+    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant' && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back
     // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock)
     if (t.role === 'partner' && src && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
     // A wild that strikes a companion gets dueled right back
@@ -190,9 +194,18 @@ export class Ecosystem {
 
   private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
     if (t.isBoss && !this.bossesActive) return; // dormant bosses cannot be harmed — challenge them first
-    t.hp = Math.max(0, t.hp - amount);
+    t.hp = Math.max(t.id === this.immortalId ? 1 : 0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
+    // hit recoil: shoved away from whatever hurt it — pain the player can SEE
+    const shover = this.byId.get(sourceId) ?? (by === 'ball' ? this.player : null);
+    if (shover && amount > 0 && t.state !== 'caught' && t.state !== 'removed') {
+      const dx = t.x - shover.x, dy = t.y - shover.y, dz = t.z - shover.z;
+      const d = len3(dx, dy, dz) || 1;
+      const pow = (4.5 + Math.min(6, (amount / t.maxHp) * 14)) / Math.max(1, t.species.size * 0.55); // giants barely budge
+      t.kbx = (dx / d) * pow; t.kby = (dy / d) * pow * 0.4; t.kbz = (dz / d) * pow;
+      t.kbT = 0.25;
+    }
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
@@ -329,6 +342,10 @@ export class Ecosystem {
     this.hash.clear();
     for (const e of this.alive) if (e.state !== 'ko' && e.state !== 'caught') this.hash.insert(e);
 
+    // A surfaced ferry Lapras draws the little ones to its side
+    ctx.ferry = null;
+    for (const e of this.alive) if (e.state === 'ferry') { ctx.ferry = e; break; }
+
     // Groups (~4Hz)
     this.groupThinkAcc += dt;
     if (this.groupThinkAcc >= 0.25) {
@@ -354,10 +371,24 @@ export class Ecosystem {
       if (e.stunT > 0) e.stunT -= dt;
       if (e.slowT > 0) e.slowT -= dt;
       if (e.blindT > 0) e.blindT -= dt;
+      if (e.concealT > 0) e.concealT -= dt;
+      if (e.veilT > 0) e.veilT -= dt;
+      if (e.jetT > 0) e.jetT -= dt;
+      if (e.frozenT > 0) e.frozenT -= dt;
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
       if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;
-      if (e.hotT > 0) { e.hotT -= dt; e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt); }
+      if (e.hotT > 0) {
+        e.hotT -= dt;
+        e.hp = Math.min(e.maxHp, e.hp + e.hotRate * dt);
+        // surface the regen: one green +N tick per second of the veil, remainder at the end
+        e.hotAcc += e.hotRate * dt;
+        if (e.hotAcc >= e.hotRate || e.hotT <= 0) {
+          const amt = Math.round(e.hotAcc);
+          if (amt > 0) this.events.push({ type: 'heal', targetId: e.id, amount: amt });
+          e.hotAcc = 0;
+        }
+      }
       // no healing in open air: a surfaced companion's suffocation drain must bite at full rate
       const surfacedPartner = e.role === 'partner' && e.y > -Math.max(0.8, e.species.size * 0.5);
       if (e.hp < e.maxHp && e.state !== 'ko' && !surfacedPartner) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
@@ -580,6 +611,24 @@ export class Ecosystem {
     const sp = len3(e.vx, e.vy, e.vz);
     const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
     if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
+    // wind-up brace: a caster mid-charge digs in and holds its spot, so the rear-back
+    // (and the aqua cannon building around a dash user) plays out in place, not mid-glide
+    if (e.castFrom >= 0 && e.castAt > this.time) { e.vx *= 0.88; e.vy *= 0.88; e.vz *= 0.88; }
+    // Aqua Jet family: while the water comet wraps the body the ram is REAL — the jet IS
+    // the movement, carried at full speed through the target (the cruise clamp above
+    // would otherwise kill the surge the same frame it fires)
+    if (e.jetT > 0) {
+      const ram = Math.max(e.species.burst * 2.0, 11);
+      const jv = len3(e.vx, e.vy, e.vz) || 1e-4;
+      e.vx *= ram / jv; e.vy *= ram / jv; e.vz *= ram / jv;
+    }
+    // hit recoil: a direct shove outside the cruise clamp, decaying in a blink
+    if (e.kbT > 0) {
+      e.kbT -= dt;
+      e.x += e.kbx * dt; e.y += e.kby * dt; e.z += e.kbz * dt;
+      const kk = Math.max(0, 1 - dt * 5);
+      e.kbx *= kk; e.kby *= kk; e.kbz *= kk;
+    }
     if (this.bossCurrent > 0 && !e.isBoss) {
       // boss-event surge tosses the whole reef around
       const k = this.bossCurrent * dt;
@@ -591,8 +640,9 @@ export class Ecosystem {
     // Hard constraints
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
-    // companions may breach with a surfaced trainer (half their body rides above the waves)
-    const top = e.role === 'partner' && this.playerAtSurface ? e.species.size * 0.3 : -Math.max(0.8, e.species.size * 0.45);
+    // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
+    // so the open-air suffocation drain can never touch them
+    const top = -Math.max(0.8, e.species.size * 0.45);
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }

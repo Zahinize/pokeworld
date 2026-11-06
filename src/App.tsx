@@ -17,6 +17,7 @@ import { LevelComplete } from './ui/screens/LevelComplete';
 import { DefeatScreen } from './ui/screens/DefeatScreen';
 import { CollectionScreen } from './ui/screens/CollectionScreen';
 import { SettingsScreen } from './ui/screens/SettingsScreen';
+import { ArenaScreen } from './ui/screens/ArenaScreen';
 import { Scene } from './render/Scene';
 import { HUD, ControlsPrompt, RotateGate } from './ui/hud/HUD';
 import { TouchControls } from './ui/controls/TouchControls';
@@ -70,6 +71,21 @@ export default function App() {
     check();
     const off = session.onChange(check);
     return () => { off(); };
+  }, [screen]);
+
+  // The move dojo (DEV): #arena jumps straight into the testing stage from any menu screen.
+  useEffect(() => {
+    if (!(import.meta as { env?: { DEV?: boolean } }).env?.DEV) return;
+    const tryEnter = () => {
+      if (window.location.hash !== '#arena') return;
+      const sc = useStore.getState().screen;
+      if (sc === 'loading' || sc === 'arena' || sc === 'play' || sc === 'brief') return;
+      session.endDemo();
+      void session.startArena().then(() => useStore.getState().setScreen('arena'));
+    };
+    tryEnter();
+    window.addEventListener('hashchange', tryEnter);
+    return () => window.removeEventListener('hashchange', tryEnter);
   }, [screen]);
 
   // Attract mode: the live reef behind the menu. It loads once, keeps simulating only
@@ -146,6 +162,7 @@ export default function App() {
       case 'menu': return <MainMenu onPlay={(id) => goBrief(id)} onResume={() => { const r = save.currentRun; if (r) goBrief(r.levelId, r.seed, r); }} />;
       case 'levels': return <LevelSelect onPlay={(id) => goBrief(id)} />;
       case 'collection': return <CollectionScreen />;
+      case 'arena': return <ArenaScreen onExit={() => { session.endArena(); window.location.hash = ''; setScreen('worlds'); }} />;
       case 'settings': return <SettingsScreen />;
       case 'brief': return <MissionBrief levelId={brief.levelId} seed={brief.seed} resume={brief.resume} onEnter={enterReef} onBack={() => { session.end(); setScreen('menu'); }} />;
       case 'play':
@@ -177,7 +194,7 @@ export default function App() {
   // The living menu: the real reef idles behind the home screens (PokeSurvivor-style).
   // Only mounted on screens that show it — on brief/play the real Scene takes over.
   const demoScreens = screen === 'start' || screen === 'login' || screen === 'worlds' || screen === 'menu' || screen === 'levels' || screen === 'trainer' || screen === 'leaderboard';
-  const playish = screen === 'play' || screen === 'complete' || screen === 'defeat';
+  const playish = screen === 'play' || screen === 'complete' || screen === 'defeat' || screen === 'arena';
   return (
     <>
       {/* one persistent canvas from "reef ready" on the brief all the way through play —

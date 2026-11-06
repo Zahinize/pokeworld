@@ -8,7 +8,8 @@ import { GAME } from '@/data/gameConfig';
 import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { objectiveDone } from '@/engine/sim/mission';
-import { PokeballIcon, SpriteImg, Panel } from '../components/common';
+import { PokeballIcon, SpriteImg, TypeIcon, Panel } from '../components/common';
+import { TYPE_COLORS, type MoveType } from '@/data/moves';
 import { Audio } from '@/audio/AudioManager';
 import { requestPointerLock } from '@/render/player/CameraRig';
 import { CollectionView } from '../screens/CollectionScreen';
@@ -104,6 +105,13 @@ function BallChip() {
   );
 }
 
+/** Ball controls live at bottom-centre — except underwater in companion levels, where the team fights. */
+function BallCatchControls() {
+  const catchMode = useStore((s) => s.hud.catchMode);
+  if (!catchMode) return null;
+  return <BallChip />;
+}
+
 /** First-run tutorial: one instruction at a time, progress dots, always skippable. */
 function TutorialBanner() {
   const tut = useStore((s) => s.hud.tutorial);
@@ -124,30 +132,38 @@ const MOVE_KEYS: [string, string][] = [['5', '6'], ['7', '8']];
 function PartyBar() {
   const party = useStore((s) => s.hud.party);
   const isTouch = useStore((s) => s.isTouch);
+  const catchMode = useStore((s) => s.hud.catchMode);
   if (!session.companionsEnabled || party.list.length === 0) return null;
+  if (catchMode) return null; // surfaced: the team stands down and the Poké Balls come out
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
       {party.active.map((a, slot) => a ? (
-        <div key={slot} className={`party-card glass ${a.dueling ? 'dueling' : ''}`}>
-          <div className="row" style={{ gap: 8 }}>
-            <SpriteImg id={a.speciesId} shiny={a.shiny} size={40} />
-            <div className="grow">
-              <div className="pn">{a.shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{SPECIES[a.speciesId].name}{a.dueling && <span className="duel-tag"><Ic icon={Swords} size={11} /></span>}</div>
-              <div className="php"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></div>
-            </div>
-          </div>
-          <div className="moves">
-            {a.moves.map((mv, mi) => {
-              const cd = a.cd[mi];
-              return (
-                <button key={mi} className={`move-btn ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0} onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
-                  <span className="mn">{mv}</span>
-                  {cd > 0 ? <span className="cd">{cd.toFixed(1)}</span> : !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
-                </button>
-              );
-            })}
-          </div>
+        <div key={slot} className={`q-card s${slot} ${a.dueling ? 'dueling' : ''}`}>
+          {a.moves.map((mv, mi) => {
+            const cd = a.cd[mi];
+            const tc = TYPE_COLORS[a.moveTypes[mi] as MoveType] ?? '#94a3b8';
+            const tile = (
+              <button key={mi} className={`q-move ${cd > 0 ? 'cooling' : ''}`} disabled={cd > 0}
+                style={{ '--tc': tc } as React.CSSProperties}
+                onClick={() => session.castPartnerMove(slot as 0 | 1, mi as 0 | 1)}>
+                <span className="tile">
+                  <TypeIcon type={a.moveTypes[mi]} size={28} />
+                  {cd > 0 && <span className="cdp" style={{ background: `conic-gradient(rgba(5,11,23,.72) ${Math.min(1, cd / (a.cdMax[mi] || 1)) * 360}deg, transparent 0deg)` }} />}
+                  {cd <= 0 && !isTouch && <span className="kbd">{MOVE_KEYS[slot][mi]}</span>}
+                </span>
+                <span className="q-mn">{mv}</span>
+              </button>
+            );
+            // Quest layout: move tile · Pokémon · move tile
+            return mi === 0 ? [tile, (
+              <div key="mid" className="q-mid">
+                <SpriteImg id={a.speciesId} shiny={a.shiny} size={46} />
+                <span className="q-name">{a.shiny && <Ic icon={Sparkles} size={11} color="var(--gold)" />}{SPECIES[a.speciesId].name}</span>
+                <span className="q-hp"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></span>
+              </div>
+            )] : tile;
+          })}
         </div>
       ) : (
         <div key={slot} className="party-card glass empty">
@@ -210,15 +226,40 @@ function PlayerVitals() {
 
 function RecoveryOverlay() {
   const recovering = useStore((s) => s.hud.recovering);
+  const koBy = useStore((s) => s.hud.koBy);
   if (recovering <= 0) return null;
   return (
     <div className="recovery-overlay">
       <div className="inner">
-        <div className="eyebrow">You're exhausted…</div>
+        <div className="eyebrow" style={koBy ? { color: 'var(--red)' } : undefined}>
+          {koBy ? `${koBy.sky ? 'Sky Legendary ' : ''}${koBy.name} KO'd you!` : "You're exhausted…"}
+        </div>
         <div className="count">{Math.ceil(recovering)}</div>
-        <div className="muted small">Recovering — the current is carrying you to safety</div>
+        <div className="muted small">{koBy ? `Taking you somewhere safe in ${Math.ceil(recovering)}s…` : 'Recovering — the current is carrying you to safety'}</div>
       </div>
     </div>
+  );
+}
+
+/** The hotkey stable: a corner panel that never pauses the dive — Z/X/C/V mounts (tap works on touch). */
+function RideStable({ isTouch }: { isTouch: boolean }) {
+  const open = useStore((s) => s.hud.ridePicker);
+  if (!open) return null;
+  const options = session.rideOptions.slice(0, 4);
+  const KEYS = ['Z', 'X', 'C', 'V'];
+  return (
+    <Panel className="ride-stable interactive strong">
+      <div className="eyebrow">Choose your ride</div>
+      {options.map((id, i) => (
+        <button key={id} className="ride-row" onClick={() => { Audio.uiConfirm(); session.mount(id); }}>
+          {!isTouch && <span className="kbd">{KEYS[i]}</span>}
+          <SpriteImg id={id} size={26} />
+          <span className="rn">{SPECIES[id].name}</span>
+          <span className="rs">{Math.round(Math.max(9, SPECIES[id].speed))} m/s</span>
+        </button>
+      ))}
+      <div className="dim small">{isTouch ? 'Tap to take off' : 'Press a key to take off · B closes'}</div>
+    </Panel>
   );
 }
 
@@ -328,6 +369,14 @@ function StatusChips() {
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert"><Ic icon={AlertTriangle} size={13} /> <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
       {hud.lureRemaining > 0 && <span className="chip lure-active"><Ic icon={Sparkles} size={13} /> {isTouch ? '' : 'Lure active · '}{Math.ceil(hud.lureRemaining)}s</span>}
+      {(hud.riding || (hud.rideAvail && hud.depth < 1.2)) && (
+        <button className="chip ride-chip interactive" onClick={() => { Audio.uiClick(); session.toggleRide(); }}>
+          {hud.riding
+            ? <><SpriteImg id={hud.riding} size={22} /> Riding <b>{SPECIES[hud.riding].name}</b>{!isTouch && <span className="kbd">B</span>}</>
+            : <>🕊 Ride a Sky Legendary{!isTouch && <span className="kbd">B</span>}</>}
+        </button>
+      )}
+      <RideStable isTouch={isTouch} />
       <RestoreBanner />
       <CatchCard />
       <Toasts />
@@ -433,7 +482,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
-          <BallChip />
+          <BallCatchControls />
         </div>
         <PlayerVitals />
         <PartyBar />

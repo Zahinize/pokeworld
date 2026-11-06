@@ -10,22 +10,31 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { COMBAT } from '@/data/combatConfig';
+import { getMove } from '@/data/moves';
 
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27, ripple: 28, barb: 29 } as const;
 
-export interface MoveVis { s: number; w: number; c2: string; blend: 0 | 1; impact: string }
+export interface MoveVis {
+  s: number; w: number; c2: string; blend: 0 | 1; impact: string;
+  /** PokeSurvivor-style volley: [count, gap in metres] — siblings trail the lead projectile. */
+  volley?: [number, number];
+  /** Volley siblings fan out sideways by this many metres per step (Icicle Spear's spread). */
+  spread?: number;
+  /** Cast flourish: a ring of bubbles erupts around the caster (Kingler's Bubble). */
+  nova?: boolean;
+}
 
 /** Fallbacks by engine style. */
 const STYLE_VIS: Record<string, MoveVis> = {
-  bubbles: { s: ST.bubbles, w: 1.5, c2: '#e8f8ff', blend: 0, impact: 'bubble' },
-  jet: { s: ST.jet, w: 2.8, c2: '#e0f2fe', blend: 0, impact: 'splash' },
-  beam: { s: ST.aurora, w: 2.6, c2: '#ffffff', blend: 0, impact: 'spark' },
+  bubbles: { s: ST.orb, w: 0.62, c2: '#e8f8ff', blend: 1, impact: 'bubble', volley: [5, 1.0] },
+  jet: { s: ST.jet, w: 1.1, c2: '#e0f2fe', blend: 1, impact: 'splash' },
+  beam: { s: ST.aurora, w: 1.5, c2: '#ffffff', blend: 0, impact: 'spark' },
   darts: { s: ST.dart, w: 0.7, c2: '#ffffff', blend: 0, impact: 'spark' },
   ink: { s: ST.ink, w: 1.2, c2: '#0b1220', blend: 1, impact: 'ink' },
-  ring: { s: ST.pulse, w: 1.5, c2: '#ffffff', blend: 0, impact: 'splash' },
+  ring: { s: ST.pulse, w: 1.0, c2: '#ffffff', blend: 0, impact: 'splash' },
   crescent: { s: ST.crescent, w: 1.4, c2: '#ffffff', blend: 0, impact: 'splash' },
   motes: { s: ST.motes, w: 1.2, c2: '#ffffff', blend: 0, impact: 'spark' },
   burst: { s: ST.flash, w: 2.2, c2: '#ffffff', blend: 0, impact: 'splash' },
@@ -37,33 +46,50 @@ const STYLE_VIS: Record<string, MoveVis> = {
 
 /** Signature looks per move (override any fallback field). */
 const MOVE_VIS: Record<string, Partial<MoveVis>> = {
-  iceBeam: { s: ST.iceBeam, w: 3.0, c2: '#eaf9ff', impact: 'ice' },
-  freezeDry: { s: ST.iceBeam, w: 2.2, c2: '#dff4ff', impact: 'ice' },
-  auroraBeam: { s: ST.aurora, w: 2.8, impact: 'spark' },
-  signalBeam: { s: ST.aurora, w: 2.4, c2: '#f0abfc' },
-  originPulse: { s: ST.iceBeam, w: 4.0, c2: '#bfdbfe', impact: 'splash' },
-  hydroPump: { w: 3.4, c2: '#f0f9ff' },
-  waterGun: { w: 1.9 },
-  brine: { w: 2.4, c2: '#99f6e4' },
-  // mud + ink travel as thick, opaque torrents (murk layer, never additive)
-  mudShot: { s: ST.mudRay, w: 2.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
-  muddyWater: { s: ST.mudRay, w: 3.4, c2: '#d8b27a', blend: 1, impact: 'mud' },
+  iceBeam: { s: ST.iceBeam, w: 1.05, c2: '#eaf9ff', impact: 'ice' },
+  // per the anime reference: a sparkling FAN of faceted crystal icicles, 5 in quick succession
+  icicleSpear: { s: ST.icicle, w: 0.5, c2: '#bfdbfe', blend: 1, impact: 'ice', volley: [5, 1.5], spread: 0.9 },
+  // per the game reference: ONE big jagged chunk of ice, hurled spinning — priority speed
+  iceShard: { s: ST.shard, w: 1.1, c2: '#dbeafe', blend: 1, impact: 'ice' },
+  freezeDry: { s: ST.iceBeam, w: 1.3, c2: '#dff4ff', impact: 'ice' },
+  auroraBeam: { s: ST.aurora, w: 1.05, impact: 'spark' },
+  signalBeam: { s: ST.aurora, w: 1.3, c2: '#f0abfc' },
+  originPulse: { s: ST.iceBeam, w: 2.2, c2: '#bfdbfe', impact: 'splash' },
+  hydroPump: { w: 1.3, c2: '#f0f9ff', blend: 1 },
+  // Water Gun, per the anime reference: one solid FILLED laminar jet — white-hot core,
+  // clean light-blue skin, dead straight (Hydro Pump keeps the churning torrent)
+  waterGun: { s: ST.lamJet, w: 0.52, c2: '#bae6fd', blend: 1, impact: 'splash' },
+  brine: { s: ST.droplet, w: 1.05, c2: '#99f6e4', blend: 1, volley: [2, 2.2], impact: 'splash' },
+  // mud travels as thick, opaque matter (murk layer, never additive)
+  mudShot: { s: ST.mudRay, w: 1.0, c2: '#e0c48a', blend: 1, impact: 'mud' },
+  // Muddy Water, per canon: a breaking brown WAVE with sandy foam crashing over the target
+  muddyWater: { s: ST.wave, w: 2.8, c2: '#f1dcb0', blend: 1, impact: 'mud' },
+  // plain straight pins, light blue shafts with dark blue tips — no ornament
+  pinMissile: { s: ST.barb, w: 0.42, c2: '#1e40af', blend: 1, impact: 'spark', volley: [9, 1.0], spread: 0.55 },
+  // ONE long venom sting of decent width — never a flurry of little lines
+  poisonSting: { s: ST.barb, w: 0.75, c2: '#e9d5ff', blend: 1, impact: 'poison' },
+  poisonJab: { w: 1.2, c2: '#c084fc', impact: 'poison' },
   surf: { s: ST.wave, w: 2.6, c2: '#e0f2fe', impact: 'splash' },
-  psychic: { s: ST.psy, w: 2.4, c2: '#f5d0fe', impact: 'psy' },
+  // normal blend: the saturated spiral must read over ANY body, pale ones included
+  psychic: { s: ST.psy, w: 2.4, c2: '#f5d0fe', blend: 1, impact: 'psy' },
   discharge: { s: ST.flash, w: 2.6, c2: '#fef9c3', impact: 'zap' },
   thunder: { impact: 'zap' },
-  iceShard: { c2: '#ffffff', impact: 'ice' },
-  icicleSpear: { c2: '#ffffff', impact: 'ice' },
-  bubble: { impact: 'bubble' },
-  bubbleBeam: { w: 1.7, impact: 'bubble' },
-  waterPulse: { s: ST.jet, w: 2.6, impact: 'splash' },
-  dragonPulse: { s: ST.aurora, w: 2.8, c2: '#99f6e4', impact: 'spark' },
-  round: { s: ST.aurora, w: 2.2, c2: '#fecaca' },
-  silverWind: { s: ST.aurora, w: 2.2, c2: '#ffffff' },
+  bubble: { s: ST.orb, w: 0.95, blend: 1, impact: 'bubble', volley: [3, 1.5], nova: true },
+  bubbleBeam: { s: ST.orb, w: 0.62, blend: 1, impact: 'bubble', volley: [5, 1.0] },
+  // Water Pulse, per canon: a pulsing ultrasonic blast — a water core riding ahead of
+  // rippling sonic rings that roll outward as it travels
+  waterPulse: { s: ST.ripple, w: 1.9, c2: '#e0f2fe', blend: 0, impact: 'splash' },
+  dragonPulse: { s: ST.aurora, w: 1.5, c2: '#99f6e4', impact: 'spark' },
+  round: { s: ST.aurora, w: 1.2, c2: '#fecaca' },
+  silverWind: { s: ST.aurora, w: 1.2, c2: '#ffffff' },
   airSlash: { impact: 'spark' },
   aquaCutter: { impact: 'splash' },
-  octazooka: { s: ST.mudRay, w: 2.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
+  octazooka: { s: ST.mudRay, w: 1.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
   smokescreen: { blend: 1, impact: 'ink' },
+  screech: { s: ST.sound, w: 1.6, c2: '#ffe4e6', blend: 0, impact: 'spark' },
+  bite: { w: 1.2, c2: '#fecaca', impact: 'jaws' },
+  crunch: { w: 1.5, c2: '#ddd6fe', impact: 'jaws' },
+  superFang: { w: 1.4, c2: '#fecaca', impact: 'jaws' },
   waterSpout: { w: 2.3 },
   drainingKiss: { impact: 'psy' },
   healPulse: { impact: 'heal' },
@@ -87,9 +113,9 @@ export function visFor(moveId: string, style: string): MoveVis {
 }
 
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
-const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay]);
+const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay, ST.lamJet]);
 /** Camera-facing square billboards. */
-const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash]);
+const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws, ST.shard]);
 
 // ------------------------------------------------------------------ the projectile / wave shader
 
@@ -117,11 +143,13 @@ void main(){
   } else if (s == 9 || s == 14) { // vertical bolt / geyser column: y spans aLen upward
     vec3 sideH = normalize(vec3(camRight.x, 0.001, camRight.z));
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13) { // camera-facing billboard
+  } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
+    w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27 || s == 28) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
-    align = smoothstep(0.60, 0.92, abs(dot(axis, toCam)));
+    align = smoothstep(0.90, 0.99, abs(dot(axis, toCam)));
     vec3 cr = cross(axis, toCam);
     vec3 side = normalize(mix(normalize(length(cr) < 1e-4 ? camUp : cr), camUp, align));
     vec3 alongAxis = normalize(mix(axis, camRight, align));
@@ -172,13 +200,18 @@ void main(){
     float shine = smoothstep(0.34, 0.0, length(p - vec2(-r * 0.35, r * 0.35)));
     a = (rim * 1.15 + body + shine * 0.9) * smoothstep(0.0, 0.25, cyl);
     col = mix(vColor, vColor2, rim * 0.7 + shine);
-  } else if (s == 1) { // water cannon: a solid cylinder of churning water with a foaming skin
-    float core = pow(cyl, 0.5);                                  // volumetric through the axis
-    float churn = 0.88 + 0.12 * sin(alongW * 3.2 - uTime * 18.0 + vSeed * 12.0);
+  } else if (s == 1) { // water cannon: a writhing, streaked torrent — never a smooth balloon
+    // the silhouette billows as it flies: broken edges read as rushing water
+    float wobJ = 0.10 * sin(alongW * 4.2 - uTime * 22.0 + vSeed * 9.0) + 0.05 * sin(alongW * 9.0 - uTime * 31.0 + vSeed * 4.0);
+    float rrJ = (across + wobJ) / max(radius, 1e-3);
+    float cylJ = sqrt(max(0.0, 1.0 - min(1.0, rrJ * rrJ)));
+    float core = pow(cylJ, 0.5);
+    // foam streaks racing down the column
+    float streak = 0.5 + 0.5 * sin(alongW * 7.0 - uTime * 44.0 + c.y * 10.0 + vSeed * 12.0);
     float head = smoothstep(0.72, 1.0, along);
-    a = core * churn + skin * 0.5 + head * 0.3 * cyl;
-    // specular run down the top of the tube sells the roundness
-    col = mix(vColor, vColor2, pow(cyl, 2.2) * 0.65 + skin * 0.25 + head * 0.25);
+    float froth = head * (0.5 + 0.5 * sin(c.y * 19.0 + alongW * 6.0 - uTime * 32.0 + vSeed * 8.0));
+    a = core * (0.85 + 0.15 * streak) + head * 0.55 * cylJ + froth * 0.5 * cylJ;
+    col = mix(vColor, vColor2, pow(cylJ, 2.2) * 0.5 + streak * 0.3 * cylJ + head * 0.55 + froth * 0.4);
   } else if (s == 2) { // ice cannon: a faceted crystal rod, frosted along its curved surface
     float facet = 0.86 + 0.14 * sin(across * 11.0 + alongW * 2.0 + vSeed * 4.0);
     float core = pow(cyl, 0.6) * facet;
@@ -187,17 +220,19 @@ void main(){
     float tw = step(0.55, n1(cellId + floor(uTime * 12.0)));
     float cx = fract(alongW * 2.4) - 0.5;
     float star = tw * max(0.0, 1.0 - abs(cx) * 3.0) * cyl;
-    a = (core * 1.25 + frost * 0.5 + star * 0.9) * (1.0 - vT);
-    col = mix(mix(vColor, vColor2, 0.45 + frost * 0.4), vec3(1.0), pow(cyl, 2.2) * 0.85 + star * 0.6);
-  } else if (s == 3) { // energy cannon: a glowing rod with spectral bands rolling around it
-    float core = pow(cyl, 0.7);
-    float bands = 0.5 + 0.5 * sin(alongW * 5.0 - uTime * 22.0 + vSeed * 6.0);
-    a = (core * 1.2 + skin * bands * 0.55) * (1.0 - vT);
-    vec3 spectral = vec3(0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0),
-                         0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 2.1),
-                         0.5 + 0.5 * sin(alongW * 2.2 + uTime * 6.0 + 4.2));
-    col = mix(vColor, mix(vColor2, spectral, 0.55), bands * (1.0 - pow(cyl, 2.0)));
-    col = mix(col, vec3(1.0), pow(cyl, 2.5) * 0.8);
+    a = (core * 0.9 + frost * 0.4 + star * 0.85) * (1.0 - vT);
+    col = mix(mix(vColor, vColor2, 0.4 + frost * 0.35), vec3(1.0), pow(cyl, 2.6) * 0.5 + star * 0.6);
+  } else if (s == 3) { // aurora cannon, per the reference: separate parallel rainbow rays with real gaps
+    float sp = c.y / max(radius, 1e-3);            // -0.5..0.5 inside the silhouette
+    float lane = sp * 3.0 + 0.5;                    // three strands across the tube
+    float li = floor(lane);
+    float lf = abs(fract(lane) - 0.5) * 2.0;        // 0 strand centre .. 1 the gap between rays
+    float strand = smoothstep(0.8, 0.25, lf);       // thin ribbons, dark water between them
+    float hue = li * 0.3 + alongW * 0.03 - uTime * 0.4;
+    vec3 rainbow = 0.5 + 0.5 * vec3(sin(6.2832 * hue), sin(6.2832 * (hue + 0.33)), sin(6.2832 * (hue + 0.66)));
+    float race = 0.75 + 0.25 * sin(alongW * 3.0 - uTime * 26.0 + li * 2.0);  // light racing head-ward
+    a = strand * race * cyl * 1.5 * (1.0 - vT);
+    col = mix(rainbow, vec3(1.0), smoothstep(0.3, 0.0, lf) * 0.4);  // white-hot strand centres
   } else if (s == 4) { // shard / needle: sharp icy dart with a bright tip
     float taper = mix(1.9, 0.35, along);           // wide tail, needle tip
     float m = across * taper * 1.5;
@@ -266,15 +301,19 @@ void main(){
     float lifec = sin(3.14159 * min(1.0, vT));
     a = (body * churn * 0.85 + foam * 1.15) * ends * lifec;
     col = mix(vColor, vColor2, h * 0.7 + foam * 0.5);
-  } else if (s == 12) { // psychic: rings collapsing onto the target + warped glow
-    float d = length(c * 2.0);
-    for (int i = 0; i < 3; i++) {
-      float r = 1.0 - fract(vT * 2.0 + float(i) / 3.0);
-      a += smoothstep(0.08, 0.012, abs(d - r)) * r * 1.3;
-    }
-    a += pow(max(0.0, 1.0 - d), 3.0) * (0.5 + 0.5 * sin(uTime * 22.0)) * 0.8;
-    a *= sin(3.14159 * min(1.0, vT + 0.15));
-    col = mix(vColor, vColor2, 0.4 + 0.3 * sin(uTime * 9.0));
+  } else if (s == 12) { // psychic, per the reference: spiral waves of rainbow light, pink first
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+    // two ribbon arms winding inward onto the mind they grip
+    float arm = sin(ang * 2.0 + r * 8.0 - uTime * 11.0 + vSeed * 6.2832);
+    float spiral = smoothstep(0.2, 0.75, arm) * smoothstep(1.0, 0.3, r) * smoothstep(0.03, 0.18, r);
+    float hue = r * 0.8 - uTime * 0.6 + ang * 0.16;
+    vec3 rainbow = 0.5 + 0.5 * vec3(sin(6.2832 * hue), sin(6.2832 * (hue + 0.33)), sin(6.2832 * (hue + 0.66)));
+    float core = pow(max(0.0, 1.0 - r * 1.5), 2.0) * (0.6 + 0.4 * sin(uTime * 18.0));
+    a = (spiral * 1.35 + core * 0.8) * sin(3.14159 * min(1.0, vT + 0.15));
+    col = mix(vColor * 0.92, rainbow, 0.5);           // pink-heavy, rainbow woven through
+    col = mix(col, vColor2, core * 0.55);
   } else if (s == 13) { // radial burst / charge glow: bloom + spokes
     float d = length(c * 2.0);
     float ang = atan(c.y, c.x);
@@ -290,10 +329,174 @@ void main(){
     float foam = smoothstep(1.0, 0.5, across) * (0.5 + 0.5 * sin(hgt * vLen * 9.0 - uTime * 40.0));
     a = core * churn + foam * 0.45 + crown;
     col = mix(vColor, vColor2, core * 0.5 + crown * 0.6 + foam * 0.25);
+  } else if (s == 16) { // water droplet: chunky teardrop — round head LEADS, point trails
+    float hx = 0.74;
+    float af = 1.0 - along;                       // head at the front of travel
+    float rp = af > hx ? sqrt(max(0.0, 1.0 - pow((af - hx) / (1.0 - hx), 2.0)))
+                       : pow(max(af, 0.0) / hx, 0.72);
+    float m = across / max(rp, 1e-3);
+    float body = smoothstep(1.02, 0.9, m);
+    float outline = smoothstep(0.62, 0.95, m);   // darkening band toward the rim
+    float shine = smoothstep(0.2, 0.0, length(vec2((af - hx - 0.04) * 1.8, c.y * 2.0 - rp * 0.42)));
+    a = body;
+    col = mix(vColor, vColor2, pow(max(0.0, 1.0 - m), 2.0) * 0.5);  // light watery core
+    col = mix(col, vColor * 0.3, outline * 0.8);                     // chunky dark outline
+    col = mix(col, vec3(1.0), shine);                                // the glint
+  
+  } else if (s == 17) { // anime bubble, per the reference: translucent blue sphere, bold white crescent
+    vec2 p = c * 2.0;
+    p.x += 0.06 * sin(uTime * 6.0 + vSeed * 31.0);
+    p.y += 0.06 * cos(uTime * 5.2 + vSeed * 23.0);
+    float d = length(p);
+    float body = smoothstep(0.98, 0.9, d);                         // hard sphere edge
+    float limb = smoothstep(0.4, 0.95, d);                         // blue deepens toward the rim
+    // the signature crescent: a thick white arc hugging the upper-left rim
+    float facing = smoothstep(0.05, 0.85, dot(p / max(d, 1e-4), vec2(-0.707, 0.707)));
+    float cres = smoothstep(0.3, 0.1, abs(d - 0.58)) * facing;
+    float glint2 = smoothstep(0.14, 0.0, length(p - vec2(0.3, -0.28))) * 0.6;  // small counter-glint
+    float outline = smoothstep(0.08, 0.02, abs(d - 0.94));
+    a = body * (0.5 + limb * 0.45) + cres * 0.95 + outline * 0.8;  // see-through heart, solid rim
+    col = mix(vColor, vColor * 0.55, limb * 0.6);                  // deeper blue toward the limb
+    col = mix(col, vec3(1.0), cres + glint2);                      // the white crescent
+    col = mix(col, vColor, outline * (1.0 - cres));                // rim stays the bubble's own blue
+  } else if (s == 18) { // impact starburst: white petals snapping outward, then gone
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    float petals = pow(abs(cos(ang * 4.0 + vSeed * 6.2832)), 3.0);
+    float reach = 0.22 + 0.78 * smoothstep(0.0, 0.4, vT);
+    float star = smoothstep(reach, reach * 0.2, d) * petals;
+    float core = pow(max(0.0, 1.0 - d * 2.0), 1.4) * (1.0 - vT);
+    float fade = 1.0 - smoothstep(0.3, 1.0, vT);
+    a = (star * 1.7 + core * 1.9) * fade;
+    col = mix(vec3(1.0), vColor2, 0.5);   // white c2 keeps classic impacts white; poison runs purple
+  } else if (s == 22) { // Water Gun, per the reference: a LAMINAR cannon of real blue water
+    float core = pow(cyl, 0.45);                                    // near-solid water
+    float rush = 0.92 + 0.08 * sin(alongW * 11.0 - uTime * 50.0 + vSeed * 9.0);  // subtle speed lines
+    float head = smoothstep(0.86, 1.0, along);                      // small cap at the tip
+    a = core * rush + head * 0.35 * cyl;
+    col = mix(vColor * 0.6, vColor, pow(cyl, 1.3));                 // deep blue skin → true blue body
+    col = mix(col, vColor2, pow(cyl, 3.5) * 0.7 + head * 0.25);     // lighter BLUE heart — never white foam
+  } else if (s == 23) { // Aqua Ring, per the reference: a churning hoop of sparkling water
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang = atan(p.y, p.x);
+    float churn = 0.05 * sin(ang * 7.0 + uTime * 6.0 + vSeed * 20.0) + 0.02 * sin(ang * 13.0 - uTime * 9.0 + vSeed * 9.0);
+    float band = smoothstep(0.26, 0.04, abs(r - (0.68 + churn)));   // a thick, soft water torus
+    float froth = 0.6 + 0.4 * sin(ang * 19.0 - uTime * 12.0 + vSeed * 9.0);
+    // sparkles riding the hoop (the reference ring is full of starlight)
+    float cell = floor(ang * 6.366 + 0.5) + floor(vSeed * 40.0);
+    float tw = step(0.72, n1(cell + floor(uTime * 8.0)));
+    a = band * (0.55 + 0.3 * froth + tw * 0.45);
+    col = mix(vColor, vColor2, band * froth * 0.3 + tw * 0.55);
+  } else if (s == 25) { // Icicle Spear crystal, per the anime: a faceted ice lozenge flying point-first
+    float af = 1.0 - along;                       // the point leads
+    float rp = pow(sin(clamp(af, 0.0, 1.0) * 3.14159), 0.8);   // lozenge: pointed both ends
+    float m = across / max(rp, 1e-3);
+    float body = smoothstep(1.0, 0.88, m);
+    float outline = smoothstep(0.55, 0.95, m);                 // cool blue rim
+    float facet = 0.5 + 0.5 * sin((af * 5.0 + c.y * 6.0 + vSeed * 9.0) * 3.14159);  // internal facet planes
+    float glint = smoothstep(0.18, 0.0, length(vec2((af - 0.66) * 1.7, c.y * 2.0 - rp * 0.3)));
+    a = body;
+    col = mix(vec3(0.985, 0.995, 1.0), vColor2, facet * 0.18); // WHITE crystal, the faintest cool facets
+    col = mix(col, vColor * 0.7, outline * 0.6);               // light icy edge
+    col = mix(col, vec3(1.0), glint);                          // the sparkle
+  } else if (s == 26) { // Ice Shard, per the game reference: ONE big jagged chunk, hurled spinning
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float ang = atan(p.y, p.x) + uTime * 2.4 + vSeed * 6.2832; // the chunk tumbles as it flies
+    // irregular spiky silhouette — a boulder of shattered ice, never a neat polygon
+    float rr2 = 0.52 + 0.2 * sin(ang * 3.0 + vSeed * 9.0) + 0.16 * abs(sin(ang * 5.0 + vSeed * 4.0));
+    float body = smoothstep(rr2 + 0.02, rr2 - 0.05, d);
+    float outline = smoothstep(0.09, 0.015, abs(d - rr2));     // crisp frozen rim
+    float facet = 0.5 + 0.5 * sin(p.x * 8.0 + p.y * 6.0 + vSeed * 20.0 + uTime * 2.4);
+    float glint = smoothstep(0.22, 0.0, length(p - vec2(-0.2, 0.22)));
+    a = max(body * 1.2, outline);
+    col = mix(vec3(0.985, 1.0, 1.0), vColor, facet * 0.25);        // WHITE ice, whisper-blue facet shadows
+    col = mix(col, vColor * 0.45, outline * (1.0 - glint));        // cool edge keeps it readable
+    col = mix(col, vec3(1.0), glint);
+  } else if (s == 29) { // venom barb: a slim toxic needle, purple as poison itself
+    float taper = mix(1.1, 3.8, along);            // modest tail → needle-sharp tip forward
+    float m = across * taper * 2.0;
+    float body = smoothstep(1.0, 0.55, m + abs(along - 0.45) * 0.4);
+    a = body * 1.3;
+    col = mix(vColor * 0.75, vColor2, smoothstep(0.6, 0.98, along));  // deep purple shaft, pale venom tip
+    col = mix(col, vColor * 0.35, smoothstep(0.5, 0.95, m));          // dark toxic edge
+  } else if (s == 28) { // Water Pulse: rippling sonic water rings rolling outward from a bright core
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    for (int i = 0; i < 3; i++) {
+      float r = fract(vT * 1.5 + float(i) / 3.0 + vSeed);
+      float wob = 0.02 * sin(ang * 5.0 - uTime * 8.0 + float(i) * 2.1 + vSeed * 20.0);  // the gentlest ripple
+      a += smoothstep(0.12, 0.045, abs(d - (r * 0.92 + wob))) * (1.0 - r) * 1.5;
+    }
+    float crest = 0.5 + 0.5 * sin(ang * 9.0 + uTime * 7.0 + vSeed * 9.0);    // froth riding the rings
+    a *= 0.88 + 0.12 * crest;
+    a += pow(max(0.0, 1.0 - d * 2.2), 1.6) * 0.55;                            // the watery core
+    col = mix(vColor, vColor2, 0.4 + crest * 0.3);
+  } else if (s == 27) { // frozen solid: a translucent block of ice encasing the victim
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float ang = atan(p.y, p.x) + vSeed * 6.2832;              // static facets — ice doesn't spin
+    float rr2 = 0.62 + 0.14 * sin(ang * 4.0 + vSeed * 9.0) + 0.08 * abs(sin(ang * 7.0 + vSeed * 3.0));
+    float body = smoothstep(rr2 + 0.02, rr2 - 0.05, d);
+    float outline = smoothstep(0.08, 0.015, abs(d - rr2));
+    float facet = 0.5 + 0.5 * sin(p.x * 6.0 + p.y * 8.0 + vSeed * 20.0);
+    float glint = smoothstep(0.26, 0.0, length(p - vec2(-0.22, 0.26)));
+    float shimmer = 0.92 + 0.08 * sin(uTime * 6.0 + vSeed * 9.0);
+    a = max(body * 0.55, outline * 0.95) * shimmer * vT;      // translucent — the victim shows through
+    col = mix(vec3(0.95, 0.99, 1.0), vColor * 0.85, facet * 0.3);
+    col = mix(col, vColor * 0.4, outline * (1.0 - glint));
+    col = mix(col, vec3(1.0), glint);
+  } else if (s == 24) { // Aqua Ring's protective shield: a translucent watery dome over the Pokémon
+    vec2 p = c * 2.0;
+    float d = length(p);
+    float rim = smoothstep(0.94, 0.7, d) * smoothstep(0.5, 0.82, d);    // fresnel band near the edge
+    float edge = smoothstep(0.06, 0.015, abs(d - 0.93));                 // crisp outer shell line
+    float sheen = 0.5 + 0.5 * sin(atan(p.y, p.x) * 3.0 - uTime * 2.6 + vSeed * 9.0);  // light gliding round the dome
+    float body = smoothstep(0.9, 0.05, d) * 0.1;                         // the faintest watery fill
+    a = rim * (0.45 + 0.3 * sheen) + edge * 0.85 + body;
+    col = mix(vColor, vColor2, rim * 0.55 + edge * 0.4 + sheen * 0.2);
+  } else if (s == 20) { // screech: jagged shock-rings ripping outward — sound you can SEE
+    float d = length(c * 2.0);
+    float ang = atan(c.y, c.x);
+    for (int i = 0; i < 3; i++) {
+      float r = fract(vT * 1.7 + float(i) / 3.0 + vSeed);
+      float wob = 0.06 * sin(ang * 10.0 + float(i) * 2.1 + uTime * 30.0 + vSeed * 20.0);  // trembling ring
+      a += smoothstep(0.12, 0.035, abs(d - (r * 0.9 + wob))) * (1.0 - r) * 1.6;
+    }
+    a *= 0.85 + 0.15 * sin(uTime * 44.0 + vSeed * 9.0);   // the harsh tremor of a scream
+    col = mix(vColor, vColor2, 0.35);
+  } else if (s == 21) { // bite: two fanged jaws snapping shut over the target
+    vec2 p = c * 2.0;
+    float close = smoothstep(0.0, 0.4, vT);               // jaws slam shut fast
+    float gap = mix(0.9, 0.08, close);
+    float curve = p.x * p.x * 0.55;                        // the jaw lines bow like an open mouth
+    float tri  = abs(fract(p.x * 2.6 + 0.25 + vSeed) - 0.5) * 2.0;  // upper fangs
+    float tri2 = abs(fract(p.x * 2.6 + 0.75 + vSeed) - 0.5) * 2.0;  // lower fangs, interleaved
+    float ends = smoothstep(1.02, 0.86, abs(p.x));
+    float upEdge = gap + curve + tri * 0.32;               // fang tips reach down toward the gap
+    float dnEdge = -gap - curve - tri2 * 0.32;
+    float up = step(upEdge, p.y) * step(p.y, gap + curve + 0.48) * ends;   // a thin fanged arc
+    float dn = step(-gap - curve - 0.48, p.y) * step(p.y, dnEdge) * ends;
+    // a slim dark rim hugging the fangs, so the bite reads on ANY background
+    float upO = step(upEdge - 0.09, p.y) * step(p.y, gap + curve + 0.56) * ends;
+    float dnO = step(-gap - curve - 0.56, p.y) * step(p.y, dnEdge + 0.09) * ends;
+    float fade = 1.0 - smoothstep(0.6, 1.0, vT);
+    float fang = max(up, dn);
+    a = max(max(upO, dnO) * 0.8, fang) * fade * 1.25;
+    col = mix(vec3(0.05, 0.09, 0.16), mix(vec3(0.99), vColor2, 0.12), fang);
+  } else if (s == 19) { // curling water-swirl residue, spinning as it fades
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang2 = atan(p.y, p.x) + uTime * 3.2 + vSeed * 6.2832;
+    float arm = fract(ang2 / 6.2832 + r * 0.55);
+    float curl = smoothstep(0.3, 0.1, abs(arm - 0.5)) * smoothstep(1.0, 0.35, r) * smoothstep(0.03, 0.26, r);
+    a = curl * 1.15 * (1.0 - smoothstep(0.25, 1.0, vT));
+    col = mix(vColor, vec3(1.0), 0.55);
   }
   // Fired straight at the camera the tube has no length to show — resolve it into a round blast
   // instead of a flat slab of colour.
-  if (vAlign > 0.001 && (s == 0 || s == 1 || s == 2 || s == 3 || s == 15)) {
+  if (vAlign > 0.001 && (s == 0 || s == 1 || s == 2 || s == 3 || s == 15 || s == 22)) {
     float d2 = length(vec2((along - 0.5) * 2.0, c.y * 2.0));
     float bloom = pow(max(0.0, 1.0 - d2), 1.6) * 1.5;
     float k = smoothstep(0.0, 0.7, vAlign);   // resolve to the round blast quickly
@@ -303,7 +506,7 @@ void main(){
   a *= vAlpha;
   if (a < 0.01) discard;
   // mud / ink are matter, not light: no additive-style brightening, and they build to full opacity
-  bool murky = (s == 5 || s == 10 || s == 15);
+  bool murky = (s == 1 || s == 5 || s == 10 || s == 12 || s == 15 || s == 16 || s == 17 || s == 21 || s == 22 || s == 25 || s == 26 || s == 27 || s == 29);
   gl_FragColor = murky ? vec4(col, min(1.0, a * 1.25)) : vec4(col * (0.72 + a * 0.7), a);
 }`;
 
@@ -321,8 +524,8 @@ function makeLayer(cap: number, blending: THREE.Blending) {
 }
 
 export function MoveProjectiles() {
-  const capA = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 32;
-  const capN = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 24;
+  const capA = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 120; // volleys, novas, impact stars + swirls
+  const capN = COMBAT.MAX_PROJECTILES * (TRAIL + 1) + 96; // matter volleys + novas
   const refA = useRef<THREE.InstancedMesh>(null);
   const refN = useRef<THREE.InstancedMesh>(null);
   const A = useMemo(() => makeLayer(capA, THREE.AdditiveBlending), [capA]);
@@ -367,17 +570,83 @@ export function MoveProjectiles() {
           const len = Math.max(0.6, Math.hypot(dx, dy, dz));
           put(vis.blend, ox + dx / 2, oy + dy / 2, oz + dz / 2, dx / len, dy / len, dz / len,
             vis.s, vis.w, len, Math.min(1, pr.t * 8), seed, 0);
+          // the muzzle burst (Aurora Beam reference): a hot flash blooming at the mouth on launch
+          if (pr.t < 0.22) put(0, ox, oy, oz, 0, 1, 0, ST.flash, 0.9 + vis.w * 0.9, 1.4, 1 - pr.t / 0.22, seed, pr.t * 3);
+        } else if (vis.volley) {
+          // reference grammar: a volley of chunky siblings trailing the lead — droplet
+          // bursts and bubble trains — each a full projectile, not a ghost
+          const vl = Math.hypot(pr.vx, pr.vy, pr.vz) || 1;
+          const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
+          const grow = Math.min(1, pr.t * 6);
+          const across = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 1.2;
+          const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.6;
+          const [vn, gap] = vis.volley;
+          const travelled = pr.t * vl; // siblings only exist once they have left the mouth
+          // fan spread (Icicle Spear): siblings step sideways off the flight line, alternating
+          const sl = Math.hypot(dx, dz) || 1;
+          const sxv = vis.spread ? dz / sl : 0, szv = vis.spread ? -dx / sl : 0;
+          for (let k = 0; k < vn; k++) {
+            const backD = gap * k;
+            if (backD > travelled + 0.3) continue;
+            const back = backD / vl;
+            const wob = vis.s === ST.orb ? Math.sin(state.clock.elapsedTime * 5.2 + k * 1.9 + seed * 20) * 0.14 : 0;
+            const lat = vis.spread ? (k % 2 ? -1 : 1) * Math.ceil(k / 2) * vis.spread * (0.8 + 0.3 * Math.sin(seed * 20 + k * 7)) : 0;
+            const vert = vis.spread ? Math.sin(seed * 9 + k * 5) * vis.spread * 0.5 : 0;
+            put(vis.blend, pr.x - pr.vx * back + sxv * lat, pr.y - pr.vy * back + wob + vert, pr.z - pr.vz * back + szv * lat, dx, dy, dz,
+              vis.s, across * grow * (1 - k * 0.07), baseLen * grow * (1 - k * 0.05),
+              (1 - k * 0.1) * grow, seed + k * 0.13, pr.t);
+          }
+          if (vis.nova && pr.t < 0.55) {
+            // the cast flourish: a rosette of bubbles erupting around the caster into a ring
+            const caster = eco.byId.get(pr.casterId);
+            if (caster) {
+              const r = 0.5 + pr.t * 4.2;
+              const fade = 1 - pr.t / 0.55;
+              for (let k = 0; k < 8; k++) {
+                const a2 = (k / 8) * Math.PI * 2 + seed * 6.28;
+                put(1, caster.x + Math.cos(a2) * r, caster.y + Math.sin(a2 * 2.0 + seed * 9) * r * 0.3, caster.z + Math.sin(a2) * r, 0, 1, 0,
+                  ST.orb, 0.42 + 0.1 * Math.sin(k * 3.1 + seed * 17), 0.8, fade, seed + k * 0.11, pr.t);
+              }
+            }
+          }
         } else {
           const vl = Math.hypot(pr.vx, pr.vy, pr.vz) || 1;
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
           const grow = Math.min(1, pr.t * 6);
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.2;
-          const ghosts = vis.s === ST.ink || vis.s === ST.pulse ? 1 : TRAIL;
+          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard || vis.s === ST.ripple || vis.s === ST.barb ? 1 : TRAIL;
           for (let k = 0; k < ghosts; k++) {
             const back = k * 0.05;
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
               vis.s, vis.w * grow * (1 - k * 0.17) * 2, baseLen * grow * (1 - k * 0.12),
               (k === 0 ? 1 : 0.4 - k * 0.09) * grow, seed + k * 0.07, pr.t);
+          }
+        }
+      }
+      // ---- impact punch: every landed move snaps a white starburst + watery swirls
+      for (const v of eco.moves.visuals) {
+        if (!v.active || v.kind !== 'impact') continue;
+        const vis = visFor(v.moveId, v.style);
+        if (vis.impact === 'mud' || vis.impact === 'ink') continue; // matter splatters, light stars
+        const seed = ((v.x1 * 11 + v.z1 * 17) % 97) / 97;
+        if (vis.impact === 'jaws') {
+          // a big pair of jaws clamps over the target instead of the generic starburst
+          const pj = Math.min(1, v.t / 0.6);
+          if (pj >= 1) continue;
+          c1.set(v.color); c2.set(vis.c2);
+          put(1, v.x1, v.y1, v.z1, 0, 1, 0, ST.jaws, 1.3 + vis.w * 1.1, 1.2, 1, seed, pj);
+          continue;
+        }
+        const p = Math.min(1, v.t / 0.42);
+        if (p >= 1) continue;
+        c1.set(v.color); c2.set(vis.impact === 'poison' ? '#c084fc' : '#ffffff');
+        put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.star, 0.9 + vis.w * 0.45, 1.2, 1, seed, p);
+        if (vis.impact === 'splash' || vis.impact === 'bubble') {
+          for (let k = 0; k < 3; k++) {
+            const a2 = seed * 6.28 + k * 2.1;
+            const drift = 0.35 + p * 1.1;
+            put(0, v.x1 + Math.cos(a2) * drift, v.y1 + 0.2 + p * 0.5 + k * 0.12, v.z1 + Math.sin(a2) * drift, 0, 1, 0,
+              ST.swirl, 0.5 + k * 0.08, 0.6, 1 - p * 0.7, seed + k * 0.2, p);
           }
         }
       }
@@ -403,16 +672,122 @@ export function MoveProjectiles() {
         } else if (vis.s === ST.wave) {
           const x = v.x0 + (v.x1 - v.x0) * ease, y = v.y0 + (v.y1 - v.y0) * ease + 0.4, z = v.z0 + (v.z1 - v.z0) * ease;
           put(vis.blend, x, y, z, v.x1 - v.x0, 0, v.z1 - v.z0, vis.s, vis.w * 1.45, vis.w * 3.4, 1, seed, p);
+          if (vis.impact === 'mud') {
+            // the muddy flood: lumps of sludge tumble in the wake, and a silt haze
+            // hangs over the water the wave has already churned through
+            const tNow = state.clock.elapsedTime;
+            for (let k = 0; k < 3; k++) {
+              const lag = Math.max(0, ease - 0.16 - k * 0.15);
+              const bx = v.x0 + (v.x1 - v.x0) * lag, bz = v.z0 + (v.z1 - v.z0) * lag;
+              const by = y - 0.5 - k * 0.3 + Math.sin(tNow * 7 + k * 2.4 + seed * 9) * 0.3;
+              put(1, bx, by, bz, 0, 1, 0, ST.mud, 0.55 + k * 0.15, 0.8, Math.max(0, 1.1 - p), seed + k * 0.17, p);
+            }
+            if (p > 0.4) put(1, x, y + 0.4, z, 0, 1, 0, ST.ink, 1.4 + p * 2.2, 1, (1 - p) * 0.7 + 0.1, seed + 0.31, p);
+          }
         } else { // psy rings / discharge flash sit on their target point
           const x = vis.s === ST.flash ? v.x0 : v.x1, y = vis.s === ST.flash ? v.y0 : v.y1, z = vis.s === ST.flash ? v.z0 : v.z1;
           put(vis.blend, x, y, z, 0, 1, 0, vis.s, vis.w, vis.w, 1, seed, p);
         }
       }
-      // ---- charge-up glows at the caster's mouth
+      // ---- body-anchored auras: Aqua Ring's water veil, Smokescreen's disseminating cloud
+      const time = state.clock.elapsedTime;
+      for (const e of eco.alive) {
+        if (e.veilT > 0) {
+          // Aqua Ring, per the reference: three flat hoops of churning, sparkling water
+          // stacked around the body, wrapped in a soft aqua glow
+          const D = Math.max(e.veilDur, 0.001);
+          const fade = Math.min(1, e.veilT / 0.5) * Math.min(1, (D - e.veilT) / 0.25 + 0.15);
+          c1.set('#5eead4'); c2.set('#f0fdfa');
+          const R = e.species.size * 0.95 + 0.55;
+          // hoops hug the body tightly, stacked just apart enough to read as three
+          for (let k = 0; k < 3; k++) {
+            const rr = R * (k === 1 ? 1.12 : 0.95);
+            const yy = (k - 1) * R * 0.34 + Math.sin(time * 2.6 + k * 2.1 + e.phase * 5) * 0.06;
+            put(0, e.x, e.y + yy, e.z, 0, 1, 0, ST.waterRing, rr, rr, fade, k * 0.31 + (e.id % 7) * 0.13, 0);
+          }
+          // the protection: a translucent water dome sealed over the Pokémon
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R * 1.3, R * 1.3, 0.9 * fade, (e.id % 11) * 0.09, 0);
+        }
+        if (e.jetT > 0) {
+          // Aqua Jet, per the reference: the Pokémon IS the jet — a churning water comet
+          // wrapped around the body, head blazing forward, tail streaking behind
+          const vl = Math.hypot(e.vx, e.vy, e.vz) || 1;
+          const jdx = e.vx / vl, jdy = e.vy / vl, jdz = e.vz / vl;
+          // the comet is only as real as the ram: it fades out the moment the body slows,
+          // so it can never read as a jet FIRED at the target
+          const fade = Math.min(1, e.jetT / 0.18) * Math.min(1, vl / 6);
+          const size = e.species.size;
+          const len = size * 2.4 + 1.8, w = size * 0.6 + 0.32;
+          // the Pokémon rides at the comet's NOSE: head just past the snout, wake trailing
+          const cx = e.x - jdx * (len * 0.5 - size * 0.9), cy = e.y - jdy * (len * 0.5 - size * 0.9), cz = e.z - jdz * (len * 0.5 - size * 0.9);
+          c1.set(e.jetColor); c2.set('#e0f2fe');
+          put(1, cx, cy, cz, jdx, jdy, jdz, ST.jet, w, len, fade, (e.id % 13) * 0.07, 0.2);
+          // white-hot bow flash right at the snout
+          put(0, e.x + jdx * size * 0.9, e.y + jdy * size * 0.9, e.z + jdz * size * 0.9,
+            0, 1, 0, ST.flash, w * 1.5, w * 1.5, 0.5 * fade, (e.id % 11) * 0.09, 0.3);
+          // spray swirls peeling off the wake
+          for (let k = 0; k < 2; k++) {
+            const backO = len * (0.45 + k * 0.25);
+            put(0, e.x - jdx * backO, e.y - jdy * backO + Math.sin(time * 9 + k * 3) * 0.2, e.z - jdz * backO,
+              0, 1, 0, ST.swirl, 0.45 + k * 0.12, 0.6, 0.7 * fade, k * 0.23 + (e.id % 7) * 0.11, (time * 1.4 + k * 0.4) % 1);
+          }
+        }
+        if (e.frozenT > 0) {
+          // frozen solid by Ice Beam: an ice block encases the stunned victim, melting off at the end
+          const fade = Math.min(1, e.frozenT / 0.3);
+          c1.set('#bae6fd'); c2.set('#eaf9ff');
+          put(1, e.x, e.y, e.z, 0, 1, 0, ST.iceBlock, e.species.size * 1.25 + 0.5, 1, 1, (e.id % 17) * 0.055, fade);
+        }
+        if (e.concealT > 0) {
+          // black smoke billowing outward; it thins as the caster re-emerges
+          const D = Math.max(e.concealDur, 0.001);
+          const p = 1 - e.concealT / D;
+          // bursts to full density in 0.2s, holds, then thins away over the last 55%
+          const smoke = Math.min(1, (D - e.concealT) / 0.2) * Math.max(0, 1 - Math.max(0, (p - 0.45) / 0.55));
+          c1.set('#0f172a'); c2.set('#334155');
+          const R = e.species.size * 0.55 + 0.4 + p * 2.4;
+          for (let k = 0; k < 7; k++) {
+            const a2 = k * (Math.PI * 2 / 7) + e.phase * 9 + time * 0.4;
+            const rr = k === 0 ? 0 : R * (0.6 + 0.4 * Math.sin(k * 3.7 + e.phase * 11));
+            put(1, e.x + Math.cos(a2) * rr, e.y + Math.sin(a2 * 1.7 + k) * rr * 0.55, e.z + Math.sin(a2) * rr, 0, 1, 0,
+              ST.ink, (0.9 + k * 0.14) * (0.6 + p * 0.9) * e.species.size * 0.8 + 0.5, 1, smoke, k * 0.13 + (e.id % 5) * 0.2, p);
+          }
+        }
+      }
+      // ---- charge-up build-ups at the caster
       for (const ch of eco.moves.charges()) {
         const e = eco.byId.get(ch.casterId);
         if (!e) continue;
         c1.set(ch.color); c2.set('#ffffff');
+        if (ch.moveId === 'iceBeam' || ch.moveId === 'freezeDry') {
+          // the beam circle builds at the mouth — crystalline rings swelling small → big,
+          // sparkling harder as the shot readies, then the beam snaps out of its heart
+          const R = (0.5 + ch.progress * (1.7 + e.species.size * 0.35));
+          c2.set('#eaf9ff');
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.pulse, R, R, 0.35 + ch.progress * 0.65, (e.id % 11) * 0.09, ch.progress);
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.flash, 0.35 + R * 0.45, 1, 0.3 + ch.progress * 0.7, (e.id % 13) * 0.07, 0.2);
+          // frost glitter condensing on the rim of the circle
+          for (let k = 0; k < 3; k++) {
+            const a2 = time * 2.8 + k * 2.1 + e.phase * 7;
+            put(0, e.x + Math.cos(a2) * R * 0.55, e.y + Math.sin(a2 * 1.4 + k) * R * 0.3, e.z + Math.sin(a2) * R * 0.55,
+              0, 1, 0, ST.star, 0.3 + ch.progress * 0.25, 0.4, 0.5 + ch.progress * 0.5, k * 0.21 + (e.id % 7) * 0.1, (time * 2 + k * 0.33) % 1);
+          }
+          continue;
+        }
+        if (getMove(ch.moveId).style === 'dash') {
+          // the aqua cannon BUILDS around the body: a water shell swelling shut
+          // while spray spirals inward — then the Pokémon itself is the shot
+          const R = (e.species.size * 0.95 + 0.5) * (0.55 + ch.progress * 0.5);
+          c2.set('#e0f2fe');
+          put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R, R, 0.25 + ch.progress * 0.75, (e.id % 11) * 0.09, 0);
+          for (let k = 0; k < 3; k++) {
+            const a2 = time * (3.5 + k * 0.6) + k * 2.1 + e.phase * 7;
+            const rr = R * (1.8 - ch.progress * 0.9);
+            put(0, e.x + Math.cos(a2) * rr, e.y + Math.sin(a2 * 1.3 + k * 2) * rr * 0.5, e.z + Math.sin(a2) * rr,
+              0, 1, 0, ST.swirl, 0.4, 0.5, 0.45 + ch.progress * 0.55, k * 0.19 + (e.id % 7) * 0.1, (time * 1.6 + k * 0.33) % 1);
+          }
+          continue;
+        }
         const size = 0.5 + ch.progress * (0.8 + e.species.size * 0.22);
         put(0, e.x, e.y, e.z, 0, 1, 0, ST.flash, size, size, 0.35 + ch.progress * 0.65, (ch.casterId % 97) / 97, 0);
       }
@@ -449,6 +824,8 @@ const IMPACTS: Record<string, [number, number, number, number, number, number, s
   heal: [8, 1.2, 1.6, 0.6, 0.18, 0.9, '#a7f3d0'],
   mud: [14, 2.6, 2.2, -9.5, 0.24, 0.8],
   ink: [10, 1.2, 0.2, 0.35, 0.42, 1.1],
+  jaws: [8, 2.8, 0.6, -0.5, 0.16, 0.4, '#fee2e2'],
+  poison: [10, 2.0, 0.5, 0.25, 0.19, 0.65, '#c084fc'],
 };
 const MURKY = new Set(['mud', 'ink']);
 
@@ -542,7 +919,8 @@ function MoteLayer({ murky, cap }: { murky: boolean; cap: number }) {
           for (const pr of eco.moves.projectiles) {
             if (!pr.active) continue;
             const vis = visFor(pr.moveId, pr.style);
-            if (vis.blend === 1) continue;
+            // matter projectiles don't sparkle — except ice, which glitters (anime reference)
+            if (vis.blend === 1 && vis.impact !== 'ice') continue;
             spawn(pr.x + (Math.random() - 0.5) * 0.5, pr.y + (Math.random() - 0.5) * 0.5, pr.z + (Math.random() - 0.5) * 0.5,
               (Math.random() - 0.5) * 1.2, (Math.random() - 0.3) * 1.2, (Math.random() - 0.5) * 1.2, 0.12 + Math.random() * 0.14, 0.4 + Math.random() * 0.3, pr.color, 0.4);
           }
@@ -636,7 +1014,7 @@ export function MoveLights({ count }: { count: number }) {
 
 // ------------------------------------------------------------------ floating combat numbers
 
-const CHARSET = '0123456789-+DEFATKSLOWBINUP↓↑%';
+const CHARSET = '0123456789-+ABCDEFGHIJKLMNOPQRSTUVWXYZ↓↑%';
 const ATLAS_COLS = 8;
 const CELL = 64;
 
