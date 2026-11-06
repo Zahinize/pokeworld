@@ -54,6 +54,23 @@ export const GAME = {
   /** Feeding Pokémon are distracted: catch probability multiplier (inside the normal clamp). */
   FEED_CATCH_MULT: 1.15,
 
+  /** Lapras ferry (lore): every so often it rises and idles at the waterline while the reef's
+   *  small fry paddle over and bob alongside. First surfacing after spawn and the rest between
+   *  ferries (s); time held at the surface (s) — counted from ARRIVAL, the climb is on top of it;
+   *  safety timeout for the climb (s). */
+  FERRY_FIRST: [35, 70] as [number, number],
+  FERRY_PERIOD: [70, 120] as [number, number],
+  FERRY_DURATION: 34,
+  FERRY_RISE_TIMEOUT: 20,
+  /** Where it surfaces: with the trainer inside FERRY_SITE_PLAYER_R it comes up FERRY_SITE_OFFSET
+   *  metres off their shoulder (in full view); otherwise beside the nearest calm school within
+   *  FERRY_SITE_SCHOOL_R (company for the ride-along); otherwise right where it is. */
+  FERRY_SITE_PLAYER_R: 70,
+  FERRY_SITE_OFFSET: 10,
+  FERRY_SITE_SCHOOL_R: 80,
+  /** Small fry inside this radius of a surfaced ferry paddle over and ride alongside. */
+  FERRY_FRY_RADIUS: 26,
+
   /** Slingshot (touch throw): gesture thresholds, aim mapping, power curve. */
   SLING_MIN_DRAG_PX: 24,
   SLING_TAP_MS: 250,
