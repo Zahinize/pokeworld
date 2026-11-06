@@ -134,6 +134,8 @@ export const SPECIES: Record<string, SpeciesConfig> = {
   mantine: {
     id: 'mantine', name: 'Mantine', dexId: 226, sprite: SPRITE(226), stage: 1,
     primary: 'giant', secondary: ['guardian'], guards: ['mantyke'],
+    // lore: Remoraid latch onto the underside of its wings and hitch a ride (see memberThink)
+    entourage: { speciesId: 'remoraid', count: [2, 3] },
     size: 3.2, speed: 1.3, burst: 2.6, depth: [6, 30], habitat: ['openReef', 'deepWater'],
     groupSize: [1, 1], curiosity: 0.4, fear: 0.1, aggression: 0.1, activity: 'both',
     rarity: 'uncommon', catchBase: 0.6, fallbackStats: { hp: 85, atk: 40, def: 70, spAtk: 80, spDef: 140, speed: 70 },

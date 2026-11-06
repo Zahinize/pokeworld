@@ -134,6 +134,19 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   };
   anchors.push(playerStart);
 
+  // entourage: followers that always spawn with a species — Kingler's Krabby court, the Remoraid
+  // that ride under Mantine's wings — whether that species spawns solo or as a group's guardian
+  const attachEntourage = (s: SpeciesConfig, idx: number) => {
+    if (!s.entourage) return;
+    const cs = getSpecies(s.entourage.speciesId);
+    const { pos, zone } = spawns[idx];
+    const gi = groups.length;
+    groups.push({ kind: 'companions', speciesId: cs.id, zone, anchor: { ...pos }, radius: 3, followsSpawn: idx });
+    const n = rng.int(s.entourage.count[0], s.entourage.count[1]);
+    for (let i = 0; i < n; i++) spawns.push({ speciesId: cs.id, role: 'companion', groupIndex: gi, ambient: true, zone, pos: { x: pos.x + rng.range(-2.5, 2.5), y: pos.y + rng.range(-0.8, 0.8), z: pos.z + rng.range(-2.5, 2.5) } });
+    summary.ambient.push(`${cs.name} ×${n} (with ${s.name})`);
+  };
+
   const addGroup = (kind: GroupKind, member: SpeciesConfig, guardian: SpeciesConfig | undefined, count: number, objectiveId: string | undefined, ambient: boolean, nearPlayer: boolean) => {
     const zone = pickZone(rng, member, nearPlayer ? level.playerStart.zone : undefined);
     const anchor = nearPlayer
@@ -162,6 +175,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
         pos: { x: anchor.x + radius + 2, y: anchor.y + 0.5, z: anchor.z },
       });
       used.add(guardian.id);
+      attachEntourage(guardian, spawns.length - 1);
     }
     used.add(member.id);
     return gi;
@@ -201,15 +215,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     anchors.push(pos);
     spawns.push({ speciesId: s.id, role, groupIndex: -1, objectiveId, ambient, zone, pos });
     const idx = spawns.length - 1;
-    // entourage: followers that always spawn with this species (Kingler's Krabby court, Corsola/Wiglett clusters)
-    if (s.entourage) {
-      const cs = getSpecies(s.entourage.speciesId);
-      const gi = groups.length;
-      groups.push({ kind: 'companions', speciesId: cs.id, zone, anchor: { ...pos }, radius: 3, followsSpawn: idx });
-      const n = rng.int(s.entourage.count[0], s.entourage.count[1]);
-      for (let i = 0; i < n; i++) spawns.push({ speciesId: cs.id, role: 'companion', groupIndex: gi, ambient: true, zone, pos: { x: pos.x + rng.range(-2.5, 2.5), y: pos.y + rng.range(-0.8, 0.8), z: pos.z + rng.range(-2.5, 2.5) } });
-      summary.ambient.push(`${cs.name} \u00d7${n} (with ${s.name})`);
-    }
+    attachEntourage(s, idx);
     return idx;
   };
 

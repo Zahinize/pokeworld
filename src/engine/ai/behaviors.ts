@@ -155,8 +155,23 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     seek(e, f.x + Math.cos(a) * r, wy, f.z + Math.sin(a) * r, 2.2, 0.4);
   }
 
+  // Remoraid under Mantine's wings (lore): the hitchhikers latch onto the underside of the wings
+  // and ride wherever the giant glides — no schooling of their own while aboard. A threat, the
+  // lure or a fight lets go; they re-latch as soon as it's over.
+  const leader = g.followId >= 0 ? ctx.byId.get(g.followId) : undefined;
+  const latched = !!leader && leader.species.id === 'mantine' && s.id === 'remoraid' && !scattering && !e.lured && e.state !== 'feed'
+    && leader.state !== 'ko' && leader.state !== 'caught' && leader.state !== 'removed';
+  const leaderSpeed = leader ? Math.hypot(leader.vx, leader.vz) : 0;
+  if (latched) {
+    wingSlotOf(leader!, e, seatTmp);
+    seek(e, seatTmp.x, seatTmp.y + Math.sin(ctx.time * 2 + e.phase * 3) * 0.05, seatTmp.z, 3.0, 0.2);
+  }
+  // Mantyke trailing their Mantine (lore: it leads them): a giant cruises faster than its young,
+  // and after a leap it is far ahead — the family keeps up at its pace, within their own limits
+  const trailing = !!leader && leader.species.id === 'mantine' && !latched && !scattering && !e.lured && e.state !== 'feed';
+
   // Boids among same group
-  if (e.lod < 2) {
+  if (e.lod < 2 && !latched) {
     let cx = 0, cy = 0, cz = 0, n = 0, ax = 0, ay = 0, az = 0;
     const sepD = (s.size * 1.1 + 0.45) * (balled ? 0.55 : 1); // the ball packs scale to scale
     const R = isSchool ? 6 : 7;
@@ -191,7 +206,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     seek(e, g.anchor.x + Math.cos(swirl + e.phase) * ringR, g.anchor.y + ay2, g.anchor.z + Math.sin(swirl + e.phase) * ringR, 2.2, 0.3);
     e.atkStage = Math.max(e.atkStage, 1.5); e.atkStageUntil = Math.max(e.atkStageUntil, ctx.time + 1.2);
     e.defStage = Math.max(e.defStage, 1.6); e.defStageUntil = Math.max(e.defStageUntil, ctx.time + 1.2);
-  } else if (!ferrying) {
+  } else if (!ferrying && !latched) {
     const dA = len3(g.anchor.x - e.x, g.anchor.y - e.y, g.anchor.z - e.z);
     const over = Math.max(0, dA - g.radius);
     const w = (isSchool ? 0.5 : 0.35) + over * (e.lod === 2 ? 0.6 : 0.18);
@@ -238,13 +253,13 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   }
 
   // Noise, vertical life, current, habitat
-  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1);
+  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1) * (latched ? 0.15 : 1);
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
-  acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
-  if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  if (e.state !== 'feed' && !ferrying) depthPreference(e, 0.8); // feeding & ferry visits suspend the comfort band entirely
+  acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy * (latched ? 0.2 : 1);
+  if (passive && !latched) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
+  if (e.state !== 'feed' && !ferrying && !latched) depthPreference(e, 0.8); // feeding, ferry visits & a wing ride suspend the comfort band entirely
   floorAndSurface(e, e.state === 'feed' ? s.size * 0.35 : s.size * 0.6 + 0.8); // grazers press right down to the sand
-  if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
+  if (!e.lured && !latched) containZone(e, e.zone, 0.8, 1.05);   // a hitchhiker goes wherever the Mantine goes
   containWorld(e);
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
 
@@ -253,8 +268,12 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
   const feedMult = e.state === 'feed' ? (atTable ? (isSchool ? GAME.FEED_SPEED_MULT : 0.65) : 1.3) : 1;
   const speed0 = (balled ? s.burst * 0.85 : scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
-  // alongside a ferry under way the little ones have to keep up with the hull
-  const speed = ferrying ? Math.max(speed0, s.burst * 0.7 * act) : speed0;
+  // alongside a ferry under way the little ones have to keep up with the hull; a Remoraid under
+  // the wing must never fall off the Mantine it rides
+  const behind = trailing && len3(g.anchor.x - e.x, g.anchor.y - e.y, g.anchor.z - e.z) > g.radius;
+  const speed = latched ? Math.max(speed0, leaderSpeed * 1.4 + 0.5)
+    : behind ? Math.max(speed0, Math.min(s.burst * 1.3, leaderSpeed * 1.25 + 0.3))
+    : ferrying ? Math.max(speed0, s.burst * 0.7 * act) : speed0;
   commit(e, speed);
 }
 
@@ -874,7 +893,7 @@ function pickVoyageTarget(e: Entity, ctx: SimContext) {
   const want = GAME.FERRY_VOYAGE_DIST[0] + ctx.rng() * (GAME.FERRY_VOYAGE_DIST[1] - GAME.FERRY_VOYAGE_DIST[0]);
   const lim = GAME.WORLD_RADIUS - 10;   // a long crossing may run right out to the rim
   let best = -1, bx = e.x, bz = e.z;
-  for (const off of [0, 0.35, -0.35, 0.7, -0.7, 1.05, -1.05]) {
+  for (const off of [0, 0.35, -0.35, 0.7, -0.7, 0.95, -0.95]) {   // never more than ~55° off "away"
     const c = Math.cos(off), s = Math.sin(off);
     const dx = ax * c - az * s, dz = ax * s + az * c;
     // how far along this heading before the edge?
@@ -909,6 +928,19 @@ export function ferryRiders(f: Entity, ctx: SimContext): number {
     if (o !== f && o.aboardT > 0 && o.y > f.y - 0.5) n++;
   });
   return n;
+}
+
+/** A Remoraid's slot under one of Mantine's wings, fixed per rider: left/right by id, staggered a
+ *  little along and outward, just below the body — in the giant's heading frame. */
+export function wingSlotOf(L: Entity, e: Entity, out: Vec3): Vec3 {
+  const sp = Math.hypot(L.vx, L.vz);
+  const hx = sp > 0.05 ? L.vx / sp : Math.cos(L.phase), hz = sp > 0.05 ? L.vz / sp : Math.sin(L.phase);
+  const side = e.id % 2 === 0 ? 1 : -1, slot = e.id % 3;
+  const lat = L.species.size * (0.3 + slot * 0.06), back = L.species.size * (0.05 + slot * 0.08);
+  out.x = L.x - hz * lat * side - hx * back;
+  out.z = L.z + hx * lat * side - hz * back;
+  out.y = L.y - L.species.size * 0.26;
+  return out;
 }
 
 /** A rider's seat on the shell, fixed per rider: a small ring on the back, perched just above it. */
@@ -1201,6 +1233,46 @@ export function giantThink(e: Entity, ctx: SimContext, dt: number) {
 
   if (s.id === 'kyogre' && pd < 55 && e.t1 === 0) { e.t1 = 1; ctx.events.push({ type: 'legendary', entityId: e.id }); }
 
+  // Mantine's leap (lore): every ~30s it builds speed in a run at the surface and launches clear
+  // of the water, Remoraid clinging under its wings, then splashes down and carries on.
+  if (s.id === 'mantine') {
+    const LEAP = GAME.MANTINE_LEAP;
+    if (e.state === 'leapAir') {
+      // ballistic: the integrate step owns the arc (gravity, re-entry) — hold course, no steering
+      e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
+      return;
+    }
+    if (e.state === 'leapRun') {
+      // the run-up: a long accelerating dash along the surface, bubbles boiling off the wings
+      seek(e, e.target.x, GAME.SURFACE_Y + 1.0, e.target.z, 2.0, 1.0);
+      speed = s.burst * (1 + (LEAP.RUN_SPEED_MULT - 1) * Math.min(1, e.stateT / 3));
+      e.wakeT = 1.0;
+      if ((e.y > -1.7 && e.stateT > 1.5) || e.stateT > LEAP.RUN_MAX) {
+        // launch: vertical speed for the chosen apex, forward speed carried through
+        const h = LEAP.HEIGHT[0] + ctx.rng() * (LEAP.HEIGHT[1] - LEAP.HEIGHT[0]);
+        e.vy = Math.sqrt(2 * LEAP.GRAVITY * (h + Math.max(0, GAME.SURFACE_Y - e.y)));   // apex h ABOVE the waterline, from wherever it launches
+        e.hopH = h; e.state = 'leapAir'; e.stateT = 0;
+        ctx.events.push({ type: 'leap', entityId: e.id, phase: 'launch', x: e.x, z: e.z, size: s.size, height: h });
+        e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
+        return;
+      }
+      containWorld(e, 4);
+      commit(e, speed);
+      return;
+    }
+    if (e.t2 <= 0 && e.state !== 'breach') {
+      // the call to leap: aim the run 40m dead ahead
+      const sp = Math.hypot(e.vx, e.vz);
+      const hx = sp > 0.05 ? e.vx / sp : Math.cos(e.phase), hz = sp > 0.05 ? e.vz / sp : Math.sin(e.phase);
+      let tx = e.x + hx * 40, tz = e.z + hz * 40;
+      const rr = Math.hypot(tx, tz), lim = GAME.WORLD_RADIUS - 12;
+      if (rr > lim) { tx *= lim / rr; tz *= lim / rr; }
+      e.target.x = tx; e.target.z = tz;
+      e.state = 'leapRun'; e.stateT = 0;
+      e.wakeT = 1.0;   // the bubbles start with the first stroke, not the next think
+    }
+  }
+
   if (e.state === 'breach') {
     seek(e, e.target.x, -Math.max(1.5, s.size * 0.45), e.target.z, 1.2, 3);
     if (e.stateT > 14) { e.state = 'wander'; e.stateT = 0; e.t2 = 180 + ctx.rng() * 160; }
@@ -1219,8 +1291,8 @@ export function giantThink(e: Entity, ctx: SimContext, dt: number) {
     const mid = -(dMin + dMax) / 2, amp = (dMax - dMin) / 2.5;
     e.target.y = mid + Math.sin(ctx.time * 0.045 + e.phase * 4) * amp;
     seek(e, e.target.x, e.target.y, e.target.z, 1.0, 12);
-    if (e.t2 <= 0 && s.id !== 'kyogre' && s.id !== 'dondozo' && ctx.rng() < 0.5) { e.state = 'breach'; e.stateT = 0; ctx.events.push({ type: 'breach', entityId: e.id }); }
-    else if (e.t2 <= 0) e.t2 = 60;
+    if (e.t2 <= 0 && s.id !== 'kyogre' && s.id !== 'dondozo' && s.id !== 'mantine' && ctx.rng() < 0.5) { e.state = 'breach'; e.stateT = 0; ctx.events.push({ type: 'breach', entityId: e.id }); }
+    else if (e.t2 <= 0 && s.id !== 'mantine') e.t2 = 60;
   }
   if (pd < s.size * 0.6 + 2) fleeFrom(e, p.x, p.y, p.z, 0.4); // don't swim through the player
   floorAndSurface(e, s.size * 0.6 + 2);

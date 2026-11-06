@@ -9,6 +9,7 @@ export type EntityState =
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
   | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry' | 'ferryVoyage' | 'ferryDisembark'
+  | 'leapRun' | 'leapAir'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -175,6 +176,8 @@ export type EcoEvent =
   | { type: 'ferryCall'; entityId: number; pitch: number }
   | { type: 'ferryReply'; entityId: number; delay: number }
   | { type: 'ferryHop'; entityId: number; x: number; y: number; z: number; size: number; off: boolean }
+  | { type: 'familyDefend'; rootId: number; attackerId: number; count: number }
+  | { type: 'leap'; entityId: number; phase: 'launch' | 'splash'; x: number; z: number; size: number; height: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

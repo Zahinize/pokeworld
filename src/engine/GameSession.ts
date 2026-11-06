@@ -157,6 +157,7 @@ export class GameSession {
   private saveAcc = 0;
   private completeTimer = -1;
   private huntToastCooldown = 0;
+  private familyToastCooldown = 0;
   private ballToastCooldown = 0;
   private hintStep = 0;
   private hintTimer = 0;
@@ -1092,6 +1093,7 @@ export class GameSession {
     this.updateRestoration();
     this.updateHints(dt);
     if (this.huntToastCooldown > 0) this.huntToastCooldown -= dt;
+    if (this.familyToastCooldown > 0) this.familyToastCooldown -= dt;
     if (this.ballToastCooldown > 0) this.ballToastCooldown -= dt;
     if (this.phase === 'completing') {
       this.completeTimer -= dt;
@@ -1325,6 +1327,33 @@ export class GameSession {
           // the ferry call: Lapras sings out at a different pitch each time
           const e = eco.byId.get(ev.entityId);
           if (e && near(e, 90)) Audio.playCry(getSpecies('lapras').dexId, 0.32, 0, ev.pitch);
+          break;
+        }
+        case 'leap': {
+          // Mantine clears the water (Remoraid and all): spray on the way out and on the way back in
+          const e = eco.byId.get(ev.entityId);
+          if (e && near(e, 100)) {
+            this.pushFx('splash', ev.x, GAME.SURFACE_Y, ev.z, ev.size * (ev.phase === 'splash' ? 1.1 : 0.8), '#e0f2fe');
+            if (ev.phase === 'launch') {
+              Audio.breach();
+              if (this.familyToastCooldown <= 0) {
+                store.pushToast({ kind: 'event', title: 'Mantine leaps!', body: `${ev.height.toFixed(0)}m clear of the waves — Remoraid clinging under its wings.`, speciesId: 'mantine', ttl: 4 });
+                this.familyToastCooldown = 25;
+              }
+            }
+          }
+          break;
+        }
+        case 'familyDefend': {
+          // the Mantine family turns on whoever struck one of them
+          const root = eco.byId.get(ev.rootId);
+          if (root && near(root, 70) && this.familyToastCooldown <= 0) {
+            const vsYou = ev.attackerId === -2;
+            const atk = vsYou ? null : eco.byId.get(ev.attackerId);
+            store.pushToast({ kind: 'warn', title: vsYou ? 'Mantine’s family turns on you!' : 'Mantine’s family fights back',
+              body: vsYou ? 'Strike one and the whole family answers — Mantyke, Remoraid and all.' : `${ev.count} of them turn on the ${atk?.species.name ?? 'attacker'}.`, speciesId: 'mantine', ttl: 4 });
+            this.familyToastCooldown = 15;
+          }
           break;
         }
         case 'ferryHop': {

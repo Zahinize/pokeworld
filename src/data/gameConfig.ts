@@ -84,6 +84,18 @@ export const GAME = {
   FERRY_VOYAGE_MAX: 110,
   /** Exactly one wild Lapras per ferry level (LevelConfig.ferry): the generator guarantees it,
    *  reinforcements never add one, and a caught ferry is never replaced. */
+
+  /** Mantine's leap (lore): every PERIOD seconds it builds speed in a surface run (burst × up to
+   *  RUN_SPEED_MULT over the run), launches HEIGHT metres clear of the water in a ballistic arc
+   *  under GRAVITY, splashes back and carries on at cruise. The Remoraid under its wings ride the
+   *  whole thing; bubbles stream through the run and the splashdown. */
+  MANTINE_LEAP: {
+    PERIOD: 30,
+    HEIGHT: [5, 10] as [number, number],
+    RUN_MAX: 9,
+    RUN_SPEED_MULT: 2.2,
+    GRAVITY: 9.8,
+  },
   FERRY_VOYAGE_SPEED_MULT: 1.6,
   FERRY_ESCORT_ANCHOR_MULT: 4,
   /** The ferry call: while rising and boarding, Lapras sings out every few seconds at a varying

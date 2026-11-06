@@ -5,7 +5,7 @@
  */
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
-import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf } from '../ai/behaviors';
+import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf, wingSlotOf } from '../ai/behaviors';
 
 const tmpSeat = { x: 0, y: 0, z: 0 };
 import type { GeneratedEcosystem, SpawnSpec, MissionObjective } from '../ecosystem/generator';
@@ -133,7 +133,9 @@ export class Ecosystem {
       targetId: -1, huntCooldown: 8 + this.rng.next() * 14, curiosityCooldown: 8 + this.rng.next() * 20, threatId: -1, threatT: 99,
       lured: false, lureOrbit: this.rng.next() * Math.PI * 2, facing: 1, zone: sp.zone, t1: behavior === 'bottom' ? 10 + this.rng.next() * 30 : 0,
       // the Lapras ferry surfaces for the first time within the first minute or so of a dive
-      t2: s.id === 'lapras' ? GAME.FERRY_FIRST[0] + this.rng.next() * (GAME.FERRY_FIRST[1] - GAME.FERRY_FIRST[0]) : 120 + this.rng.next() * 200,
+      t2: s.id === 'lapras' ? GAME.FERRY_FIRST[0] + this.rng.next() * (GAME.FERRY_FIRST[1] - GAME.FERRY_FIRST[0])
+        : s.id === 'mantine' ? 10 + this.rng.next() * 15   // the first leap comes early
+        : 120 + this.rng.next() * 200,
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
@@ -183,6 +185,45 @@ export class Ecosystem {
     }
   }
 
+  /** The Mantine family (lore): a Mantine, the Mantyke it leads and the Remoraid under its wings
+   *  are one family. Strike any of them — predator, wild or trainer — and every one in reach turns
+   *  on the attacker together. Returns the family's Mantine for `e`, or null if it has none. */
+  private familyRoot(e: Entity): Entity | null {
+    const ok = (m: Entity | undefined) => !!m && m.species.id === 'mantine' && m.state !== 'ko' && m.state !== 'caught' && m.state !== 'removed';
+    if (ok(e)) return e;
+    if (e.groupId < 0) return null;
+    const g = this.groups[e.groupId];
+    if (!g) return null;
+    const lead = g.guardianId >= 0 ? this.byId.get(g.guardianId) : g.followId >= 0 ? this.byId.get(g.followId) : undefined;
+    return ok(lead) ? lead! : null;
+  }
+
+  private familyDefend(victim: Entity, attackerId: number) {
+    const root = this.familyRoot(victim);
+    if (!root) return;
+    if (attackerId !== -2) {
+      const a = this.byId.get(attackerId);
+      if (!a || a.state === 'ko' || a.state === 'caught' || a.state === 'removed' || this.familyRoot(a) === root) return;  // never on itself
+    }
+    let n = 0;
+    const leaping = root.state === 'leapRun' || root.state === 'leapAir';   // mid-leap, the family lands first
+    const join = (m: Entity | undefined) => {
+      if (!m || m.role === 'partner') return;
+      if (m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'faint' || m.state === 'duel' || m.state === 'retaliate') return;
+      if (leaping && (m === root || m.species.id === 'remoraid')) return;
+      if (len3(m.x - victim.x, m.y - victim.y, m.z - victim.z) > 40) return;
+      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId;
+      m.nextThink = this.time + n * 0.15;   // a ripple, not a volley
+      n++;
+    };
+    join(root);
+    for (const g of this.groups) {
+      if (g.guardianId !== root.id && g.followId !== root.id) continue;
+      for (const id of g.memberIds) join(this.byId.get(id));
+    }
+    if (n > 0) this.events.push({ type: 'familyDefend', rootId: root.id, attackerId, count: n });
+  }
+
   /** All members near the victim turn and cast at the attacker, staggered (capped for sanity + perf). */
   private groupRevenge(g: Group, victim: Entity, attackerId: number) {
     let casters = 0;
@@ -213,6 +254,7 @@ export class Ecosystem {
       t.kbT = 0.25;
     }
     this.events.push({ type: 'hit', entityId: t.id, by, damage: amount });
+    if (amount > 0 && t.hp > 0) this.familyDefend(t, sourceId);   // the Mantine family fights as one
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
       if (src?.role === 'partner' && t.role !== 'partner' && !t.isBoss) { this.autoCapture(t); return; } // a KO by your team is a catch — straight into the roster
@@ -618,12 +660,29 @@ export class Ecosystem {
   }
 
   private integrate(e: Entity, dt: number) {
+    // Remoraid riding a leaping Mantine: carried through the run-up and the arc, hard-attached to
+    // its wing slot (the giant integrates first — it was spawned first — so the slot is current)
+    if (e.species.id === 'remoraid' && e.groupId >= 0) {
+      const g = this.groups[e.groupId];
+      const L = g && g.followId >= 0 ? this.byId.get(g.followId) : undefined;
+      // (a frightened rider may let go during the run-up; nobody lets go in mid-air)
+      const calm = e.state !== 'scatter' && e.state !== 'retaliate' && e.state !== 'flee' && e.state !== 'lured';
+      if (L && L.species.id === 'mantine' && (L.state === 'leapAir' || (L.state === 'leapRun' && calm))) {
+        wingSlotOf(L, e, tmpSeat);
+        e.x = tmpSeat.x; e.y = tmpSeat.y; e.z = tmpSeat.z;
+        e.vx = e.dx = L.vx; e.vy = e.dy = L.vy; e.vz = e.dz = L.vz;
+        e.aboardT = 0.5; e.wakeT = Math.max(e.wakeT, L.wakeT);
+        return;   // fully scripted this frame — no clamps, no drift
+      }
+    }
+    const leaping = e.state === 'leapAir';
     const agility = e.behavior === 'giant' ? 0.22 : e.behavior === 'bottom' ? 0.7 : e.state === 'rush' || e.state === 'scatter' || e.state === 'flee' ? 1.6 : 1.0;
     const k = Math.min(1, agility * 3.2 * dt);
-    e.vx += (e.dx - e.vx) * k; e.vy += (e.dy - e.vy) * k; e.vz += (e.dz - e.vz) * k;
+    if (!leaping) { e.vx += (e.dx - e.vx) * k; e.vy += (e.dy - e.vy) * k; e.vz += (e.dz - e.vz) * k; }
+    else e.vy -= GAME.MANTINE_LEAP.GRAVITY * dt;   // ballistic: gravity only, forward speed carried
     const sp = len3(e.vx, e.vy, e.vz);
     const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
-    if (sp > lim) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
+    if (sp > lim && !leaping) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
     // wind-up brace: a caster mid-charge digs in and holds its spot, so the rear-back
     // (and the aqua cannon building around a dash user) plays out in place, not mid-glide
     if (e.castFrom >= 0 && e.castAt > this.time) { e.vx *= 0.88; e.vy *= 0.88; e.vz *= 0.88; }
@@ -673,10 +732,19 @@ export class Ecosystem {
     // comes all the way up and out, and the amphibious riders perched on its shell
     const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.state === 'ferryDisembark' || e.aboardT > 0;
     const fer = this.ctx.ferry;
-    const top = !ferrying ? -Math.max(0.8, e.species.size * 0.45)
+    const top = leaping ? GAME.SURFACE_Y + GAME.MANTINE_LEAP.HEIGHT[1] + e.species.size   // airborne: the arc owns the height
+      : !ferrying ? -Math.max(0.8, e.species.size * 0.45)
       : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
       : GAME.SURFACE_Y + e.species.size;
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
+    // splashdown: the leap ends when the body drops back under the swell — a short skid, then cruise
+    if (leaping && e.vy < 0 && e.y < GAME.SURFACE_Y - 0.6) {
+      e.state = 'wander'; e.stateT = 0;
+      // the next launch lands ~PERIOD after this one: the run-up (~7s) and the air time (~2.5s) count
+      e.t2 = Math.max(8, GAME.MANTINE_LEAP.PERIOD - 10) * (0.9 + this.rng.next() * 0.2);
+      e.vy *= 0.35; e.wakeT = 1.6;
+      this.events.push({ type: 'leap', entityId: e.id, phase: 'splash', x: e.x, z: e.z, size: e.species.size, height: e.hopH });
+    }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }
     if (e.lod === 0) {
