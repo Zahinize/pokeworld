@@ -8,7 +8,7 @@ export type EntityState =
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
-  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry'
+  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry' | 'ferryVoyage'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -83,6 +83,12 @@ export interface Entity {
   castFrom: number; castAt: number;
   /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
   jetT: number; jetColor: string;
+  /** Ferry wake: seconds remaining of the visual-only comet + bubble train on a rising Lapras. */
+  wakeT: number;
+  /** Aboard the ferry: seconds remaining of the surface-clamp exemption (refreshed every think while riding). */
+  aboardT: number;
+  /** Talk mark: seconds the speech bubble stays up; talkDelay counts down to a reply mark. */
+  talkT: number; talkDelay: number;
   /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
   frozenT: number;
   /** Hit recoil: a brief knockback shove outside the cruise-speed clamp (decays fast). */
@@ -159,6 +165,10 @@ export type EcoEvent =
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
   | { type: 'ferry'; entityId: number }
+  | { type: 'ferrySurface'; entityId: number }
+  | { type: 'ferrySail'; entityId: number; riders: number }
+  | { type: 'ferryCall'; entityId: number; pitch: number }
+  | { type: 'ferryReply'; entityId: number; delay: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

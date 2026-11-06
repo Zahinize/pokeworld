@@ -935,9 +935,35 @@ function MoteLayer({ murky, cap }: { murky: boolean; cap: number }) {
               0.05 + Math.random() * 0.08, 0.7 + Math.random() * 0.5, '#dff4ff', 1.5);
           }
         }
+        // ferry wake: a bubble stream boils off a Lapras surging up to the surface — the only
+        // effect on the climb, so it's dense enough to read as speed on its own
+        for (const e of eco.alive) {
+          if (e.wakeT <= 0) continue;
+          const sz = e.species.size;
+          // the stream thickens with wakeT: a steady 6/frame under way, up to 3× in the cast-off boil
+          const nb = Math.round(6 * Math.min(3, Math.max(1, e.wakeT / 0.6)));
+          for (let k = 0; k < nb; k++) {
+            spawn(e.x + (Math.random() - 0.5) * sz * 0.8, e.y - sz * 0.3 + (Math.random() - 0.5) * sz * 0.6, e.z + (Math.random() - 0.5) * sz * 0.8,
+              -e.vx * 0.15 + (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 1.2, -e.vz * 0.15 + (Math.random() - 0.5) * 0.8,
+              0.08 + Math.random() * 0.14, 0.6 + Math.random() * 0.6, '#dff4ff', 1.8);
+          }
+        }
         // catches / generic session fx keep their celebration burst
         for (const f of session.fx) {
-          if (f.t > 0.06 || seenFx.current.has(f) || f.type !== 'catch') continue;
+          if (f.t > 0.06 || seenFx.current.has(f)) continue;
+          if (f.type === 'splash') {
+            // breaking the surface: a crown of spray thrown up and out, falling back as droplets
+            seenFx.current.add(f);
+            const n = 18 + Math.round(f.size * 4);
+            for (let i = 0; i < n; i++) {
+              const a = Math.random() * Math.PI * 2, r = f.size * (0.4 + Math.random() * 0.5);
+              const sp = 1.5 + Math.random() * 2.5;
+              spawn(f.x + Math.cos(a) * r, f.y, f.z + Math.sin(a) * r, Math.cos(a) * sp * 0.6, 3 + Math.random() * 3, Math.sin(a) * sp * 0.6,
+                0.1 + Math.random() * 0.16, 0.7 + Math.random() * 0.5, '#e0f2fe', -9);
+            }
+            continue;
+          }
+          if (f.type !== 'catch') continue;
           seenFx.current.add(f);
           for (let i = 0; i < 14; i++) {
             const a = Math.random() * Math.PI * 2, b = (Math.random() - 0.5) * Math.PI;

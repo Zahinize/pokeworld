@@ -322,8 +322,14 @@ export function PokemonLayer() {
       partnerFrontMemo.set(e.id, front);
       return !front;
     };
+    // The Lapras ferry sails away from the trainer: while it's moving off, show its back.
+    const ferryShowsBack = (e: (typeof eco.alive)[number]) => {
+      if (e.state !== 'ferryVoyage') return false;
+      const p = eco.player;
+      return (e.vx * (e.x - p.x) + e.vz * (e.z - p.z)) > 0;   // heading away from the camera
+    };
     const keyOf = (e: (typeof eco.alive)[number]) => {
-      const back = e.role === 'partner' && partnerShowsBack(e);
+      const back = (e.role === 'partner' && partnerShowsBack(e)) || ferryShowsBack(e);
       if (e.isShiny) {
         if (back && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
         if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');

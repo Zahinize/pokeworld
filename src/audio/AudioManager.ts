@@ -319,12 +319,14 @@ class AudioManagerImpl {
   }
 
   /** Play a Pokémon's cry at the given volume (1 = encounter, 0.5 = caught, 0.25 = defeated). */
-  playCry(dexId: number, volume = 1, delay = 0) {
+  /** `rate` shifts the pitch (and tempo) of the cry: 1 = as recorded. */
+  playCry(dexId: number, volume = 1, delay = 0, rate = 1) {
     if (!this.ctx || !this.enabled) return;
     this.loadCry(dexId).then((buf) => {
       if (!buf || !this.ctx) return;
       const t0 = this.ctx.currentTime + delay;
       const src = this.ctx.createBufferSource(); src.buffer = buf;
+      src.playbackRate.value = Math.max(0.5, Math.min(2, rate));
       const g = this.ctx.createGain(); g.gain.value = Math.max(0.01, Math.min(1, volume)) * 0.9;
       src.connect(g).connect(this.sfxGain!);
       src.start(t0);

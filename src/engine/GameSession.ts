@@ -44,7 +44,7 @@ function releasePointer() {
 
 export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete' | 'defeated';
 
-export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure'; x: number; y: number; z: number; t: number; size: number; color?: string }
+export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure' | 'splash'; x: number; y: number; z: number; t: number; size: number; color?: string }
 
 /** Floating combat number consumed by the renderer. */
 export interface DamageNumber { text: string; color: string; x: number; y: number; z: number; t: number; big: boolean }
@@ -203,6 +203,8 @@ export class GameSession {
       preloadSpeciesData(ids, (d) => { hpDone = d; prog(); }),
       preloadSprites(ids, (d) => { spDone = d; prog(); }).then((m) => { for (const [k, v] of m) this.sheets.set(k, v); }),
     ]);
+    // the Lapras ferry sails AWAY from the trainer, so it needs its back sheet like a companion does
+    if (ids.includes('lapras') && !this.sheets.has(sheetKey('lapras', 'back'))) loadSpriteSheet('lapras', 'back').then((sh) => this.sheets.set(sheetKey('lapras', 'back'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     if (resume && resume.seed === this.seed) this.applyResume(resume);
@@ -1303,6 +1305,32 @@ export class GameSession {
             Audio.playCry(getSpecies('lapras').dexId, 0.3);
             store.pushToast({ kind: 'event', title: 'A Lapras rises to the surface', body: 'The reef’s gentle ferry — the little ones are gathering alongside.', speciesId: 'lapras', ttl: 5 });
           }
+          break;
+        }
+        case 'ferrySurface': {
+          // the ferry breaks the surface: a crown of spray and a ring on the water (no boom — gentle giant)
+          const e = eco.byId.get(ev.entityId);
+          if (e && near(e, 90)) this.pushFx('splash', e.x, GAME.SURFACE_Y, e.z, e.species.size, '#e0f2fe');
+          break;
+        }
+        case 'ferrySail': {
+          const e = eco.byId.get(ev.entityId);
+          if (e && near(e, 90)) {
+            Audio.playCry(getSpecies('lapras').dexId, 0.35);
+            store.pushToast({ kind: 'event', title: 'The Lapras ferry sets sail', body: `${ev.riders} aboard — it's carrying them across the reef.`, speciesId: 'lapras', ttl: 5 });
+          }
+          break;
+        }
+        case 'ferryCall': {
+          // the ferry call: Lapras sings out at a different pitch each time
+          const e = eco.byId.get(ev.entityId);
+          if (e && near(e, 90)) Audio.playCry(getSpecies('lapras').dexId, 0.32, 0, ev.pitch);
+          break;
+        }
+        case 'ferryReply': {
+          // a little one answers — its own cry, soft, a beat later
+          const e = eco.byId.get(ev.entityId);
+          if (e && near(e, 60)) Audio.playCry(e.species.dexId, 0.12, ev.delay, 0.9 + Math.random() * 0.3);
           break;
         }
         case 'huntStart': {

@@ -172,7 +172,7 @@ export class BallSystem {
     this.events.push({ type: 'hit', ball: b, entity: e });
     if (GAME.BALL_IMPACT_DAMAGE > 0) eco.damage(e, GAME.BALL_IMPACT_DAMAGE, 'ball', -2);
     else e.hpBarT = GAME.HEALTH_BAR_TTL;
-    const roll = rollCatch(e, b.type);
+    const roll = rollCatch(e, b.type, Math.random, eco.ferryActive);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = e.id; b.vx = b.vy = b.vz = 0;

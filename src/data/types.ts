@@ -68,6 +68,8 @@ export interface SpeciesConfig {
   bioluminescent?: boolean;
   /** Fallback base stats if PokeAPI is unreachable (all six base stats). */
   fallbackStats: { hp: number; atk: number; def: number; spAtk: number; spDef: number; speed: number };
+  /** Can breathe out of water: climbs onto the Lapras ferry's shell and rides above the waves. */
+  amphibious?: boolean;
   /** Boss-only species never appear in normal ecosystem generation. */
   bossOnly?: boolean;
   /** Lives above the waves: catchable from the surface, never a reef battle companion. */

@@ -59,9 +59,41 @@ export const GAME = {
    *  ferries (s); time held at the surface (s) — counted from ARRIVAL, the climb is on top of it;
    *  safety timeout for the climb (s). */
   FERRY_FIRST: [35, 70] as [number, number],
-  FERRY_PERIOD: [70, 120] as [number, number],
+  FERRY_PERIOD: [40, 55] as [number, number],   // + climb + boarding + a long voyage ≈ a ferry every 2–2.5 minutes
+  /** With nobody aboard it idles this long at the surface, then dives. */
   FERRY_DURATION: 34,
   FERRY_RISE_TIMEOUT: 20,
+  /** The ferry comes ALL the way out: body centre this fraction of its height above the waterline
+   *  (0.5 = the whole sprite rides on top of the water). */
+  FERRY_SURFACE_LIFT: 0.5,
+  /** The climb is swift — burst speed × this — with a bubble stream boiling off the body. */
+  FERRY_RISE_SPEED_MULT: 1.4,
+  /** The voyage: after FERRY_BOARDING seconds at the surface, a ferry with riders aboard sets sail
+   *  FERRY_VOYAGE_DIST metres across the surface to a new place, at cruise × the speed mult,
+   *  for at most FERRY_VOYAGE_MAX seconds. A group whose members are aboard/alongside follows
+   *  underneath — anchor (and so its guardian) tows along at anchor speed × the anchor mult. */
+  FERRY_BOARDING: 10,
+  /** A long, safe crossing: 100–150m straight AWAY from the trainer (back to the camera). */
+  FERRY_VOYAGE_DIST: [100, 150] as [number, number],
+  FERRY_VOYAGE_MAX: 75,
+  FERRY_VOYAGE_SPEED_MULT: 1.6,
+  FERRY_ESCORT_ANCHOR_MULT: 4,
+  /** The ferry call: while rising and boarding, Lapras sings out every few seconds at a varying
+   *  pitch; up to FERRY_CALL_REPLIES nearby little ones answer (talk marks + soft cries). */
+  FERRY_CALL_PERIOD: [1.8, 3.2] as [number, number],
+  FERRY_CALL_RADIUS: 48,
+  FERRY_CALL_REPLIES: 3,
+  /** Bubble stream intensity: wakeT is refreshed to 0.6 while under way (6 motes/frame) and
+   *  slammed to this at cast-off, so the ride starts in a boil that settles into a steady stream. */
+  FERRY_SAIL_BUBBLES: 2.4,
+  /** Amphibious riders up to this size clamber onto the shell, answering the call from this far
+   *  (crabs on the sea floor have a long climb — they get more reach than the fry). */
+  FERRY_RIDER_MAX_SIZE: 1.5,
+  FERRY_RIDER_RADIUS: 48,
+  /** The ferry truce: while a Lapras is surfaced, wild attacks (hunts, retaliation) and catch odds
+   *  are both scaled by this — the reef settles down to watch. */
+  FERRY_TRUCE_MULT: 0.8,
+  FERRY_CATCH_MULT: 0.8,
   /** Where it surfaces: with the trainer inside FERRY_SITE_PLAYER_R it comes up FERRY_SITE_OFFSET
    *  metres off their shoulder (in full view); otherwise beside the nearest calm school within
    *  FERRY_SITE_SCHOOL_R (company for the ride-along); otherwise right where it is. */

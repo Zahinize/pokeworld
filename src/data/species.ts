@@ -148,7 +148,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'Rarely seen. When it guards a Horsea school, nothing gets close.',
   },
   surskit: {
-    id: 'surskit', name: 'Surskit', dexId: 283, sprite: SPRITE(283), stage: 0,
+    id: 'surskit', name: 'Surskit', dexId: 283, sprite: SPRITE(283), stage: 0, amphibious: true,
     primary: 'schooling', secondary: [],
     size: 0.7, speed: 1.6, burst: 4.0, depth: [2, 10], habitat: ['coral'],
     groupSize: [4, 9], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'day',
@@ -263,7 +263,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'Rides the currents with its inflated head-sac. A rare drifter.',
   },
   tympole: {
-    id: 'tympole', name: 'Tympole', dexId: 535, sprite: SPRITE(535), stage: 0,
+    id: 'tympole', name: 'Tympole', dexId: 535, sprite: SPRITE(535), stage: 0, amphibious: true,
     primary: 'schooling', secondary: [],
     size: 0.7, speed: 1.4, burst: 3.6, depth: [8, 24], habitat: ['coral', 'rockyFloor'],
     groupSize: [5, 10], curiosity: 0.3, fear: 0.8, aggression: 0, activity: 'both',
@@ -339,7 +339,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
 
   // ---------- Content drop 2: 17 new reef residents ----------
   krabby: {
-    id: 'krabby', name: 'Krabby', dexId: 98, sprite: SPRITE(98), stage: 0,
+    id: 'krabby', name: 'Krabby', dexId: 98, sprite: SPRITE(98), stage: 0, amphibious: true,
     primary: 'bottom', secondary: [], entourage: { speciesId: 'krabby', count: [1, 2] },
     size: 0.6, speed: 0.7, burst: 2.6, depth: [6, 25], habitat: ['coral', 'rockyFloor'],
     groupSize: [1, 1], curiosity: 0.3, fear: 0.6, aggression: 0.1, activity: 'both',
@@ -347,7 +347,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'Scuttles sideways over the sand, waving its pincers at anything that comes close.',
   },
   kingler: {
-    id: 'kingler', name: 'Kingler', dexId: 99, sprite: SPRITE(99), stage: 2,
+    id: 'kingler', name: 'Kingler', dexId: 99, sprite: SPRITE(99), stage: 2, amphibious: true,
     primary: 'bottom', secondary: [], entourage: { speciesId: 'krabby', count: [2, 3] },
     size: 1.4, speed: 0.8, burst: 3.0, depth: [10, 35], habitat: ['rockyFloor', 'coral'],
     groupSize: [1, 1], curiosity: 0.2, fear: 0.2, aggression: 0.35, activity: 'both',
@@ -380,7 +380,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'An ancient hunter folded back into the reef. Its scythes slice water without a sound.',
   },
   totodile: {
-    id: 'totodile', name: 'Totodile', dexId: 158, sprite: SPRITE(158), stage: 0,
+    id: 'totodile', name: 'Totodile', dexId: 158, sprite: SPRITE(158), stage: 0, amphibious: true,
     primary: 'curious', secondary: [],
     size: 0.8, speed: 1.6, burst: 4.2, depth: [3, 14], habitat: ['coral'],
     groupSize: [1, 1], curiosity: 0.9, fear: 0.2, aggression: 0.25, activity: 'day',
@@ -396,7 +396,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'Grows in clusters on the reef floor, branch to branch with its kin.',
   },
   lotad: {
-    id: 'lotad', name: 'Lotad', dexId: 270, sprite: SPRITE(270), stage: 0,
+    id: 'lotad', name: 'Lotad', dexId: 270, sprite: SPRITE(270), stage: 0, amphibious: true,
     primary: 'passive', secondary: [], guardedBy: ['whiscash'],
     size: 0.6, speed: 0.7, burst: 2.2, depth: [3, 10], habitat: ['coral'],
     groupSize: [3, 6], curiosity: 0.3, fear: 0.5, aggression: 0, activity: 'day',
@@ -413,7 +413,7 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     blurb: 'Claims a whole stretch of floor as its pond — and everything drifting above it.',
   },
   spheal: {
-    id: 'spheal', name: 'Spheal', dexId: 363, sprite: SPRITE(363), stage: 0,
+    id: 'spheal', name: 'Spheal', dexId: 363, sprite: SPRITE(363), stage: 0, amphibious: true,
     primary: 'passive', secondary: [], guardedBy: ['walrein'],
     size: 0.9, speed: 0.9, burst: 2.8, depth: [4, 18], habitat: ['openReef'],
     groupSize: [3, 6], curiosity: 0.5, fear: 0.5, aggression: 0, activity: 'both',

@@ -5,7 +5,7 @@
  */
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
-import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink } from '../ai/behaviors';
+import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink } from '../ai/behaviors';
 import type { GeneratedEcosystem, SpawnSpec, MissionObjective } from '../ecosystem/generator';
 import { SpatialHash } from '../spatialHash';
 import { RNG } from '../rng';
@@ -52,6 +52,8 @@ export class Ecosystem {
   playerYaw = 0;
   /** True while the trainer floats at the waterline — companions ride up with them. */
   playerAtSurface = false;
+  /** A Lapras ferry is surfaced right now (the reef's truce window). */
+  get ferryActive(): boolean { return !!this.ctx.ferry; }
   private ctx: SimContext;
   private current: Vec3 = { x: 0, y: 0, z: 0 };
   objectives: MissionObjective[];
@@ -133,7 +135,7 @@ export class Ecosystem {
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
-      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -228,6 +230,7 @@ export class Ecosystem {
       ? COMBAT.RETALIATE_VS_PLAYER_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W
       : COMBAT.RETALIATE_VS_PREDATOR_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W - s.fear * COMBAT.RETALIATE_FEAR_W;
     if (vsPlayer && t.behavior === 'predator') p = COMBAT.PREDATOR_VS_PLAYER_CHANCE;
+    if (this.ctx.ferry) p *= GAME.FERRY_TRUCE_MULT; // the ferry truce: the reef settles down to watch
     p = Math.min(0.9, Math.max(0.1, p));
     if (this.rng.next() > p) return;
     t.retaliateN++;
@@ -346,7 +349,7 @@ export class Ecosystem {
 
     // A surfaced ferry Lapras draws the little ones to its side
     ctx.ferry = null;
-    for (const e of this.alive) if (e.state === 'ferry') { ctx.ferry = e; break; }
+    for (const e of this.alive) if (e.state === 'ferry' || e.state === 'ferryVoyage') { ctx.ferry = e; break; }
 
     // Groups (~4Hz)
     this.groupThinkAcc += dt;
@@ -376,6 +379,10 @@ export class Ecosystem {
       if (e.concealT > 0) e.concealT -= dt;
       if (e.veilT > 0) e.veilT -= dt;
       if (e.jetT > 0) e.jetT -= dt;
+      if (e.wakeT > 0) e.wakeT -= dt;
+      if (e.talkT > 0) e.talkT -= dt;
+      if (e.talkDelay > 0) { e.talkDelay -= dt; if (e.talkDelay <= 0) e.talkT = 0.9; } // the reply lands
+      if (e.aboardT > 0) e.aboardT -= dt;
       if (e.frozenT > 0) e.frozenT -= dt;
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
@@ -446,6 +453,8 @@ export class Ecosystem {
       e.state = e.behavior === 'predator' ? 'patrol' : e.behavior === 'curious' ? 'wander' : e.behavior === 'bottom' ? 'retreat' : 'wander';
       e.stateT = 0;
     }
+    // ferry riders: amphibious little ones near a surfaced Lapras clamber onto its shell
+    if (this.ctx.ferry && e.species.amphibious && ferryRiderThink(e, this.ctx)) return;
     if (e.isBoss) { this.bossThink(e, dt); return; }
     if (e.role === 'partner') { this.partnerThink(e, dt); return; }
     if (e.state === 'duel') { this.duelWildThink(e, dt); return; }
@@ -643,8 +652,13 @@ export class Ecosystem {
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
     // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
-    // so the open-air suffocation drain can never touch them
-    const top = -Math.max(0.8, e.species.size * 0.45);
+    // so the open-air suffocation drain can never touch them — EXCEPT the Lapras ferry, which
+    // comes all the way up and out, and the amphibious riders perched on its shell
+    const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.aboardT > 0;
+    const fer = this.ctx.ferry;
+    const top = !ferrying ? -Math.max(0.8, e.species.size * 0.45)
+      : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
+      : GAME.SURFACE_Y + e.species.size;
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }
