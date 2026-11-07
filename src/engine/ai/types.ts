@@ -213,4 +213,6 @@ export interface PlayerSnapshot {
   vx: number; vy: number; vz: number;
   speed: number;
   lureActive: boolean;
+  /** True while predators may hunt the trainer (playing, not recovering, not in the dojo). */
+  huntable?: boolean;
 }

@@ -46,9 +46,12 @@ export class Ecosystem {
   private groupThinkAcc = 0;
   private reinforceAcc = 0;
   private pendingReinforce = new Map<string, number>();
-  private pendingRespawn: { at: number; speciesId: string; zone: ZoneId }[] = [];
+  private pendingRespawn: { at: number; speciesId: string; zone: ZoneId; shiny?: boolean }[] = [];
   /** Sim times of recent wild KOs — the reef's losses drive how fast it refills (COMBAT.KO_PRESSURE). */
   private koTimes: number[] = [];
+  private nextPredatorPlayerCastAt = 0;
+  /** The posse (COMBAT.PREDATOR_HUNT.HUNTERS_MIN): how many predators this level keeps on the trainer. */
+  private hunterQuota: number;
   private hpOf: (speciesId: string) => number;
   moves!: MoveSystem;
   /** Session hook: apply damage to the player (set by GameSession; no-op headless). */
@@ -73,13 +76,21 @@ export class Ecosystem {
     this.hpOf = hpOf;
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
+    this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
     const rngFn = () => this.rng.next();
     this.ctx = {
       time: 0, isNight: false, nightness: 0, player: this.player, rng: rngFn, obstacles: this.obstacles,
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
-      predatorGraceOver: false, current: this.current, ferry: null,
+      predatorGraceOver: false, playerGraceOver: false, nasty: COMBAT.PREDATOR_HUNT.LEVEL_NASTY[gen.levelId] ?? 1, current: this.current, ferry: null,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
-      cast: (e, slot, target) => this.moves.cast(e, slot, target),
+      cast: (e, slot, target) => {
+        // predators share one cast gap at the trainer (COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP)
+        const atTrainer = target.kind === 'player' && e.behavior === 'predator';
+        if (atTrainer && this.time < this.nextPredatorPlayerCastAt) return false;
+        const ok = this.moves.cast(e, slot, target);
+        if (ok && atTrainer) this.nextPredatorPlayerCastAt = this.time + COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP;
+        return ok;
+      },
       pickMove: (e, dist, preferUtility, damageOnly) => this.moves.pickMove(e, dist, preferUtility, damageOnly),
       moveReady: (e, slot) => this.moves.ready(e, slot),
     };
@@ -155,6 +166,13 @@ export class Ecosystem {
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
+    if (sp.shiny) {
+      // a shiny predator: twice the HP and Attack, its own sheet and glow (PokemonLayer), its own trophy
+      const m = COMBAT.PREDATOR_HUNT.SHINY_MULT;
+      e.isShiny = true;
+      e.maxHp = Math.round(e.maxHp * m); e.hp = e.maxHp;
+      e.cs = { ...e.cs, atk: e.cs.atk * m, spAtk: e.cs.spAtk * m };
+    }
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
       const g = this.groups[sp.groupIndex];
@@ -315,7 +333,7 @@ export class Ecosystem {
     if (t.role !== 'partner') this.koTimes.push(this.time); // the reef's losses: the faster they fall, the faster they come back
     const mul = this.respawnMul();
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes (less under pressure)
-    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone });
+    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone, shiny: t.isShiny });
     // Solo wilds with no school or objective to refill them come back too (never the ferry Lapras)
     else if (t.role !== 'partner' && t.groupId < 0 && !t.objectiveId && t.species.id !== 'lapras') this.pendingRespawn.push({ at: this.time + COMBAT.KO_PRESSURE.SOLO_RESPAWN * mul, speciesId: t.species.id, zone: t.zone });
   }
@@ -356,7 +374,7 @@ export class Ecosystem {
   /** Capture succeeded. */
   capture(e: Entity) {
     e.state = 'caught'; e.stateT = 0; e.animT = 0;
-    if (e.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: e.species.id, zone: e.zone });
+    if (e.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: e.species.id, zone: e.zone, shiny: e.isShiny });
   }
 
   private remove(e: Entity) {
@@ -404,6 +422,7 @@ export class Ecosystem {
     this.nightness = nightness;
     const ctx = this.ctx;
     ctx.time = this.time; ctx.nightness = nightness; ctx.isNight = nightness > 0.55; ctx.predatorGraceOver = this.time > GAME.PREDATOR_GRACE;
+    ctx.playerGraceOver = this.time > COMBAT.PREDATOR_HUNT.PLAYER_GRACE;
     const cur = 0.3 + this.bossCurrent * 2.2;
     this.current.x = Math.cos(this.time * 0.025) * cur; this.current.z = Math.sin(this.time * 0.031) * cur;
     if (this.lureUntil >= 0 && this.time >= this.lureUntil) this.endLure();
@@ -513,6 +532,31 @@ export class Ecosystem {
     if (this.reinforceAcc > 5) { this.reinforceAcc = 0; this.checkReinforcements(); }
     this.processRespawns();
     this.processReinforcements();
+    this.enforcePosse(); // every frame: a hunter that breaks off is replaced before anyone notices
+  }
+
+  /** Keep the level's quota of predators on the trainer's trail (COMBAT.PREDATOR_HUNT.HUNTERS_MIN). */
+  private enforcePosse() {
+    if (this.hunterQuota <= 0 || this.ctx.player.huntable !== true || !this.ctx.playerGraceOver) return;
+    const H = COMBAT.PREDATOR_HUNT;
+    const p = this.player;
+    const isHunter = (e: Entity) => e.behavior === 'predator' && e.role === 'solo';
+    let hunting = 0;
+    const onTrainer = (e: Entity) => (e.targetId === -2 && (e.state === 'approach' || e.state === 'circle' || e.state === 'rush')) || (e.state === 'retaliate' && e.retaliateTarget === -2);
+    for (const e of this.alive) if (isHunter(e) && onTrainer(e)) hunting++;
+    if (hunting >= this.hunterQuota) return;
+    // conscripts: idle roamers first, then ones busy with fish — nearest first, within reach
+    const cands = this.alive.filter((e) => isHunter(e) && !onTrainer(e) && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt' && e.state !== 'faint' && e.state !== 'duel' && e.state !== 'retaliate' && e.stunT <= 0);
+    void H;
+    const rank = (e: Entity) => (e.state === 'patrol' || e.state === 'retreat' ? 0 : 1000) + len3(e.x - p.x, e.y - p.y, e.z - p.z);
+    cands.sort((a, b) => rank(a) - rank(b));
+    for (const e of cands) {
+      if (hunting >= this.hunterQuota) break;
+      if (e.targetId >= 0) this.events.push({ type: 'huntEnd', predatorId: e.id });
+      e.targetId = -2; e.state = 'approach'; e.stateT = 0; e.huntCooldown = 0; e.nextThink = this.time;
+      this.events.push({ type: 'huntStart', predatorId: e.id, targetId: -2 });
+      hunting++;
+    }
   }
 
   private think(e: Entity, dt: number) {
@@ -674,6 +718,8 @@ export class Ecosystem {
   private trainerTooClose(e: Entity): boolean {
     if (e.role === 'partner' || e.isBoss || e.id === this.immortalId || e.lured || e.rideK > 0 || e.aboardT > 0 || e.leapWith >= 0) return false;
     const st = e.state;
+    // a predator already on the trainer's trail keeps hunting — a retaliation would only break its hunt
+    if (e.behavior === 'predator' && e.targetId === -2 && (st === 'approach' || st === 'circle' || st === 'rush')) return false;
     if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'retaliate' || st === 'duel' || st === 'faint' || st === 'removed'
       || st === 'feed' || st === 'lured' || st === 'support' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapRun' || st === 'leapAir') return false;
     const p = this.player;
@@ -716,8 +762,8 @@ export class Ecosystem {
       if (e.stateT > 0.3) {
         const slot = this.moves.pickMove(e, d, false, vsPlayer);
         if (slot !== -1) {
-          this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
-          if (!vsRaider) e.stateT = 10; // resolved on next think via the timeout branch
+          // through the sim context so a predator's retaliation shares the reef-wide gap at the trainer
+          if (this.ctx.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt }) && !vsRaider) e.stateT = 10; // resolved on next think via the timeout branch
         }
       }
     }
@@ -931,7 +977,7 @@ export class Ecosystem {
       const r = this.pendingRespawn[i];
       if (this.time < r.at) continue;
       this.pendingRespawn.splice(i, 1);
-      const e = this.spawn({ speciesId: r.speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: r.zone, pos: this.farSpawnPos(r.zone, r.speciesId) });
+      const e = this.spawn({ speciesId: r.speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: r.zone, pos: this.farSpawnPos(r.zone, r.speciesId), shiny: r.shiny });
       e.huntCooldown = 15;
       this.events.push({ type: 'respawn', speciesId: r.speciesId });
     }

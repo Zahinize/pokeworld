@@ -212,6 +212,8 @@ export class GameSession {
     ]);
     // the Lapras ferry sails AWAY from the trainer, so it needs its back sheet like a companion does
     if (ids.includes('lapras') && !this.sheets.has(sheetKey('lapras', 'back'))) loadSpriteSheet('lapras', 'back').then((sh) => this.sheets.set(sheetKey('lapras', 'back'), sh));
+    // shiny predators draw from their shiny sheets
+    for (const sp of this.gen.spawns) if (sp.shiny && !this.sheets.has(sheetKey(sp.speciesId, 'shiny'))) loadSpriteSheet(sp.speciesId, 'shiny').then((sh) => this.sheets.set(sheetKey(sp.speciesId, 'shiny'), sh));
     // the shiny flocks draw from their shiny sheets
     for (const f of SKY.FLOCKS) if (f.shiny && !this.sheets.has(sheetKey(f.speciesId, 'shiny'))) loadSpriteSheet(f.speciesId, 'shiny').then((sh) => this.sheets.set(sheetKey(f.speciesId, 'shiny'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
@@ -1071,7 +1073,7 @@ export class GameSession {
     // Simulation
     const p = this.player;
     eco.playerYaw = p.yaw;
-    eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
+    eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, huntable: this.phase === 'playing' && this.recoveringT <= 0 && this.calmT <= 0 && !this.arena, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
     if (this.sky) {
       if (!this.skyCombat || this.skyCombat.sky !== this.sky) this.bindSkyCombat(eco, this.sky);
@@ -1399,7 +1401,11 @@ export class GameSession {
         }
         case 'huntStart': {
           const pred = eco.byId.get(ev.predatorId), t = eco.byId.get(ev.targetId);
-          if (pred && t && t.objectiveId && near(t, 70) && this.huntToastCooldown <= 0 && this.mission) {
+          if (pred && ev.targetId === -2 && this.huntToastCooldown <= 0) {
+            // the predator is hunting YOU
+            store.pushToast({ kind: 'warn', title: `${pred.isShiny ? 'SHINY ' : ''}${pred.species.name} is hunting you!`, body: pred.isShiny ? 'Twice the bite, twice the HP, and it will not stop. Catch it, or let your team deal with it.' : 'Catch it, fight it with your team, or get out of its water.', speciesId: pred.species.id, ttl: 4 });
+            this.huntToastCooldown = 12;
+          } else if (pred && t && t.objectiveId && near(t, 70) && this.huntToastCooldown <= 0 && this.mission) {
             const o = this.mission.objectives.find((x) => x.id === t.objectiveId);
             if (o && !objectiveDone(o)) { store.pushToast({ kind: 'warn', title: `${pred.species.name} is hunting`, body: `It's closing in on the ${t.species.name}${t.groupId >= 0 ? ' school' : ''}.`, speciesId: pred.species.id, ttl: 4 }); this.huntToastCooldown = 20; }
           }

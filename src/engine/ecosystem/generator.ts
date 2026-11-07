@@ -2,6 +2,7 @@
  * Seeded, randomized level ecosystem generation.
  * Mission structure stays fixed per level; species composition, positions and groupings change per seed.
  */
+import { COMBAT } from '@/data/combatConfig';
 import { RNG } from '../rng';
 import { SPECIES, SPECIES_LIST, getSpecies } from '@/data/species';
 import type { SpeciesConfig, ZoneId, Rarity, BehaviorGroup } from '@/data/types';
@@ -20,6 +21,8 @@ export interface SpawnSpec {
   ambient: boolean;
   zone: ZoneId;
   pos: Vec3;
+  /** A shiny predator: 2× HP and Attack, meaner and hungrier (COMBAT.PREDATOR_HUNT). */
+  shiny?: boolean;
 }
 
 export interface GroupSpec {
@@ -266,10 +269,12 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   }
   // Predators roam in small packs (Carvanha 2–3, Sharpedo/Barraskewda 1–2, the big ones alone) sharing a territory.
   const PACK: Record<string, [number, number]> = { carvanha: [2, 3], sharpedo: [1, 2], barraskewda: [1, 2], veluza: [1, 2], gyarados: [1, 1], basculegion: [1, 2] };
+  const packLeads: number[] = [];
   preds.forEach((s) => {
     const [lo, hi] = PACK[s.id] ?? [1, 1];
     const n = rng.int(lo, hi);
     const idx = addSolo(s, 'solo', undefined, true);
+    packLeads.push(idx);
     if (n > 1) {
       const base = spawns[idx].pos;
       const gi = groups.length;
@@ -279,6 +284,12 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     }
     summary.predators.push(n > 1 ? `${s.name} ×${n}` : s.name);
   });
+  // two packs get a SHINY lead: twice the HP and Attack, and it hunts anything — the trainer first
+  for (let k = 0; k < Math.min(COMBAT.PREDATOR_HUNT.SHINY_PER_LEVEL, packLeads.length); k++) {
+    const pick = rng.int(k, packLeads.length - 1);
+    [packLeads[k], packLeads[pick]] = [packLeads[pick], packLeads[k]];
+    spawns[packLeads[k]].shiny = true;
+  }
 
   // ---- Bottom dwellers ----
   const bottomPool = SPAWNABLE.filter((s) => s.primary === 'bottom' && !used.has(s.id));

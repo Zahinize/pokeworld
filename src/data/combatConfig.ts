@@ -27,6 +27,28 @@ export const COMBAT = {
   /** Reef pressure: wild KOs in the last WINDOW s, over REF, cut every respawn/reinforcement delay by
    *  up to MAX_CUT; solo wilds (no school, no objective) come back after SOLO_RESPAWN s × the cut. */
   KO_PRESSURE: { WINDOW: 60, REF: 4, MAX_CUT: 0.75, SOLO_RESPAWN: 90 },
+  /** Predators hunt the TRAINER like prey, on every level: PLAYER_W is the trainer's prey weight (a
+   *  favourite fish is 1.0) inside PLAYER_R. A SHINY predator (SHINY_PER_LEVEL packs get one) has
+   *  SHINY_MULT× HP and Attack, never ignores prey, ignores the opening grace, hunts again after
+   *  SHINY_COOLDOWN_MULT of the usual rest, weighs the trainer SHINY_PLAYER_MULT× more, and eats
+   *  anything that is not its own pack (SHINY_ANY_W). */
+  PREDATOR_HUNT: { PLAYER_W: 0.8, PLAYER_R: 40, SHINY_PER_LEVEL: 2, SHINY_MULT: 2, SHINY_COOLDOWN_MULT: 0.25, SHINY_PLAYER_MULT: 1.5, SHINY_ANY_W: 0.35,
+    /** Seconds between any two predator casts at the trainer, across the whole reef — a pack still
+     *  kills a trainer who stands there, but not in two seconds (same idea as the sky raiders' gap). */
+    TRAINER_CAST_GAP: 2.5,
+    /** The trainer's own opening grace (s) — shorter than the reef's — after which the hunt escalates:
+     *  over ESCALATE_SECONDS the trainer's prey weight grows by ESCALATE_W and the chase range by
+     *  ESCALATE_R, and a predator that has bitten keeps the hunt with chance PERSIST × escalation
+     *  instead of retreating — it means to kill. LEVEL_NASTY scales all of it per level. */
+    PLAYER_GRACE: 10, ESCALATE_SECONDS: 120, ESCALATE_W: 1.0, ESCALATE_R: 0.5, PERSIST: 0.7,
+    /** Escalation starts here the moment the grace ends (not from zero) and ramps to 1. */
+    ESCALATE_FLOOR: 0.5,
+    LEVEL_NASTY: { 1: 1.0, 2: 1.1, 3: 1.2, 4: 1.3 } as Record<number, number>,
+    /** The posse: this many predators are ALWAYS on the trainer's trail after the grace — idle roamers
+     *  are conscripted from anywhere on the reef, then ones chasing fish are pulled off them — and a
+     *  predator hunting the trainer never gives up for distance: it crosses the reef, and when it cannot
+     *  bite yet it circles. The trainer kills them, catches them, or keeps moving; standing still is death. */
+    HUNTERS_MIN: { 1: 3, 2: 4, 3: 4, 4: 5 } as Record<number, number> },
 
   /** Player. */
   PLAYER_MAX_HP: 100,

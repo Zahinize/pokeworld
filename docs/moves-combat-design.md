@@ -309,6 +309,30 @@ Wild Pokémon is hit
   │     → P = 0.25 + aggression×0.5 : cast at the PLAYER before bolting
   └─ target of an active duel → §8 duel loop owns its casts
 ```
+**Predators hunt the trainer (`COMBAT.PREDATOR_HUNT`).** On every level, after the trainer's own
+`PLAYER_GRACE` 10 s (the reef's prey keep the 25 s grace), a roaming predator's hunt check weighs the
+trainer like prey — `PLAYER_W` 0.8 inside `PLAYER_R` 40 m (a favourite fish is 1.0) — and then
+approaches, circles and rushes them exactly as it would a fish, casting damage moves at `{kind:'player'}`;
+packs and the Carvanha shoal pile on. It escalates from `ESCALATE_FLOOR` 0.5 the moment the grace ends:
+over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and the sighting range by
+`ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
+escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
+(Level 1 ×1.0 … Level 4 ×1.3). **The posse** (`HUNTERS_MIN` 3/4/4/5 by level): every frame the
+Ecosystem counts the roaming predators on the trainer's trail (hunting them, or retaliating at them) and,
+if short, conscripts the nearest idle roamers from anywhere on the reef — then pulls ones off fish. A
+predator hunting the trainer never gives up for distance (it crosses the reef at full speed, exempt from
+the far-LOD activity throttle), and when it cannot bite
+yet (the reef-wide cast gap, moves on cooldown) it circles and comes again rather than retreating; it
+is also exempt from the generic proximity retaliation, which would otherwise break its hunt. The trainer
+kills them, catches them, or keeps moving. The trainer is prey only while
+`PlayerSnapshot.huntable` (playing, not recovering, not in the dojo). Predator casts at the trainer share
+one reef-wide `TRAINER_CAST_GAP` 2.5 s. Toast "X is hunting you!". Level spawn counts are doubled
+(6/6/6/8), and `SHINY_PER_LEVEL` 2 packs get a **shiny lead**: `SHINY_MULT` 2× HP and Attack, no opening
+grace, never ignores prey, rests `SHINY_COOLDOWN_MULT` ¼ as long between hunts, weighs the trainer
+`SHINY_PLAYER_MULT` 1.5× more and eats anything outside its own pack (`SHINY_ANY_W`, other predators and
+giants included). It draws from its shiny sheet with the shiny glow, is its own trophy, and respawns
+shiny. The sim's hit band is 10–220/5 min for this reef.
+
 **Hostility rules (the reef fights back).** Three overrides sit on top of the retaliation roll below:
 - **The trainer is always answered.** Every reef Pokémon, whatever its behaviour group (giants included),
   retaliates with no roll and no window cap when a ball fails on it (`breakOut`) or when the trainer comes

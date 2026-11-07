@@ -10,6 +10,7 @@ import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
 import type { SpatialHash } from '../spatialHash';
 import { GAME } from '@/data/gameConfig';
+import { COMBAT } from '@/data/combatConfig';
 
 import type { MoveTarget } from '../sim/moveSystem';
 
@@ -26,6 +27,10 @@ export interface SimContext {
   hash: SpatialHash<Entity>;
   events: EcoEvent[];
   predatorGraceOver: boolean;
+  /** The trainer's shorter grace (COMBAT.PREDATOR_HUNT.PLAYER_GRACE). */
+  playerGraceOver: boolean;
+  /** How nasty this level's predators are toward the trainer (LEVEL_NASTY). */
+  nasty: number;
   current: Vec3;
   /** A Lapras currently idling at the surface as the reef's ferry (small species bob alongside). */
   ferry: Entity | null;
@@ -563,18 +568,36 @@ function preyWeight(p: Entity, prey: Entity): number {
   return w;
 }
 
+/** What a hunt needs to know about its quarry — a reef entity, or the trainer. */
+type Prey = Pick<Entity, 'id' | 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'hp' | 'maxHp' | 'slowT' | 'defStage' | 'state'>;
+/** The trainer as prey (a scratch mirror of the player snapshot — predators hunt them like a fish). */
+const PLAYER_PREY: Prey = { id: PLAYER_ID, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, hp: 1, maxHp: 1, slowT: 0, defStage: 1, state: 'wander' };
+function playerPrey(ctx: SimContext): Prey {
+  const p = ctx.player;
+  PLAYER_PREY.x = p.x; PLAYER_PREY.y = p.y; PLAYER_PREY.z = p.z; PLAYER_PREY.vx = p.vx; PLAYER_PREY.vy = p.vy; PLAYER_PREY.vz = p.vz;
+  return PLAYER_PREY;
+}
+
 export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   const s = e.species;
+  const H = COMBAT.PREDATOR_HUNT;
+  const shiny = e.isShiny; // meaner and hungrier: no grace, no second thoughts, barely a rest between hunts
+  // escalation: from the trainer's grace onward the hunt for them gets nastier, more so on later levels
+  const esc = (ctx.playerGraceOver ? H.ESCALATE_FLOOR + (1 - H.ESCALATE_FLOOR) * Math.min(1, (ctx.time - H.PLAYER_GRACE) / H.ESCALATE_SECONDS) : 0) * ctx.nasty;
   accReset();
   updateWander(e, ctx.rng, 1.2, dt);
   e.huntCooldown = Math.max(0, e.huntCooldown - dt);
-  const target = e.targetId >= 0 ? ctx.byId.get(e.targetId) : undefined;
-  const targetOk = !!target && target.state !== 'removed' && target.state !== 'ko' && target.state !== 'caught' && target.state !== 'captureAttempt';
+  const huntingPlayer = e.targetId === PLAYER_ID;
+  const target: Prey | undefined = huntingPlayer ? playerPrey(ctx) : e.targetId >= 0 ? ctx.byId.get(e.targetId) : undefined;
+  const targetOk = huntingPlayer ? ctx.player.huntable === true : (!!target && target.state !== 'removed' && target.state !== 'ko' && target.state !== 'caught' && target.state !== 'captureAttempt');
   const tdist = targetOk ? len3(target!.x - e.x, target!.y - e.y, target!.z - e.z) : Infinity;
+  const targetRef = (): MoveTarget => (huntingPlayer ? { kind: 'player' } : { kind: 'entity', id: target!.id });
+  /** Would pack-mate `o` join this hunt? (the trainer is fair game for every predator) */
+  const joinW = (o: Entity) => (huntingPlayer ? 1 : preyWeight(o, target as Entity));
 
   const endHunt = (cool: number, retreat = true) => {
     ctx.events.push({ type: 'huntEnd', predatorId: e.id });
-    e.targetId = -1; e.huntCooldown = cool;
+    e.targetId = -1; e.huntCooldown = cool * (shiny ? H.SHINY_COOLDOWN_MULT : 1);
     e.state = retreat ? 'retreat' : 'patrol'; e.stateT = 0; e.t1 = 2.5 + ctx.rng() * 2;
   };
 
@@ -582,7 +605,8 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'approach':
     case 'circle':
     case 'rush':
-      if (!targetOk || tdist > 48) { endHunt(3 + ctx.rng() * 3, false); }
+      // a predator on the trainer's trail never gives up for distance — it crosses the reef
+      if (!targetOk || (!huntingPlayer && tdist > 48)) { endHunt(3 + ctx.rng() * 3, false); }
       break;
   }
 
@@ -622,30 +646,44 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
         });
         if (n > 0) seek(e, cx / n, cy / n, cz / n, 0.45, 8);
       }
-      // Hunt check
-      if (ctx.predatorGraceOver && e.huntCooldown <= 0) {
-        let best: Entity | null = null, bestW = 0;
+      // Hunt check — reef prey (after the reef's grace), and the trainer, who is hunted exactly like one
+      // (after their own, shorter grace — and ever more keenly from then on)
+      const trainerOpen = ctx.player.huntable === true && ctx.playerGraceOver;
+      if ((ctx.predatorGraceOver || shiny || trainerOpen) && e.huntCooldown <= 0) {
+        let best: Entity | null = null, bestW = 0, bestIsPlayer = false;
         const R = 34;
-        ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
+        if (ctx.predatorGraceOver || shiny) ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
           if (o === e) return;
-          const w = preyWeight(e, o) * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
+          let pw = preyWeight(e, o);
+          // a shiny eats anything that is not its own pack — other predators, giants, guardians, all of it
+          if (shiny && pw <= 0 && o.species.id !== s.id && !o.isBoss && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed' && o.state !== 'captureAttempt') pw = H.SHINY_ANY_W;
+          const w = pw * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
           if (w > bestW) { bestW = w; best = o; }
         });
-        if (best && bestW > 0.05) {
-          // predators occasionally ignore prey — more often during the ferry truce
+        if (trainerOpen) {
+          const pd = len3(ctx.player.x - e.x, ctx.player.y - e.y, ctx.player.z - e.z);
+          const pr = H.PLAYER_R * (1 + H.ESCALATE_R * esc);
+          if (pd < pr) {
+            const w = H.PLAYER_W * (1 + H.ESCALATE_W * esc) * (shiny ? H.SHINY_PLAYER_MULT : 1) * (1 - pd / pr) * (0.6 + ctx.rng() * 0.8);
+            if (w > bestW) { bestW = w; bestIsPlayer = true; }
+          }
+        }
+        if ((best || bestIsPlayer) && bestW > 0.05) {
+          // predators occasionally ignore prey — more often during the ferry truce; a shiny never does
           const ignoreP = 1 - 0.9 * (ctx.ferry ? GAME.FERRY_TRUCE_MULT : 1);
-          if (ctx.rng() < ignoreP) { e.huntCooldown = 3 + ctx.rng() * 3; }
+          if (!shiny && ctx.rng() < ignoreP) { e.huntCooldown = 3 + ctx.rng() * 3; }
           else {
-            e.targetId = (best as Entity).id; e.state = 'approach'; e.stateT = 0;
-            ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
+            const preyId = bestIsPlayer ? PLAYER_ID : (best as unknown as Entity).id; // (TS cannot see the closure's assignment)
+            e.targetId = preyId; e.state = 'approach'; e.stateT = 0;
+            ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: preyId });
             if (s.id === 'carvanha') {
               // the whole shoal piles on at once — one Carvanha's hunt is every Carvanha's hunt
-              const preyEnt = best as Entity;
+              const preyEnt = best as unknown as Entity | null;
               ctx.hash.query(e.x, e.y, e.z, 35, (o) => {
                 if (o === e || o.species.id !== 'carvanha' || (o.state !== 'patrol' && o.state !== 'retreat')) return;
-                if (preyWeight(o, preyEnt) <= 0) return;
-                o.targetId = preyEnt.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
-                ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyEnt.id });
+                if (!bestIsPlayer && preyWeight(o, preyEnt!) <= 0) return;
+                o.targetId = preyId; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
+                ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyId });
               });
             }
           }
@@ -681,22 +719,28 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       const wantUtility = target!.slowT <= 0 && target!.defStage >= 1 && ctx.rng() < 0.35;
       // outside a deliberate utility opener, only a damage move ends the hunt — otherwise a ranged
       // Screech would satisfy the rush from 8m and the predator would never close for the kill
-      const slot = ctx.pickMove(e, effDist, wantUtility, !wantUtility);
+      // (stat drops mean nothing to a trainer: damage moves only)
+      const slot = ctx.pickMove(e, effDist, wantUtility && !huntingPlayer, !wantUtility || huntingPlayer);
       if (slot !== -1) {
-        ctx.cast(e, slot, { kind: 'entity', id: target!.id });
+        ctx.cast(e, slot, targetRef());
         const cool = s.id === 'gyarados' ? 8 + ctx.rng() * 5 : 4 + ctx.rng() * 4;
         // Pack up: nearby idle predators join in on the wounded target
         if (target!.state !== 'ko' && target!.hp > 0) {
           ctx.hash.query(e.x, e.y, e.z, 45, (o) => {
             if (o === e || o.behavior !== 'predator' || o.state !== 'patrol' && o.state !== 'retreat') return;
-            if (preyWeight(o, target!) <= 0) return;
+            if (joinW(o) <= 0) return;
             o.targetId = target!.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
             ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: target!.id });
           });
         }
-        endHunt(cool, true);
+        // a predator that has tasted the trainer means to kill: the nastier the level and the longer
+        // the dive has run, the more often it stays on the hunt instead of retreating to rest
+        if (huntingPlayer && ctx.rng() < H.PERSIST * esc) { e.state = 'approach'; e.stateT = 0; }
+        else endHunt(cool, true);
       } else if (e.stateT > 6.5) {
-        endHunt(3 + ctx.rng() * 3, true);
+        // no bite yet (the reef-wide gap, a move on cooldown): on the trainer, circle and come again
+        if (huntingPlayer) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
+        else endHunt(3 + ctx.rng() * 3, true);
       }
       break;
     }
@@ -711,7 +755,8 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   floorAndSurface(e, s.size * 0.6 + 1);
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, e.state === 'rush' ? 0.8 : 2);
-  commit(e, speed * activityFactor(e, ctx));
+  // a predator on the trainer's trail comes at full speed however far from the camera it starts
+  commit(e, speed * (huntingPlayer && targetOk ? 1 : activityFactor(e, ctx)));
 }
 
 // ---------------------------------------------------------------------------------------------

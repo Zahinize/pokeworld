@@ -12,7 +12,7 @@ export const LEVEL_2: LevelConfig = {
     schools: 1,
     passiveGroups: 3,
     curious: 4,
-    predators: 3,
+    predators: 6, // doubled: the reef's predators are a threat on every level now
     bottom: 3,
     defensive: 2,
     ambient: { schools: 1, drifters: 2, giants: 1, legendaryChance: 0.06 },

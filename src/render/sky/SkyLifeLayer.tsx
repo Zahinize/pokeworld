@@ -22,7 +22,7 @@ attribute float aAlpha;
 attribute float aSize;
 uniform float uTime, uFrameTime, uFrames, uCols, uRows, uAspect;
 varying vec2 vUv;
-varying float vAlpha, vDepth;
+varying float vAlpha, vDepth, vWorldY;
 void main() {
   float frame = mod(floor((uTime + aPhase) / uFrameTime), uFrames);
   float col = mod(frame, uCols);
@@ -38,25 +38,29 @@ void main() {
   vec3 world = center.xyz + camRight * (position.x * w) + camUp * (position.y * h);
   vec4 mv = viewMatrix * vec4(world, 1.0);
   vDepth = -mv.z;
+  vWorldY = center.y;
   gl_Position = projectionMatrix * mv;
   vAlpha = aAlpha;
 }`;
 
 const FRAG = /* glsl */ `
 uniform sampler2D uMap;
-uniform vec3 uFogColor;
-uniform float uFogDensity;
+uniform vec3 uFogColor, uWaterFogColor;
+uniform float uFogDensity, uWaterFogDensity;
 uniform float uLight;
 varying vec2 vUv;
-varying float vAlpha, vDepth;
+varying float vAlpha, vDepth, vWorldY;
 void main() {
   vec4 tex = texture2D(uMap, vUv);
   if (tex.a < 0.45) discard;
   vec3 col = tex.rgb * uLight;
   // aerial perspective: only genuinely DISTANT birds melt into the horizon haze —
-  // nearby ones keep their true colors (white Wingull must still read against a pale sky)
-  float fog = 1.0 - exp(-uFogDensity * 8.0 * uFogDensity * 8.0 * vDepth * vDepth);
-  col = mix(col, uFogColor, clamp(fog, 0.0, 0.82));
+  // nearby ones keep their true colors (white Wingull must still read against a pale sky);
+  // a bird UNDER the swell (a raid) takes the reef's water fog instead, like any fish
+  float under = vWorldY < 0.0 ? 1.0 : 0.0;
+  float airFog = 1.0 - exp(-uFogDensity * 8.0 * uFogDensity * 8.0 * vDepth * vDepth);
+  float waterFog = 1.0 - exp(-uWaterFogDensity * uWaterFogDensity * vDepth * vDepth);
+  col = mix(col, mix(uFogColor, uWaterFogColor, under), clamp(mix(airFog, waterFog, under), 0.0, 0.82));
   gl_FragColor = vec4(col, tex.a * vAlpha);
   #include <tonemapping_fragment>
   #include <colorspace_fragment>
@@ -87,7 +91,7 @@ function makeBatch(sheet: SpriteSheet, capacity: number): Batch {
     uniforms: {
       uMap: { value: sheet.texture }, uTime: { value: 0 }, uFrameTime: { value: sheet.frameTime }, uFrames: { value: sheet.frames },
       uCols: { value: sheet.cols }, uRows: { value: sheet.rows }, uAspect: { value: sheet.aspect },
-      uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.001 }, uLight: { value: 1 },
+      uFogColor: { value: new THREE.Color() }, uFogDensity: { value: 0.001 }, uWaterFogColor: { value: new THREE.Color() }, uWaterFogDensity: { value: 0.02 }, uLight: { value: 1 },
     },
   });
   const mesh = new THREE.InstancedMesh(geo, mat, capacity);
@@ -208,7 +212,11 @@ export function SkyLifeLayer() {
     const g = group.current;
     const pp = pools.current;
     if (!g || !pp) return;
-    const visible = !!sky && state.camera.position.y > SKY.SKY_VISIBLE_CAM_Y;
+    // deep down the sky itself is out of sight — but a bird raiding the reef is not: with the camera
+    // below SKY_VISIBLE_CAM_Y only submerged (and waterline) birds are drawn, with the water's fog
+    const camDeep = state.camera.position.y <= SKY.SKY_VISIBLE_CAM_Y;
+    const anyUnder = !!sky && camDeep && sky.birds.some((b) => b.state !== 'gone' && b.fade > 0.01 && b.y < 1.5);
+    const visible = !!sky && (!camDeep || anyUnder);
     g.visible = visible;
     if (!visible || !sky) return;
     const L = session.lighting;
@@ -240,6 +248,7 @@ export function SkyLifeLayer() {
     let drawn = 0;
     for (const b of sky.birds) {
       if (b.state === 'gone' || b.fade <= 0.01 || drawn >= MAX_BIRDS) continue;
+      if (camDeep && b.y > 1.5) continue; // the sky is out of sight from down here; raiders are not
       const bt = batches.current.get(keyOf(b));
       if (!bt || bt.mesh.count >= bt.capacity) continue;
       const i = bt.mesh.count++;
@@ -320,6 +329,8 @@ export function SkyLifeLayer() {
       bt.mat.uniforms.uTime.value = time;
       (bt.mat.uniforms.uFogColor.value as THREE.Color).copy(L.skyHorizon);
       bt.mat.uniforms.uFogDensity.value = L.airFogDensity;
+      (bt.mat.uniforms.uWaterFogColor.value as THREE.Color).copy(L.sky);
+      bt.mat.uniforms.uWaterFogDensity.value = L.fogDensity;
       bt.mat.uniforms.uLight.value = 0.5 + (1 - L.nightness) * 0.42;
     }
   });
