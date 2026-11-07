@@ -181,7 +181,7 @@ export class BallSystem {
 
   private onSkyHit(b: Ball, bird: SkyBird, sky: SkyLife) {
     this.events.push({ type: 'skyHit', ball: b, speciesId: bird.speciesId });
-    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type);
+    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type, undefined, bird.shiny ? SKY.SHINY.CATCH_MULT : 1);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = -1; b.skyTargetId = bird.id; b.skySpeciesId = bird.speciesId;

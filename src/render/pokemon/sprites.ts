@@ -113,7 +113,17 @@ const sources = new Map<string, { buf: ArrayBuffer; texture: THREE.Texture; byte
 let uploader: ((t: THREE.Texture) => void) | null = null;
 export function bindTextureUploader(fn: ((t: THREE.Texture) => void) | null) {
   uploader = fn;
-  if (fn) for (const src of sources.values()) fn(src.texture);
+  if (!fn) return;
+  for (const src of sources.values()) {
+    // A newly bound renderer (the Scene remounting between screens — menu reef → dojo, say) holds
+    // none of the GPU copies, and a sheet whose canvas was released after its first upload can
+    // only offer a 1px blank: rebake it from its GIF first, or every such sprite draws invisible.
+    const img = src.texture.image as HTMLCanvasElement | undefined;
+    if (!img || img.width <= 1) {
+      try { src.texture.image = bake(src.buf).canvas; src.texture.needsUpdate = true; } catch { continue; }
+    }
+    fn(src.texture);
+  }
 }
 
 /** Sprite memory right now: GPU-resident sheet bytes and any CPU pixels not yet released. */

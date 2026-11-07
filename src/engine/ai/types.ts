@@ -84,6 +84,8 @@ export interface Entity {
   castFrom: number; castAt: number;
   /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
   jetT: number; jetColor: string;
+  /** Wing Attack: seconds remaining of the white wing blaze (the dive is a ram, like the jet). */
+  wingT: number;
   /** Ferry wake: seconds remaining of the visual-only comet + bubble train on a rising Lapras. */
   wakeT: number;
   /** Aboard the ferry: seconds remaining of the surface-clamp exemption (refreshed every think while riding). */
@@ -92,6 +94,11 @@ export interface Entity {
   talkT: number; talkDelay: number;
   /** Ferry rider phase: 0 none · 1 waiting beside the hull · 2 hopping on · 3 seated · 4 hopping off. */
   rideK: number;
+  /** Mantyke joining their Mantine's leap: the leader's id (-1 none) and the seconds until this
+   *  one starts its own run (the pod goes up in a ragged sequence). */
+  leapWith: number; leapDelay: number;
+  /** On a leaping Mantine: how many Mantyke were picked to leap with it this time. */
+  podN: number;
   /** Scripted hop (integrate step): seconds left / total, arc height, start point, and the
    *  fixed landing point for a hop-off (a hop-on lands on the live seat instead). */
   hopT: number; hopDur: number; hopH: number; hx: number; hy: number; hz: number; hx2: number; hy2: number; hz2: number;
@@ -177,7 +184,7 @@ export type EcoEvent =
   | { type: 'ferryReply'; entityId: number; delay: number }
   | { type: 'ferryHop'; entityId: number; x: number; y: number; z: number; size: number; off: boolean }
   | { type: 'familyDefend'; rootId: number; attackerId: number; count: number }
-  | { type: 'leap'; entityId: number; phase: 'launch' | 'splash'; x: number; z: number; size: number; height: number }
+  | { type: 'leap'; entityId: number; phase: 'launch' | 'splash'; x: number; z: number; size: number; height: number; mantyke: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }

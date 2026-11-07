@@ -96,6 +96,14 @@ export const GAME = {
     RUN_SPEED_MULT: 2.2,
     GRAVITY: 9.8,
   },
+  /** The pod: when Mantine leaps, some of its Mantyke leap too — usually 2-3, sometimes 3-4,
+   *  sometimes none — each on its OWN run and arc (smaller, HEIGHT above the water), starting
+   *  on its own delay inside STAGGER so the pod goes up in a ragged sequence, never in lockstep. */
+  MANTYKE_LEAP: {
+    HEIGHT: [2, 5] as [number, number],
+    RUN_SPEED_MULT: 2.0,
+    STAGGER: [0.3, 3.0] as [number, number],
+  },
   FERRY_VOYAGE_SPEED_MULT: 1.6,
   FERRY_ESCORT_ANCHOR_MULT: 4,
   /** The ferry call: while rising and boarding, Lapras sings out every few seconds at a varying

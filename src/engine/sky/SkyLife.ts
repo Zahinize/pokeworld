@@ -5,11 +5,11 @@
  * no DOM, no per-frame allocation. The BallSystem talks to it through four small hooks.
  */
 import { SPECIES, getSpecies } from '@/data/species';
-import { SKY } from '@/data/sky';
+import { SKY, skyCruiseSpeed } from '@/data/sky';
 import { RNG } from '../rng';
 import type { LightingState } from '../world/lighting';
 
-export type SkyBirdState = 'flying' | 'diving' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'rampage' | 'gone';
+export type SkyBirdState = 'flying' | 'diving' | 'swimming' | 'captured' | 'caught' | 'fleeing' | 'rampage' | 'attacking' | 'gone';
 
 export interface SkyBird {
   id: number;
@@ -26,6 +26,8 @@ export interface SkyBird {
   /** Rendered sprite height — the hit sphere centers on the visible body. */
   vis: number;
   legendary: boolean;
+  /** A shiny: 2× HP and Attack (SKY.SHINY), its own sprite sheet, harder to catch, meaner. */
+  shiny: boolean;
   /** Render alpha: ramps on spawn, fades on vanish/catch. */
   fade: number;
   hp: number;
@@ -52,6 +54,10 @@ interface Flock {
   diveT: number;
   /** Seconds until an absent flock (or a poached member) returns from the horizon. */
   refillT: number;
+  /** Members lost to the reef, by slot, and when their replacement flies in. */
+  lost: { slot: number; at: number }[];
+  /** The first `shinyN` slots of this flock are shiny (a shiny flock), 0 for an ordinary one. */
+  shinyN: number;
   exitBearing: number;
 }
 
@@ -59,10 +65,11 @@ export type SkyEvent =
   | { type: 'cry'; dexId: number; x: number; y: number; z: number }
   | { type: 'legendaryEnter'; speciesId: string }
   | { type: 'legendaryVanish'; speciesId: string }
-  | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number }
+  | { type: 'skyKo'; speciesId: string; birdId: number; x: number; y: number; z: number; shiny: boolean }
   | { type: 'dive'; speciesId: string; birdId: number; x: number; y: number; z: number }
   | { type: 'legendaryRampage'; speciesId: string }
-  | { type: 'legendaryBlast'; speciesId: string; birdId: number; x: number; y: number; z: number };
+  | { type: 'legendaryBlast'; speciesId: string; birdId: number; x: number; y: number; z: number }
+  | { type: 'raidFlee'; speciesId: string; birdId: number; x: number; y: number; z: number };
 
 const LEGENDARY_POOL: Record<string, string[]> = { Day: ['articuno', 'lugia'], Evening: ['hooh'], Night: ['yveltal'], Dawn: [] };
 
@@ -73,6 +80,10 @@ export class SkyLife {
   forceNextLegendary: string | null = null;
   /** The active legendary's bird index, or -1. */
   legendaryIdx = -1;
+  /** A dive-hunt's splash: whoever answers true has taken the bird under (SkyCombat's raid). */
+  onSplash: ((b: SkyBird, duration: number) => boolean) | null = null;
+  /** Where the reef's schooling guardians are (no deeper than `maxDepth`): dives come down on them. */
+  diveSpots: ((maxDepth: number) => { x: number; z: number }[]) | null = null;
 
   private flocks: Flock[] = [];
   private rng: RNG;
@@ -106,11 +117,11 @@ export class SkyLife {
         angle: this.rng.next() * Math.PI * 2,
         angVel: (spec.speed / this.rng.range(spec.orbitR[0], spec.orbitR[1])) * (this.rng.chance(0.5) ? 1 : -1),
         mode: 'circling', cryT: this.rng.range(SKY.FLOCK_CRY_PERIOD[0], SKY.FLOCK_CRY_PERIOD[1]),
-        diveT: this.rng.range(SKY.DIVE.PERIOD[0], SKY.DIVE.PERIOD[1]),
-        refillT: 0, exitBearing: this.rng.next() * Math.PI * 2,
+        diveT: this.rng.range(SKY.DIVE.FIRST[0], SKY.DIVE.FIRST[1]),
+        refillT: 0, lost: [], shinyN: spec.shiny ?? 0, exitBearing: this.rng.next() * Math.PI * 2,
       };
       const n = this.rng.int(spec.count[0], spec.count[1]);
-      for (let i = 0; i < n; i++) f.members.push(this.spawnBird(spec.speciesId, this.flocks.length, i / n));
+      for (let i = 0; i < n; i++) f.members.push(this.spawnBird(spec.speciesId, this.flocks.length, i / n, i < f.shinyN));
       this.flocks.push(f);
     }
     // ducklett paddlers
@@ -125,7 +136,7 @@ export class SkyLife {
     }
   }
 
-  private spawnBird(speciesId: string, flockId: number, phase01: number): number {
+  private spawnBird(speciesId: string, flockId: number, phase01: number, shiny = false): number {
     const sp = getSpecies(speciesId);
     const legendary = !!sp.secondary.includes('legendary');
     // flock members bunch into a tight arc so they read as a group; loners keep a full-circle phase
@@ -136,18 +147,18 @@ export class SkyLife {
       id: this.nextId++, speciesId,
       x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0,
       state: 'flying', stateT: 0, flockId, phase,
-      r: rendered * 0.42 + 0.55, vis: rendered, legendary,
+      r: rendered * 0.42 + 0.55, vis: rendered, legendary, shiny,
       fade: 0, heading: 0, dtx: 0, dtz: 0, divePhase: 0,
-      hp: this.hpOf(speciesId), maxHp: this.hpOf(speciesId), failedBalls: 0,
+      hp: this.hpOf(speciesId) * (shiny ? SKY.SHINY.HP_MULT : 1), maxHp: this.hpOf(speciesId) * (shiny ? SKY.SHINY.HP_MULT : 1), failedBalls: 0,
     };
     this.birds.push(b);
     return this.birds.length - 1;
   }
 
   /** A free pool slot (state 'gone') for the given species, or a fresh one. */
-  private claim(speciesId: string, flockId: number, phase01: number): number {
+  private claim(speciesId: string, flockId: number, phase01: number, shiny = false): number {
     for (let i = 0; i < this.birds.length; i++) {
-      if (this.birds[i].state === 'gone' && this.birds[i].speciesId === speciesId) {
+      if (this.birds[i].state === 'gone' && this.birds[i].speciesId === speciesId && this.birds[i].shiny === shiny) {
         const b = this.birds[i];
         b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
@@ -155,7 +166,7 @@ export class SkyLife {
         return i;
       }
     }
-    return this.spawnBird(speciesId, flockId, phase01);
+    return this.spawnBird(speciesId, flockId, phase01, shiny);
   }
 
   update(dt: number, L: LightingState, timeOfDay: number, px: number, pz: number) {
@@ -177,10 +188,10 @@ export class SkyLife {
       if (f.mode === 'absent') {
         if (dayW > 0.5) {
           // dawn: the flock returns from the horizon
-          f.mode = 'circling';
+          f.mode = 'circling'; f.lost.length = 0;
           for (let i = 0; i < f.members.length; i++) {
             const b = this.birds[f.members[i]];
-            if (b.state === 'gone') f.members[i] = this.claim(f.speciesId, fi, i / f.members.length);
+            if (b.state === 'gone') f.members[i] = this.claim(f.speciesId, fi, i / f.members.length, i < f.shinyN);
             const nb = this.birds[f.members[i]];
             nb.x = Math.cos(f.exitBearing) * (SKY.EXIT_DESPAWN_R - 10);
             nb.z = Math.sin(f.exitBearing) * (SKY.EXIT_DESPAWN_R - 10);
@@ -188,6 +199,20 @@ export class SkyLife {
           }
         }
         continue;
+      }
+      // the reef took one: its replacement flies in from the horizon
+      for (let li = f.lost.length - 1; li >= 0; li--) {
+        const lost = f.lost[li];
+        if (this.lastT < lost.at || f.mode !== 'circling') continue;
+        f.lost.splice(li, 1);
+        const old = this.birds[f.members[lost.slot]];
+        if (old.state !== 'caught' && old.state !== 'gone') continue; // it came back after all
+        old.state = 'gone'; old.fade = 0;
+        const bi = this.claim(f.speciesId, fi, lost.slot / f.members.length, lost.slot < f.shinyN);
+        f.members[lost.slot] = bi;
+        const nb = this.birds[bi];
+        const brg = this.rng.next() * Math.PI * 2;
+        nb.x = Math.cos(brg) * (SKY.EXIT_DESPAWN_R - 10); nb.z = Math.sin(brg) * (SKY.EXIT_DESPAWN_R - 10); nb.y = f.alt;
       }
       // chatter
       f.cryT -= dt;
@@ -199,12 +224,27 @@ export class SkyLife {
       // dive-hunt: now and then one bird folds its wings and plunges for a fish in the shallows
       f.diveT -= dt;
       if (f.diveT <= 0 && f.mode === 'circling') {
-        f.diveT = this.rng.range(SKY.DIVE.PERIOD[0], SKY.DIVE.PERIOD[1]);
         const cand = f.members.map((i) => this.birds[i]).filter((b) => b.state === 'flying' && b.fade > 0.7);
+        f.diveT = cand.length ? this.diveGap(f) : 1; // nobody free to dive: try again in a second, keep the cadence
         if (cand.length) {
           const b = cand[this.rng.int(0, cand.length - 1)];
-          const a = this.rng.next() * Math.PI * 2, r = this.rng.range(4, 14);
-          b.dtx = b.x + Math.cos(a) * r; b.dtz = b.z + Math.sin(a) * r;
+          const a = this.rng.next() * Math.PI * 2;
+          // aggressive: a trainer in range is the dive's target (always, for a shiny flock); otherwise the
+          // nearest schooling guardian in range — the raid starts on its school; otherwise the shallows
+          let tx: number | null = null, tz = 0;
+          const chance = f.shinyN > 0 ? SKY.SHINY.AT_TRAINER_CHANCE : SKY.DIVE.AT_TRAINER_CHANCE;
+          if (Math.hypot(b.x - px, b.z - pz) < SKY.DIVE.AT_TRAINER_R && this.rng.chance(chance)) { tx = px; tz = pz; }
+          else if (this.diveSpots) {
+            let best: number = SKY.DIVE.AT_TRAINER_R;
+            for (const s of this.diveSpots(SKY.RAID.MAX_DEPTH)) { const d = Math.hypot(s.x - b.x, s.z - b.z); if (d < best) { best = d; tx = s.x; tz = s.z; } }
+          }
+          if (tx !== null) {
+            const r = this.rng.range(SKY.DIVE.AT_TRAINER_OFFSET[0], SKY.DIVE.AT_TRAINER_OFFSET[1]);
+            b.dtx = tx + Math.cos(a) * r; b.dtz = tz + Math.sin(a) * r;
+          } else {
+            const r = this.rng.range(4, 14);
+            b.dtx = b.x + Math.cos(a) * r; b.dtz = b.z + Math.sin(a) * r;
+          }
           b.state = 'diving'; b.divePhase = 1; b.stateT = 0;
         }
       }
@@ -224,14 +264,19 @@ export class SkyLife {
             b.vx += ((dx2 / dl) * sp - b.vx) * k; b.vy += ((dy2 / dl) * sp - b.vy) * k; b.vz += ((dz2 / dl) * sp - b.vz) * k;
             b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
             if (b.y <= 0.35 || b.stateT > 4) {
-              b.divePhase = 2; b.stateT = 0;
               this.events.push({ type: 'dive', speciesId: b.speciesId, birdId: b.id, x: b.x, y: 0.1, z: b.z });
+              // the splash is where the raid begins — unless nobody takes the bird under, it climbs straight out
+              const raid = b.y <= 0.35 && !!this.onSplash && this.onSplash(b, this.rng.range(SKY.RAID.DURATION[0], SKY.RAID.DURATION[1]) * (b.shiny ? SKY.SHINY.RAID_DURATION_MULT : 1));
+              if (!raid) { b.divePhase = 2; b.stateT = 0; }
             }
           } else {
-            // climb out, prize or no prize — the wheel steering reels it back into formation
+            // climb out, prize or no prize, at its usual cruise — the wheel steering reels it back into formation
+            const climb = skyCruiseSpeed(f.speciesId, 8);
             const k = Math.min(1, dt * 2.0);
-            b.vy += (8 - b.vy) * k;
+            b.vy += (climb - b.vy) * k;
             b.vx *= 1 - Math.min(0.9, dt * 0.6); b.vz *= 1 - Math.min(0.9, dt * 0.6);
+            const cv = Math.hypot(b.vx, b.vy, b.vz);
+            if (cv > climb) { b.vx *= climb / cv; b.vy *= climb / cv; b.vz *= climb / cv; }
             b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
             if (b.y >= f.alt - 3 || b.stateT > 6) { b.state = 'flying'; b.stateT = 0; b.divePhase = 0; }
           }
@@ -263,6 +308,11 @@ export class SkyLife {
         b.vx += ((ax2 - b.x) * 2.2 - b.vx) * k;
         b.vy += ((ay2 - b.y) * 2.2 - b.vy) * k;
         b.vz += ((az2 - b.z) * 2.2 - b.vz) * k;
+        // never faster than cruise — a bird far from its slot (back from a dive, in from the horizon)
+        // flies home at its usual speed and cuts the corner to catch up, it does not sprint
+        const cruise = skyCruiseSpeed(f.speciesId, 8);
+        const fv = Math.hypot(b.vx, b.vy, b.vz);
+        if (fv > cruise) { b.vx *= cruise / fv; b.vy *= cruise / fv; b.vz *= cruise / fv; }
         b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
         b.fade = Math.min(1, b.fade + dt * 0.7);
       }
@@ -398,7 +448,7 @@ export class SkyLife {
   /** The first catchable bird whose hit sphere contains the point, or null. */
   hitTest(x: number, y: number, z: number): SkyBird | null {
     for (const b of this.birds) {
-      if (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage') continue;
+      if (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage' && b.state !== 'attacking') continue;
       if (b.fade < 0.5) continue; // half-materialized birds aren't solid yet
       // the sprite is drawn from b.y upward — test against the middle of the visible body
       const dx = b.x - x, dy = b.y + b.vis * 0.45 - y, dz = b.z - z;
@@ -471,13 +521,32 @@ export class SkyLife {
    *  a kill by a rampaging legendary's storm is just a death — no collection entry. */
   applyDamage(id: number, dmg: number, credit = true) {
     const b = this.birds.find((x) => x.id === id);
-    if (!b || (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage')) return;
+    if (!b || (b.state !== 'flying' && b.state !== 'diving' && b.state !== 'swimming' && b.state !== 'rampage' && b.state !== 'attacking')) return;
     b.hp -= dmg;
     if (b.hp <= 0) {
       b.hp = 0;
       b.state = 'caught'; b.stateT = 0; // the retirement pass fades it out
-      if (credit) this.events.push({ type: 'skyKo', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y + b.vis * 0.45, z: b.z });
+      if (credit) this.events.push({ type: 'skyKo', speciesId: b.speciesId, birdId: b.id, x: b.x, y: b.y + b.vis * 0.45, z: b.z, shiny: b.shiny });
+      else if (b.flockId >= 0 && this.flocks[b.flockId]) {
+        // killed by the reef, not caught: the flock is a bird short until a new one flies in
+        const f = this.flocks[b.flockId];
+        const slot = f.members.findIndex((i) => this.birds[i] === b);
+        if (slot >= 0) f.lost.push({ slot, at: this.lastT + this.rng.range(SKY.FLOCK_REFILL[0], SKY.FLOCK_REFILL[1]) });
+      }
     }
+  }
+
+  /** Seconds until a flock's next dive: 60 / its dives-per-minute, jittered (shiny flocks dive more). */
+  private diveGap(f: Flock): number {
+    const perMin = (SKY.DIVE.PER_MINUTE[f.speciesId] ?? SKY.DIVE.PER_MINUTE.default) * (f.shinyN > 0 ? SKY.SHINY.DIVE_RATE_MULT : 1);
+    return (60 / perMin) * this.rng.range(1 - SKY.DIVE.JITTER, 1 + SKY.DIVE.JITTER);
+  }
+
+  /** The group a bird belongs to: its flock, every Ducklett for a paddler, itself for a loner. */
+  groupOf(b: SkyBird): SkyBird[] {
+    if (b.flockId >= 0 && this.flocks[b.flockId]) return this.flocks[b.flockId].members.map((i) => this.birds[i]);
+    if (b.speciesId === 'ducklett') return this.birds.filter((x) => x.speciesId === 'ducklett');
+    return [b];
   }
 
   drainEvents(): SkyEvent[] {

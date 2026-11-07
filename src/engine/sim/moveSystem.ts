@@ -9,7 +9,9 @@ import { getMove, isSupportive, movesFor, type MoveConfig as MC } from '@/data/m
 import { CAST_FLOURISH } from '@/data/personality';
 
 /** Contact styles keep their natural reach; everything that travels scales with the caster's stage. */
-const CONTACT_STYLES = new Set(['melee', 'dash']);
+const CONTACT_STYLES = new Set(['melee', 'dash', 'swoop']);
+/** Styles that resolve on the spot at the end of the wind-up (no projectile flies). */
+const INSTANT_STYLES = new Set(['melee', 'dash', 'swoop', 'burst', 'geyser', 'lightning']);
 
 /** Range of a move as cast by `e`: projectiles/beams reach further for stage-1 and stage-2 casters. */
 export function effectiveRange(e: Entity, move: MC): number {
@@ -23,11 +25,16 @@ export function kitOf(e: Entity): [MC, MC] {
   return movesFor(e.species.id);
 }
 import { COMBAT } from '@/data/combatConfig';
+import { GAME } from '@/data/gameConfig';
+import { SKY, skyCruiseSpeed } from '@/data/sky';
 import { computeDamage } from './combat';
 import type { CombatStats } from '@/pokeapi/hp';
 import { len3 } from '../ai/steering';
 
-export type MoveTarget = { kind: 'entity'; id: number } | { kind: 'player' };
+export type MoveTarget = { kind: 'entity'; id: number } | { kind: 'player' } | { kind: 'sky'; id: number };
+
+/** A sky bird as a move target: its visible body, stats and health (the sky system owns the rest). */
+export interface SkyBodyRef { x: number; y: number; z: number; size: number; cs: CombatStats; maxHp: number }
 
 export interface Projectile {
   active: boolean;
@@ -43,6 +50,15 @@ export interface Projectile {
 }
 
 interface PendingCast { at: number; casterId: number; moveId: string; target: MoveTarget; slot: number }
+/** A wing-first dive in progress (Wing Attack): the caster flies at the target until it connects. */
+interface Dive { casterId: number; moveId: string; target: MoveTarget; t: number; maxT: number }
+/** The dive lands on contact, or at this age regardless — a Wing Attack never whiffs once committed.
+ *  Sky Pokémon dive at a modest boost over cruise, so their window stretches with the distance (≤ DIVE_MAX_SKY). */
+const DIVE_MAX = 0.8;
+const DIVE_MAX_SKY = 2.0;
+/** Ram speed of a diving/jetting body (mirrors the Ecosystem's jet clamp). A bird keeps its own
+ *  cruise speed plus SKY.SORTIE_SPEED_MULT — no doubling in pursuit of a target. */
+const ramSpeed = (e: Entity) => (e.species.skyOnly ? skyCruiseSpeed(e.species.id, e.species.speed) * SKY.SORTIE_SPEED_MULT : Math.max(e.species.burst * 2.0, 11));
 
 /** Renderer-facing move visuals: travelling waves for instant moves, and per-move impacts. */
 export interface MoveVisual {
@@ -69,11 +85,18 @@ export interface CombatHost {
   /** Apply damage to the player (HP handled by the session). */
   damagePlayer(amount: number, casterId: number, moveId: string): void;
   rng(): number;
+  /** Casters that are not reef entities (sky birds fight through stand-in entities). */
+  externalCaster?(id: number): Entity | undefined;
+  /** Sky birds as targets. */
+  skyBody?(id: number): SkyBodyRef | null;
+  damageSky?(id: number, amount: number, casterId: number, moveId: string): void;
+  /** A hit on an external caster's stand-in (a bird raiding the reef can be hit back). */
+  damageExternal?(target: Entity, amount: number, casterId: number, moveId: string): void;
 }
 
 const PROJECTILE_SPEED = 18;
 /** Canonical pacing: beams snap across the reef, streams surge, lobbed globs arc slower. */
-const STYLE_SPEED: Record<string, number> = { beam: 34, jet: 24, darts: 26, bubbles: 14, ring: 16, crescent: 21, ink: 13, motes: 14 };
+const STYLE_SPEED: Record<string, number> = { beam: 34, jet: 24, darts: 26, bubbles: 14, ring: 16, crescent: 21, ink: 13, motes: 14, wind: 16 };
 const HOMING_RATE = 2.6; // rad/s steering toward the target
 const MELEE_WINDUP = 0.35;
 /** Default wind-up before a move leaves the caster — long enough that the rear-back
@@ -99,9 +122,18 @@ export class MoveSystem {
     v.x0 = x0; v.y0 = y0; v.z0 = z0; v.x1 = x1; v.y1 = y1; v.z1 = z1; v.t = 0; v.dur = dur; v.consumed = false;
   }
   private pending: PendingCast[] = [];
+  private dives: Dive[] = [];
   private host: CombatHost;
 
   setTime(t: number) { this.host.time = t; }
+
+  private casterOf(id: number): Entity | undefined { return this.host.byId.get(id) ?? this.host.externalCaster?.(id); }
+  private targetSize(t: MoveTarget): number {
+    if (t.kind === 'player') return 1;
+    if (t.kind === 'sky') return this.host.skyBody?.(t.id)?.size ?? 1;
+    return (this.host.byId.get(t.id) ?? this.host.externalCaster?.(t.id))?.species.size ?? 1;
+  }
+  private skyPos: Vec3 = { x: 0, y: 0, z: 0 };
 
   /** Live wind-ups for the renderer (charge glow / build-up at the caster). */
   charges(): { casterId: number; moveId: string; color: string; progress: number }[] {
@@ -149,7 +181,7 @@ export class MoveSystem {
     const move = this.moveOf(e, slot);
     e.mcd[slot] = move.cooldown;
     this.host.events.push({ type: 'cast', casterId: e.id, moveId: move.id, style: move.style });
-    let windup = move.chargeTime ?? (move.style === 'melee' || move.style === 'dash' ? MELEE_WINDUP : CAST_WINDUP);
+    let windup = move.chargeTime ?? (CONTACT_STYLES.has(move.style) ? MELEE_WINDUP : CAST_WINDUP);
     // species flourish: big signature casts stretch so the choreography reads (Gyarados's double revolve)
     const fl = CAST_FLOURISH[e.species.id];
     if (fl?.signatureWindup && move.kind === 'damage' && move.power >= 100) windup = Math.max(windup, fl.signatureWindup);
@@ -168,7 +200,7 @@ export class MoveSystem {
       const p = this.pending[i];
       if (h.time < p.at) continue;
       this.pending.splice(i, 1);
-      const caster = h.byId.get(p.casterId);
+      const caster = this.casterOf(p.casterId);
       if (!caster || caster.state === 'ko' || caster.state === 'removed' || caster.state === 'caught') continue;
       const move = getMove(p.moveId);
       if (move.selfTarget) {
@@ -178,12 +210,21 @@ export class MoveSystem {
       const tp = this.targetPos(p.target);
       if (!tp) continue;
       const d = len3(tp.x - caster.x, tp.y - caster.y, tp.z - caster.z);
-      if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
+      if (move.style === 'swoop') {
+        // Wing Attack: the wings blaze and the bird CHARGES — the strike lands on contact (below)
+        if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
+          const maxT = caster.species.skyOnly ? Math.min(DIVE_MAX_SKY, Math.max(DIVE_MAX, d / ramSpeed(caster) + 0.25)) : DIVE_MAX;
+          caster.wingT = maxT + 0.25;
+          this.dives.push({ casterId: caster.id, moveId: move.id, target: p.target, t: 0, maxT });
+        }
+        continue;
+      }
+      if (INSTANT_STYLES.has(move.style)) {
         // instant strike if still in reach (generous 1.5×; dashes carry the caster forward visually via AI)
         if (d <= effectiveRange(caster, move) * 1.5 + caster.species.size) {
-          if ((move.style === 'melee' || move.style === 'dash') && d > 0.3) {
+          if (CONTACT_STYLES.has(move.style) && d > 0.3) {
             // the attacker LUNGES: a surge of velocity carries it onto (and through) the target
-            const surge = move.style === 'dash' ? Math.min(16, d * 3.5 + 8) : Math.min(11, d * 2.8 + 4);
+            const surge = move.style === 'melee' ? Math.min(11, d * 2.8 + 4) : Math.min(16, d * 3.5 + 8);
             caster.vx += ((tp.x - caster.x) / d) * surge;
             caster.vy += ((tp.y - caster.y) / d) * surge;
             caster.vz += ((tp.z - caster.z) / d) * surge;
@@ -200,6 +241,43 @@ export class MoveSystem {
         }
       } else {
         this.launch(caster, p.target, move);
+      }
+    }
+    // Wing dives: the caster flies straight at its target at ram speed, wings blazing, and the
+    // strike lands the moment the bodies meet (a flyer over a submerged target skims the swell
+    // and connects when it is overhead). Past DIVE_MAX the hit lands regardless — committed.
+    for (let i = this.dives.length - 1; i >= 0; i--) {
+      const dv = this.dives[i];
+      const caster = this.casterOf(dv.casterId);
+      const tp = this.targetPos(dv.target);
+      if (!caster || !tp || caster.state === 'ko' || caster.state === 'removed' || caster.state === 'caught' || caster.stunT > 0) {
+        if (caster) caster.wingT = Math.min(caster.wingT, 0.2);
+        this.dives.splice(i, 1); continue;
+      }
+      dv.t += dt;
+      const move = getMove(dv.moveId);
+      const dx = tp.x - caster.x, dy = tp.y - caster.y, dz = tp.z - caster.z;
+      const d = len3(dx, dy, dz) || 1e-4;
+      const ram = ramSpeed(caster);
+      caster.vx = (dx / d) * ram; caster.vy = (dy / d) * ram; caster.vz = (dz / d) * ram;
+      caster.dx = caster.vx; caster.dy = caster.vy; caster.dz = caster.vz;
+      caster.maxSpeed = ram;
+      const tSize = this.targetSize(dv.target);
+      const reach = caster.species.size * 0.5 + tSize * 0.5 + 0.9;
+      // a flyer cannot follow a target under the water: overhead counts as contact
+      const gap = caster.species.skyOnly && tp.y < GAME.SURFACE_Y ? Math.hypot(dx, dz) : d;
+      if (gap <= reach || dv.t >= dv.maxT) {
+        this.applyHit(caster, dv.target, move);
+        // strike and pull back up out of it — a bird peels up at its (capped) ram speed, never faster
+        if (caster.species.skyOnly) {
+          caster.vy = Math.abs(caster.vy) * 0.3 + ram * 0.6;
+          const vl = len3(caster.vx, caster.vy, caster.vz) || 1;
+          caster.vx *= ram / vl; caster.vy *= ram / vl; caster.vz *= ram / vl;
+          caster.dx = caster.vx; caster.dz = caster.vz;
+        } else caster.vy += 2;
+        caster.dy = caster.vy;
+        caster.wingT = Math.min(caster.wingT, 0.22);
+        this.dives.splice(i, 1);
       }
     }
     // Fly projectiles
@@ -222,14 +300,16 @@ export class MoveSystem {
       void vl;
       // hit test against the intended target
       // tiny species (Wishiwashi, Wiglett…) keep a floor so projectiles can actually connect
-      const hitR = (pr.target.kind === 'player' ? 0.9 : Math.max(0.9, this.host.byId.get(pr.target.id)?.species.size ?? 1) * 0.45) + 0.35;
+      const hitR = (pr.target.kind === 'player' ? 0.9 : Math.max(0.9, this.targetSize(pr.target)) * 0.45) + 0.35;
       if (len3(tp.x - pr.x, tp.y - pr.y, tp.z - pr.z) < hitR) {
-        const caster = this.host.byId.get(pr.casterId);
+        const caster = this.casterOf(pr.casterId);
         pr.active = false;
         const mv = getMove(pr.moveId);
         this.pushVisual('impact', mv, pr.x, pr.y, pr.z, pr.x, pr.y, pr.z, 0.5);
         // beams linger for a beat after connecting instead of vanishing mid-air
         if (caster && mv.style === 'beam') this.pushVisual('wave', mv, caster.x, caster.y, caster.z, pr.x, pr.y, pr.z, 0.22);
+        // the gust lands: the whirl wraps the target and unwinds around it
+        if (mv.style === 'wind') this.pushVisual('wave', mv, pr.x, pr.y, pr.z, tp.x, tp.y, tp.z, 0.5);
         if (caster) this.applyHit(caster, pr.target, mv);
       }
     }
@@ -237,7 +317,13 @@ export class MoveSystem {
 
   private targetPos(t: MoveTarget): Vec3 | null {
     if (t.kind === 'player') return this.host.player as Vec3;
-    const e = this.host.byId.get(t.id);
+    if (t.kind === 'sky') {
+      const b = this.host.skyBody?.(t.id);
+      if (!b) return null;
+      this.skyPos.x = b.x; this.skyPos.y = b.y; this.skyPos.z = b.z;
+      return this.skyPos;
+    }
+    const e = this.host.byId.get(t.id) ?? this.host.externalCaster?.(t.id);
     if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint') return null; // fainted = catchable, not hittable
     return e;
   }
@@ -250,16 +336,19 @@ export class MoveSystem {
     const dx = tp.x - caster.x, dy = tp.y - caster.y, dz = tp.z - caster.z;
     const d = len3(dx, dy, dz) || 1e-4;
     pr.active = true; pr.moveId = move.id; pr.style = move.style; pr.color = move.color;
-    pr.x = caster.x + (dx / d) * caster.species.size * 0.5;
-    pr.y = caster.y + (dy / d) * caster.species.size * 0.5;
-    pr.z = caster.z + (dz / d) * caster.species.size * 0.5;
+    // leave the body along the firing line — but never spawn PAST a close target (a legendary's 23 m
+    // body would put the shot behind the bird, flying dead away from it with nothing for homing to turn)
+    const off = Math.min(caster.species.size * 0.5, d * 0.5);
+    pr.x = caster.x + (dx / d) * off;
+    pr.y = caster.y + (dy / d) * off;
+    pr.z = caster.z + (dz / d) * off;
     pr.speed = move.projSpeed ?? STYLE_SPEED[move.style] ?? PROJECTILE_SPEED;
     pr.vx = (dx / d) * pr.speed; pr.vy = (dy / d) * pr.speed; pr.vz = (dz / d) * pr.speed;
     pr.casterId = caster.id; pr.target = target; pr.t = 0;
   }
 
   private applyHit(caster: Entity, target: MoveTarget, move: MoveConfig) {
-    if (move.style === 'melee' || move.style === 'dash' || move.style === 'burst' || move.style === 'geyser' || move.style === 'lightning') {
+    if (INSTANT_STYLES.has(move.style)) {
       const tp = this.targetPos(target);
       if (tp) this.pushVisual('impact', move, tp.x, tp.y, tp.z, tp.x, tp.y, tp.z, 0.5);
     }
@@ -271,10 +360,31 @@ export class MoveSystem {
       }
       return;
     }
+    if (target.kind === 'sky') {
+      // a bird of the open sky: damage lands through the sky system (no status effects up there)
+      const b = h.skyBody?.(target.id);
+      if (!b || move.kind !== 'damage') return;
+      const dmg = computeDamage(caster.cs, b.cs, b.maxHp, move, stagesOf(caster), { atk: 1, def: 1 }, h.rng);
+      h.damageSky?.(target.id, dmg, caster.id, move.id);
+      return;
+    }
     const t = h.byId.get(target.id);
-    if (!t || t.state === 'ko' || t.state === 'removed' || t.state === 'caught') return;
+    if (!t) {
+      // a sky stand-in raiding the reef: the wound lands on the bird through the host
+      const ext = h.externalCaster?.(target.id);
+      if (!ext || !h.damageExternal) return;
+      if (move.kind === 'damage') {
+        const dmg = computeDamage(caster.cs, ext.cs, ext.maxHp, move, stagesOf(caster), stagesOf(ext), h.rng);
+        h.events.push({ type: 'moveHit', casterId: caster.id, targetId: ext.id, moveId: move.id, damage: dmg });
+        h.damageExternal(ext, dmg, caster.id, move.id);
+        if (move.effect && (move.effect.chance === undefined || h.rng() < move.effect.chance)) this.applyEffectTo(caster, ext, move);
+      } else this.applyEffectTo(caster, ext, move);
+      return;
+    }
+    if (t.state === 'ko' || t.state === 'removed' || t.state === 'caught') return;
     if (move.kind === 'damage') {
-      const dmg = computeDamage(caster.cs, t.cs, t.maxHp, move, stagesOf(caster), stagesOf(t), h.rng);
+      let dmg = computeDamage(caster.cs, t.cs, t.maxHp, move, stagesOf(caster), stagesOf(t), h.rng);
+      if (move.airborneMult && t.y > GAME.SURFACE_Y) dmg = Math.round(dmg * move.airborneMult); // Gust vs a flyer
       h.events.push({ type: 'moveHit', casterId: caster.id, targetId: t.id, moveId: move.id, damage: dmg });
       h.damageAbs(t, dmg, caster.id);
       if (move.effect && (move.effect.chance === undefined || h.rng() < move.effect.chance)) this.applyEffectTo(caster, t, move);
@@ -320,6 +430,15 @@ export class MoveSystem {
         break;
       }
       case 'conceal': target.concealT = target.concealDur = fx.duration; break;
+      // blown back: a shove away from the caster, outside the cruise clamp — heavier bodies budge less
+      case 'push': {
+        const dx = target.x - caster.x, dy = target.y - caster.y, dz = target.z - caster.z;
+        const d = len3(dx, dy, dz) || 1e-4;
+        const pow = fx.magnitude / (0.6 + target.species.size * 0.35);
+        target.kbx = (dx / d) * pow; target.kby = (dy / d) * pow * 0.3; target.kbz = (dz / d) * pow;
+        target.kbT = Math.max(target.kbT, fx.duration);
+        break;
+      }
       // frozen solid: a hard stun wearing a casing of ice (the renderer draws the block)
       case 'freeze': target.stunT = Math.max(target.stunT, fx.duration); target.frozenT = Math.max(target.frozenT, fx.duration); break;
     }

@@ -14,8 +14,9 @@ import { RNG } from '../rng';
 import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
+import { SKY, skyPartnerScale } from '@/data/sky';
 import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT} from '@/data/combatConfig';
-import { MoveSystem, type MoveTarget } from '../sim/moveSystem';
+import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
 import { kitOf, effectiveRange } from '../sim/moveSystem';
@@ -50,6 +51,9 @@ export class Ecosystem {
   moves!: MoveSystem;
   /** Session hook: apply damage to the player (set by GameSession; no-op headless). */
   onPlayerDamage: (amount: number, casterId: number, moveId: string) => void = () => {};
+  /** Sky birds fight through stand-in entities (SkyCombat): the move system finds them here. */
+  externalCaster: (id: number) => Entity | undefined = () => undefined;
+  skyHooks: { body(id: number): SkyBodyRef | null; damage(id: number, amount: number, casterId: number, moveId: string): void; damageExternal(e: Entity, amount: number, casterId: number, moveId: string): void } | null = null;
   /** Camera yaw, used for companion formation (set by the session each frame). */
   playerYaw = 0;
   /** True while the trainer floats at the waterline — companions ride up with them. */
@@ -85,6 +89,10 @@ export class Ecosystem {
       damageAbs: (t, amount, sourceId) => this.damageAbs(t, amount, sourceId),
       damagePlayer: (amount, casterId, moveId) => { this.events.push({ type: 'playerHit', casterId, moveId, damage: amount }); this.onPlayerDamage(amount, casterId, moveId); },
       rng: rngFn,
+      externalCaster: (id) => this.externalCaster(id),
+      skyBody: (id) => this.skyHooks?.body(id) ?? null,
+      damageSky: (id, amount, casterId, moveId) => this.skyHooks?.damage(id, amount, casterId, moveId),
+      damageExternal: (e, amount, casterId, moveId) => this.skyHooks?.damageExternal(e, amount, casterId, moveId),
     });
     // Groups
     gen.groups.forEach((gs, i) => {
@@ -139,7 +147,7 @@ export class Ecosystem {
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
-      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
+      concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
@@ -171,11 +179,13 @@ export class Ecosystem {
   damageAbs(t: Entity, amount: number, sourceId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
     this.applyDamage(t, amount, 'predator', sourceId);
-    // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them
-    const src = this.byId.get(sourceId);
+    // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them,
+    // and a sky raider's stand-in is fair game like anything else
+    const src = this.byId.get(sourceId) ?? this.externalCaster(sourceId);
     if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant' && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back
-    // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock)
-    if (t.role === 'partner' && src && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
+    // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock;
+    // a raiding bird is gone in seconds, so it draws fire without locking a duel)
+    if (t.role === 'partner' && src && this.byId.has(src.id) && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
     // A wild that strikes a companion gets dueled right back
     if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith < 0 && src.duelWith < 0) this.startDuel(src, t);
     // Group revenge: a guardian-less group swarms any predator that attacks a member (design §7)
@@ -210,7 +220,8 @@ export class Ecosystem {
     const join = (m: Entity | undefined) => {
       if (!m || m.role === 'partner') return;
       if (m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'faint' || m.state === 'duel' || m.state === 'retaliate') return;
-      if (leaping && (m === root || m.species.id === 'remoraid')) return;
+      if (m.state === 'leapRun' || m.state === 'leapAir') return;              // mid-leap: it lands first
+      if (leaping && (m === root || m.species.id === 'remoraid')) return;      // carried riders too
       if (len3(m.x - victim.x, m.y - victim.y, m.z - victim.z) > 40) return;
       m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId;
       m.nextThink = this.time + n * 0.15;   // a ripple, not a volley
@@ -267,7 +278,8 @@ export class Ecosystem {
   maybeRetaliate(t: Entity, attackerId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
     if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
-    if (t.retaliateN >= COMBAT.RETALIATE_MAX_IN_WINDOW) return;
+    const vsRaider = attackerId <= -1000; // a sky Pokémon under the reef: every hit it lands draws an answer
+    if (!vsRaider && t.retaliateN >= COMBAT.RETALIATE_MAX_IN_WINDOW) return;
     const s = t.species;
     const vsPlayer = attackerId === -2;
     let p = vsPlayer
@@ -276,6 +288,7 @@ export class Ecosystem {
     if (vsPlayer && t.behavior === 'predator') p = COMBAT.PREDATOR_VS_PLAYER_CHANCE;
     if (this.ctx.ferry) p *= GAME.FERRY_TRUCE_MULT; // the ferry truce: the reef settles down to watch
     p = Math.min(0.9, Math.max(0.1, p));
+    if (vsRaider) p = Math.max(p, SKY.RAID.PROVOKE);
     if (this.rng.next() > p) return;
     t.retaliateN++;
     t.state = 'retaliate'; t.stateT = 0; t.retaliateTarget = attackerId;
@@ -423,6 +436,7 @@ export class Ecosystem {
       if (e.concealT > 0) e.concealT -= dt;
       if (e.veilT > 0) e.veilT -= dt;
       if (e.jetT > 0) e.jetT -= dt;
+      if (e.wingT > 0) e.wingT -= dt;
       if (e.wakeT > 0) e.wakeT -= dt;
       if (e.talkT > 0) e.talkT -= dt;
       if (e.talkDelay > 0) { e.talkDelay -= dt; if (e.talkDelay <= 0) e.talkT = 0.9; } // the reply lands
@@ -443,7 +457,7 @@ export class Ecosystem {
         }
       }
       // no healing in open air: a surfaced companion's suffocation drain must bite at full rate
-      const surfacedPartner = e.role === 'partner' && e.y > -Math.max(0.8, e.species.size * 0.5);
+      const surfacedPartner = e.role === 'partner' && !e.species.skyOnly && e.y > -Math.max(0.8, e.species.size * 0.5);
       if (e.hp < e.maxHp && e.state !== 'ko' && !surfacedPartner) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
 
       if (e.state === 'faint') {
@@ -568,8 +582,10 @@ export class Ecosystem {
         if (d <= effectiveRange(e, move) + e.species.size * 0.5) {
           if (this.moves.cast(e, e.orderMove, { kind: 'entity', id: t.id })) { e.orderTarget = -1; e.orderMove = -1; }
         } else {
+          // a flyer closes in over the water, never under it: it skims down to the swell above its target
+          const ty2 = e.species.skyOnly ? Math.max(t.y, GAME.SURFACE_Y + 1.0 + e.species.size * 0.5) : t.y;
           const k = e.species.burst / (d || 1);
-          e.dx = (t.x - e.x) * k; e.dy = (t.y - e.y) * k; e.dz = (t.z - e.z) * k;
+          e.dx = (t.x - e.x) * k; e.dy = (ty2 - e.y) * k; e.dz = (t.z - e.z) * k;
           e.maxSpeed = e.species.burst;
           return;
         }
@@ -582,9 +598,13 @@ export class Ecosystem {
     const cy = Math.cos(this.playerYaw), sy = Math.sin(this.playerYaw);
     const rx = cy, rz = -sy;             // camera right
     const fx = -sy, fz = -cy;            // camera forward
-    const tx = p.x + fx * 3.2 + rx * side * 1.9;
-    const tz = p.z + fz * 3.2 + rz * side * 1.9;
-    const ty = this.playerAtSurface
+    // a flyer keeps further ahead, low over the swell: in frame from under the water as well as on it
+    const ahead = e.species.skyOnly ? 10.0 : 3.2, flank = e.species.skyOnly ? 2.6 : 1.9;
+    const tx = p.x + fx * ahead + rx * side * flank;
+    const tz = p.z + fz * ahead + rz * side * flank;
+    const ty = e.species.skyOnly
+      ? GAME.SURFACE_Y + 0.9 + skyPartnerScale(e.species.size) * 0.5 + Math.sin(this.time * 1.1 + e.phase * 6) * 0.2   // hovering low over the swell (drawn at flock scale)
+      : this.playerAtSurface
       ? e.species.size * 0.22 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.1  // riding the swell beside you
       : p.y - 0.55 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.15;
     const d = len3(tx - e.x, ty - e.y, tz - e.z);
@@ -628,7 +648,7 @@ export class Ecosystem {
   /** Face the attacker, fire the best ready move, then resume normal behavior (design §7). */
   private retaliateThink(e: Entity, dt: number) {
     const tgt = e.retaliateTarget;
-    const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
+    const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt) ?? this.externalCaster(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
     if (!pos || e.stateT > 3.5) {
       e.state = e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
       e.stateT = 0; e.threatId = tgt; e.threatT = 0;
@@ -689,7 +709,7 @@ export class Ecosystem {
     // Aqua Jet family: while the water comet wraps the body the ram is REAL — the jet IS
     // the movement, carried at full speed through the target (the cruise clamp above
     // would otherwise kill the surge the same frame it fires)
-    if (e.jetT > 0) {
+    if (e.jetT > 0 || e.wingT > 0) {
       const ram = Math.max(e.species.burst * 2.0, 11);
       const jv = len3(e.vx, e.vy, e.vz) || 1e-4;
       e.vx *= ram / jv; e.vy *= ram / jv; e.vz *= ram / jv;
@@ -725,25 +745,30 @@ export class Ecosystem {
     }
     e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     // Hard constraints
-    const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
+    // sky Pokémon never go under: their floor is the swell itself, and no ceiling holds them down
+    const fy = e.species.skyOnly ? GAME.SURFACE_Y + 0.5 + e.species.size * 0.45 : floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
     // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
     // so the open-air suffocation drain can never touch them — EXCEPT the Lapras ferry, which
     // comes all the way up and out, and the amphibious riders perched on its shell
     const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.state === 'ferryDisembark' || e.aboardT > 0;
     const fer = this.ctx.ferry;
-    const top = leaping ? GAME.SURFACE_Y + GAME.MANTINE_LEAP.HEIGHT[1] + e.species.size   // airborne: the arc owns the height
+    const top = e.species.skyOnly ? Infinity
+      : leaping ? GAME.SURFACE_Y + GAME.MANTINE_LEAP.HEIGHT[1] + e.species.size   // airborne: the arc owns the height
       : !ferrying ? -Math.max(0.8, e.species.size * 0.45)
       : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
       : GAME.SURFACE_Y + e.species.size;
     if (e.y > top) { e.y = top; if (e.vy > 0) e.vy = 0; }
-    // splashdown: the leap ends when the body drops back under the swell — a short skid, then cruise
+    // splashdown: the leap ends when the body drops back under the swell — a short skid, then
+    // cruise (Mantine) or back to the group (a Mantyke that leapt with it)
     if (leaping && e.vy < 0 && e.y < GAME.SURFACE_Y - 0.6) {
-      e.state = 'wander'; e.stateT = 0;
+      const mantine = e.species.id === 'mantine';
+      e.state = mantine ? 'wander' : e.groupId >= 0 ? 'drift' : 'wander'; e.stateT = 0;
       // the next launch lands ~PERIOD after this one: the run-up (~7s) and the air time (~2.5s) count
-      e.t2 = Math.max(8, GAME.MANTINE_LEAP.PERIOD - 10) * (0.9 + this.rng.next() * 0.2);
-      e.vy *= 0.35; e.wakeT = 1.6;
-      this.events.push({ type: 'leap', entityId: e.id, phase: 'splash', x: e.x, z: e.z, size: e.species.size, height: e.hopH });
+      if (mantine) e.t2 = Math.max(8, GAME.MANTINE_LEAP.PERIOD - 10) * (0.9 + this.rng.next() * 0.2);
+      e.vy *= 0.35; e.wakeT = mantine ? 1.6 : 1.0;
+      e.leapWith = -1;
+      this.events.push({ type: 'leap', entityId: e.id, phase: 'splash', x: e.x, z: e.z, size: e.species.size, height: e.hopH, mantyke: mantine ? e.podN : 0 });
     }
     const r = Math.hypot(e.x, e.z);
     if (r > GAME.WORLD_RADIUS - 2) { const f = (GAME.WORLD_RADIUS - 2) / r; e.x *= f; e.z *= f; }
@@ -1016,7 +1041,8 @@ export class Ecosystem {
     const side = slot === 0 ? -1 : 1;
     const e = this.spawn({
       speciesId, role: 'partner', groupIndex: -1, ambient: true, zone: zoneAtSafe(p.x, p.z),
-      pos: { x: p.x + side * 2.2, y: p.y + 0.2, z: p.z - 1.2 },
+      // a sky Pokémon fights from the air: it hovers over the swell beside its trainer
+      pos: { x: p.x + side * 2.2, y: getSpecies(speciesId).skyOnly ? GAME.SURFACE_Y + 1.6 : p.y + 0.2, z: p.z - 1.2 },
     });
     const kit = companionMovesFor(speciesId);
     e.kitOverride = [kit[0].id, kit[1].id];

@@ -679,13 +679,15 @@ for (const levelId of [1, 2]) {
   let entered = false, vanished = false, minPass = Infinity, passAlt = 0;
   {
     const L = lightingAt(0.4);
-    for (let i = 0; i < 220 * 60 && !vanished; i++) { // roll (≤40s) + slow 130s crossing
+    for (let i = 0; i < 320 * 60 && !vanished; i++) { // roll (≤40s) + three slow passes (~200s), after whatever is already crossing
       sky.update(1 / 60, L, 0.4, 0, 0);
       for (const ev of sky.drainEvents()) {
-        if (ev.type === 'legendaryEnter') entered = true;
-        if (ev.type === 'legendaryVanish') vanished = true;
+        // a natural roll may already have a legendary crossing (bigger flocks draw the rng differently):
+        // only the forced Lugia counts, whatever else is in the sky when it is forced
+        if (ev.type === 'legendaryEnter' && ev.speciesId === 'lugia') entered = true;
+        if (ev.type === 'legendaryVanish' && ev.speciesId === 'lugia') vanished = true;
       }
-      if (sky.legendaryIdx >= 0) {
+      if (sky.legendaryIdx >= 0 && sky.birds[sky.legendaryIdx].speciesId === 'lugia') {
         const b = sky.birds[sky.legendaryIdx];
         const d = Math.hypot(b.x, b.z);
         if (d < minPass) { minPass = d; passAlt = b.y; }

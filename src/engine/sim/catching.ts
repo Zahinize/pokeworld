@@ -48,8 +48,8 @@ export function rollCatch(e: Entity, ball: BallId, rand: () => number = Math.ran
 }
 
 /** Resolve a capture attempt on a sky Pokémon (always at full vigor — no HP up there). */
-export function rollCatchFor(species: SpeciesConfig, ball: BallId, rand: () => number = Math.random): { success: boolean; p: number; shakes: number } {
-  const p = catchProbabilityFor(species, 1, ball);
+export function rollCatchFor(species: SpeciesConfig, ball: BallId, rand: () => number = Math.random, pMult = 1): { success: boolean; p: number; shakes: number } {
+  const p = Math.min(1, catchProbabilityFor(species, 1, ball) * pMult); // pMult: a shiny sky bird is harder to hold
   const success = rand() < p;
   return { success, p, shakes: shakesFor(p, success, rand) };
 }

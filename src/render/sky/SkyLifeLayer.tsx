@@ -75,7 +75,7 @@ interface Batch {
 const planeGeo = new THREE.PlaneGeometry(1, 1);
 const tmpM = new THREE.Matrix4();
 const flipMemo = new Map<number, number>();
-const MAX_BIRDS = 24;
+const MAX_BIRDS = 64; // three doubled flocks, three shiny flocks, the paddlers and a legendary
 
 function makeBatch(sheet: SpriteSheet, capacity: number): Batch {
   const geo = planeGeo.clone();
@@ -216,7 +216,9 @@ export function SkyLifeLayer() {
 
     // ensure batches (the ridden legendary draws from the same batches as wild birds)
     const counts = new Map<string, number>();
-    for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) counts.set(b.speciesId, (counts.get(b.speciesId) ?? 0) + 1); }
+    // a shiny draws from its shiny sheet once that has loaded (its ordinary sheet until then)
+    const keyOf = (b: { speciesId: string; shiny: boolean }) => (b.shiny && session.sheets.has(sheetKey(b.speciesId, 'shiny')) ? sheetKey(b.speciesId, 'shiny') : b.speciesId);
+    for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) { const k = keyOf(b); counts.set(k, (counts.get(k) ?? 0) + 1); } }
     // the mount uses its BACK sheet (you're on its back); falls back to front while it loads
     const ride = session.ride;
     const rideKey = ride ? (session.sheets.has(sheetKey(ride, 'back')) ? sheetKey(ride, 'back') : ride) : null;
@@ -238,7 +240,7 @@ export function SkyLifeLayer() {
     let drawn = 0;
     for (const b of sky.birds) {
       if (b.state === 'gone' || b.fade <= 0.01 || drawn >= MAX_BIRDS) continue;
-      const bt = batches.current.get(b.speciesId);
+      const bt = batches.current.get(keyOf(b));
       if (!bt || bt.mesh.count >= bt.capacity) continue;
       const i = bt.mesh.count++;
       drawn++;

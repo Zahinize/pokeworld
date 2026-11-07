@@ -111,6 +111,18 @@ function pickPointInZone(e: Entity, ctx: SimContext, minR: number, maxR: number,
 
 export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const s = e.species;
+  // a Mantyke picked for the pod leap: wait out its delay, then run and leap on its own, along
+  // its Mantine's heading — nothing else matters until it splashes down
+  if (e.leapDelay > 0) {
+    e.leapDelay -= dt;
+    if (e.leapDelay <= 0) {
+      const L = e.leapWith >= 0 ? ctx.byId.get(e.leapWith) : undefined;
+      const vx = L ? L.vx : e.vx, vz = L ? L.vz : e.vz, sp = Math.hypot(vx, vz);
+      const hx = sp > 0.05 ? vx / sp : Math.cos(e.phase), hz = sp > 0.05 ? vz / sp : Math.sin(e.phase);
+      startLeapRun(e, hx, hz, 25);
+    }
+  }
+  if (leapThink(e, ctx, dt, GAME.MANTYKE_LEAP.HEIGHT, GAME.MANTYKE_LEAP.RUN_SPEED_MULT)) return;
   const isSchool = g.kind === 'school' || g.kind === 'ambientSchool';
   const passive = !isSchool;
   accReset();
@@ -930,6 +942,47 @@ export function ferryRiders(f: Entity, ctx: SimContext): number {
   return n;
 }
 
+/** Start a leap: aim the run `dist` metres along (hx, hz), kept inside the reef. */
+export function startLeapRun(e: Entity, hx: number, hz: number, dist: number) {
+  let tx = e.x + hx * dist, tz = e.z + hz * dist;
+  const rr = Math.hypot(tx, tz), lim = GAME.WORLD_RADIUS - 12;
+  if (rr > lim) { tx *= lim / rr; tz *= lim / rr; }
+  e.target.x = tx; e.target.z = tz;
+  e.state = 'leapRun'; e.stateT = 0;
+  e.wakeT = 1.0;   // the bubbles start with the first stroke, not the next think
+}
+
+/** The leap, shared by Mantine and its Mantyke: the run-up (an accelerating dash along the surface,
+ *  bubbles streaming) and the launch (vertical speed solved for an apex `height` ABOVE the
+ *  waterline, from wherever the body leaves it). The integrate step owns the arc and the
+ *  splashdown. Returns true while the entity is mid-leap (the caller's normal behavior waits). */
+export function leapThink(e: Entity, ctx: SimContext, dt: number, height: [number, number], runMult: number): boolean {
+  void dt;
+  const s = e.species;
+  if (e.state === 'leapAir') {
+    e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;   // ballistic: hold course, no steering
+    return true;
+  }
+  if (e.state !== 'leapRun') return false;
+  accReset();
+  seek(e, e.target.x, GAME.SURFACE_Y + 1.0, e.target.z, 2.0, 1.0);
+  const speed = s.burst * (1 + (runMult - 1) * Math.min(1, e.stateT / 3));
+  e.wakeT = 1.0;
+  const atSurface = e.y > -Math.max(0.8, s.size * 0.45) - 0.3;   // pressed up against the clamp
+  const hold = 1.2 + (e.phase % 1) * 0.8;                          // each body's own beat before it commits
+  if ((atSurface && e.stateT > hold) || e.stateT > GAME.MANTINE_LEAP.RUN_MAX) {
+    const h = height[0] + ctx.rng() * (height[1] - height[0]);
+    e.vy = Math.sqrt(2 * GAME.MANTINE_LEAP.GRAVITY * (h + Math.max(0, GAME.SURFACE_Y - e.y)));
+    e.hopH = h; e.state = 'leapAir'; e.stateT = 0;
+    ctx.events.push({ type: 'leap', entityId: e.id, phase: 'launch', x: e.x, z: e.z, size: s.size, height: h, mantyke: s.id === 'mantine' ? e.podN : 0 });
+    e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
+    return true;
+  }
+  containWorld(e, 4);
+  commit(e, speed);
+  return true;
+}
+
 /** A Remoraid's slot under one of Mantine's wings, fixed per rider: left/right by id, staggered a
  *  little along and outward, just below the body — in the giant's heading frame. */
 export function wingSlotOf(L: Entity, e: Entity, out: Vec3): Vec3 {
@@ -1234,42 +1287,37 @@ export function giantThink(e: Entity, ctx: SimContext, dt: number) {
   if (s.id === 'kyogre' && pd < 55 && e.t1 === 0) { e.t1 = 1; ctx.events.push({ type: 'legendary', entityId: e.id }); }
 
   // Mantine's leap (lore): every ~30s it builds speed in a run at the surface and launches clear
-  // of the water, Remoraid clinging under its wings, then splashes down and carries on.
+  // of the water, Remoraid clinging under its wings, then splashes down and carries on. Some of
+  // its Mantyke leap with it — each on its own smaller run and arc, in a ragged sequence.
   if (s.id === 'mantine') {
-    const LEAP = GAME.MANTINE_LEAP;
-    if (e.state === 'leapAir') {
-      // ballistic: the integrate step owns the arc (gravity, re-entry) — hold course, no steering
-      e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
-      return;
-    }
-    if (e.state === 'leapRun') {
-      // the run-up: a long accelerating dash along the surface, bubbles boiling off the wings
-      seek(e, e.target.x, GAME.SURFACE_Y + 1.0, e.target.z, 2.0, 1.0);
-      speed = s.burst * (1 + (LEAP.RUN_SPEED_MULT - 1) * Math.min(1, e.stateT / 3));
-      e.wakeT = 1.0;
-      if ((e.y > -1.7 && e.stateT > 1.5) || e.stateT > LEAP.RUN_MAX) {
-        // launch: vertical speed for the chosen apex, forward speed carried through
-        const h = LEAP.HEIGHT[0] + ctx.rng() * (LEAP.HEIGHT[1] - LEAP.HEIGHT[0]);
-        e.vy = Math.sqrt(2 * LEAP.GRAVITY * (h + Math.max(0, GAME.SURFACE_Y - e.y)));   // apex h ABOVE the waterline, from wherever it launches
-        e.hopH = h; e.state = 'leapAir'; e.stateT = 0;
-        ctx.events.push({ type: 'leap', entityId: e.id, phase: 'launch', x: e.x, z: e.z, size: s.size, height: h });
-        e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
-        return;
-      }
-      containWorld(e, 4);
-      commit(e, speed);
-      return;
-    }
+    if (leapThink(e, ctx, dt, GAME.MANTINE_LEAP.HEIGHT, GAME.MANTINE_LEAP.RUN_SPEED_MULT)) return;
     if (e.t2 <= 0 && e.state !== 'breach') {
-      // the call to leap: aim the run 40m dead ahead
       const sp = Math.hypot(e.vx, e.vz);
       const hx = sp > 0.05 ? e.vx / sp : Math.cos(e.phase), hz = sp > 0.05 ? e.vz / sp : Math.sin(e.phase);
-      let tx = e.x + hx * 40, tz = e.z + hz * 40;
-      const rr = Math.hypot(tx, tz), lim = GAME.WORLD_RADIUS - 12;
-      if (rr > lim) { tx *= lim / rr; tz *= lim / rr; }
-      e.target.x = tx; e.target.z = tz;
-      e.state = 'leapRun'; e.stateT = 0;
-      e.wakeT = 1.0;   // the bubbles start with the first stroke, not the next think
+      startLeapRun(e, hx, hz, 40);
+      // the pod: usually 2-3 of its Mantyke, sometimes 3-4, sometimes none — each starts its own
+      // run on its own delay
+      const g = ctx.groups.find((gr) => gr.guardianId === e.id);
+      e.podN = 0;
+      if (g) {
+        const r = ctx.rng();
+        const want = r < 0.25 ? 0 : r < 0.7 ? 2 + Math.floor(ctx.rng() * 2) : 3 + Math.floor(ctx.rng() * 2);
+        const cands: Entity[] = [];
+        for (const id of g.memberIds) {
+          const m = ctx.byId.get(id);
+          if (!m || m.species.id !== 'mantyke' || m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'scatter' || m.state === 'retaliate' || m.lured) continue;
+          if (len3(m.x - e.x, m.y - e.y, m.z - e.z) < 30) cands.push(m);
+        }
+        const ST = GAME.MANTYKE_LEAP.STAGGER;
+        const n = Math.min(want, cands.length), step = n > 1 ? (ST[1] - ST[0]) / n : 0;
+        e.podN = n;
+        for (let k = 0; k < n; k++) {
+          const i = Math.floor(ctx.rng() * cands.length);
+          const m = cands[i]; cands[i] = cands[cands.length - 1]; cands.pop();
+          // evenly spaced slots inside the stagger window, each jittered — one after another, never together
+          m.leapWith = e.id; m.leapDelay = ST[0] + step * k + ctx.rng() * Math.max(0.15, step * 0.6);
+        }
+      }
     }
   }
 

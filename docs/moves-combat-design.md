@@ -58,10 +58,11 @@ New module `src/data/moves.ts`:
 
 ```ts
 type MoveStyle = 'bubbles' | 'jet' | 'beam' | 'darts' | 'ink' | 'ring' | 'crescent'
-               | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning';
+               | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning'
+               | 'swoop' | 'wind';   // sky: wing-first dive strike · travelling whirl of wind
 
 interface MoveEffect {
-  type: 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal';
+  type: 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'push';  // push: blown back (m/s, s)
   magnitude: number;      // fraction (0.3 = 30%) or heal fraction of max HP
   duration: number;       // seconds (heal: applied over duration)
   chance?: number;        // secondary effects on damage moves (e.g. 0.2 stun)
@@ -76,6 +77,7 @@ interface MoveConfig {
   cooldown: number;                   // 3 | 5 | 7 seconds
   range: number;                      // metres; 'melee'/'dash' styles close distance first
   style: MoveStyle;
+  airborneMult?: number;              // damage × vs a target above the waterline (Gust ×2)
   color: string;                      // projectile/FX tint
   chargeTime?: number;                // wind-up seconds for big moves (0.4–0.5)
   effect?: MoveEffect;
@@ -172,6 +174,71 @@ Legend: **D** damage / **U** utility · **Ph** physical / **Sp** special · powe
 Kit-rule audit: every row has ≥1 **D**; no row is U+U. 25 species carry a utility and therefore have a
 companion replacement; the other 15 kits are used as-is by companions.
 
+### Sky Pokémon (redesign in progress)
+
+Sky kits fire in companion duels, legendary rampages and retaliation against the trainer's balls. The
+three shared Flying moves were rebuilt first from their canon descriptions and the anime/game references
+(white-blazing wings on a diving bird · white wind strands off beating wings whirling round the foe ·
+a volley of spinning blue-white air discs bursting into a cyan sphere):
+
+| Move | Spec | Canon → design |
+|---|---|---|
+| Wing Attack | D·Ph·60·3s·`swoop` 9m | "struck with large, imposing wings spread wide" → the wings blaze pure white and the bird dives wing-first; the dive is the ram (full-speed surge, speed-line wake, white impact) |
+| Gust | D·Sp·40·3s·`wind` 10m · push 9 m/s 0.35s · ×2 vs airborne | "a gust of wind whipped up by wings and launched at the foe" → wind streams off both wings into a travelling whirl of white strands that wraps the target and blows it back (heavier bodies budge less) |
+| Air Slash | D·Sp·75·5s·`crescent` 11m · 30% stun 0.8s | "a blade of air that slices even the sky; may make the target flinch" → a volley of four spinning saw-edged discs (white hub, blue rim) in a staggered line, bursting into a glittering cyan sphere; the flinch is a short stun |
+
+**Where sky kits fire** (`src/engine/sky/SkyCombat.ts`). Birds are not reef entities, so each attacker
+gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), and birds can be targets
+(`MoveTarget {kind:'sky'}` → `skyBody` / `damageSky`). Three triggers:
+- **Ball retaliation** — a Poké Ball connecting with a sky Pokémon sends its whole group (flock, or every
+  Ducklett) after the trainer for `RETALIATE_DURATION` 10 s: they come down to `RETALIATE_ALT` 3.5 m,
+  circle at `RETALIATE_ORBIT_R` 7 m and fire whatever is ready, throttled group-wide to one cast per
+  `RETALIATE_CAST_GAP` 1.2 s (~13 HP/s on a 100 HP trainer). Diving below `RETALIATE_MAX_DEPTH` −3.5 m
+  puts the trainer out of reach — they circle and wait. The struck bird stays in the ball's grip.
+- **Rampage defence** — a rampaging legendary's blast wounding a sky Pokémon sends its group at the
+  legendary for the rest of the rampage. Their damage is scaled by `DEFEND_LEGENDARY_DMG_MULT` 0.5 with no
+  floor: a big enough flock CAN bring the legend down (toast "The flock brought down X!", a death, not a
+  catch). The legend fights back: its own stand-in casts its kit at the nearest attacker whenever ready,
+  with cooldowns × `LEGENDARY_COUNTER_CD_MULT` 0.5, on top of its area blasts — birds it kills are
+  replaced by `FLOCK_REFILL`.
+- **Reef raid** — every dive-hunt splash becomes a raid. Dives are a headline behaviour, so they are
+  frequent and aggressive: `DIVE.PER_MINUTE` gives each flock six dives a minute (Wingull, Pelipper,
+  Swanna; three for anything else), jittered ±30 %, first dive 4–10 s after the flock settles, and a flock
+  with nobody free to dive retries a second later. A trainer within `DIVE.AT_TRAINER_R` 70 m of the diving
+  bird is the dive's target half the time (`AT_TRAINER_CHANCE`); otherwise the nearest schooling guardian
+  in range (`SkyLife.diveSpots`, fed by the session from the reef's guardians) — the splash lands
+  `AT_TRAINER_OFFSET` 3–8 m beside the target, so raids start on the trainer or on a school. Flocks are
+  doubled (`FLOCKS` counts: Wingull 8–12, Pelipper 4–6, Swanna 6–8), plus three **shiny flocks** (Wingull 5
+  with 2 shiny, Pelipper 6 with 2, Swanna 3 with 1; `MAX_BIRDS` 64 in the renderer). A shiny (`SKY.SHINY`)
+  has twice the HP and Attack, a third of the catch odds, dives half again as often, always goes for a
+  trainer in range, raids half again as long and only breaks off under 30 % HP; it draws from its shiny
+  sheet and is its own collection entry. The bird stays under for `RAID.DURATION` 3–5 s, goes down into
+  the coral (`RAID.MAX_DEPTH` 28 m — twice the original 14; the reef lives 4–30 m down) after whatever is within `RAID.RADIUS` 18 m (reef Pokémon, the trainer — who counts
+  `RAID.TRAINER_PULL` 6 m closer; a duel in progress pulls it in via `RAID.DUEL_PULL`), and
+  casts every `RAID.CAST_GAP` 0.9 s. Its stand-in can be hit back (`CombatHost.damageExternal` → the bird):
+  every hit it lands provokes its victim at `RAID.PROVOKE` 95 %, outside the usual retaliation window cap,
+  so nothing stands there like a dummy (companions draw fire without locking a duel). The moment its HP drops under
+  `RAID.FLEE_HP` 60 % (one solid reef hit takes about half a sea bird) — or its breath runs out — it bolts
+  for the sky through the dive's climb-out at its usual cruise. Once airborne it is out of the reef's reach
+  (its stand-in reads `removed`). A raid can still end badly against a family or a school volley; a bird
+  the reef kills is replaced from the horizon after `FLOCK_REFILL` 45–75 s, one the trainer catches is not.
+- **Speed** — nothing on the attack flies faster than cruise × `SORTIE_SPEED_MULT` 1.25 (`skyCruiseSpeed`:
+  flock orbit speed, Ducklett paddle, species speed for legendaries). The Wing Attack dive of a sky
+  Pokémon runs at that speed too, so its contact window stretches with the distance (≤ 2 s) instead of
+  teleporting the bird; the climb-out after a dive or raid is plain cruise, and so is the flight back to
+  the flock (the circling pursuit is clamped to cruise: a straggler cuts the corner, it never sprints).
+  Attack stats are untouched. The KO banner says "Sky Legendary" only for an actual legendary.
+- **Companions** — sky Pokémon can be picked for the party on Levels 3 and 4 (companion levels). A
+  flyer hovers 10 m ahead over the swell, never submerges, breathes air (no surface drain), stays visible
+  when the trainer surfaces, auto-engages sky birds like any surfaced companion, and strikes reef targets
+  from above (a Wing Attack over a submerged target connects when the bird is overhead).
+
+Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble ·
+Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
+Fire/Wing Attack · Yveltal Oblivion Wing/Wing Attack. The Move Dojo (`#arena`) fields sky Pokémon under a
+"Sky" group: the stage rises to the waterline (dummy surfaced, trainer just under the swell, the bird
+hovering 8 m ahead at flock render scale) so every sky move can be reviewed against Dondozo.
+
 ---
 
 ## 5. Move animations — smooth & anime-inspired
@@ -188,6 +255,8 @@ Every cast reads as **anticipation → travel → impact**, like a TV-anime exch
    - `ink` — lobbed glob (arc) that bursts into an expanding dark veil
    - `dash` — the caster itself lunges with afterimages and a wake line
    - `geyser` / `lightning` / `burst` — column/radial one-shots at the target with soft shockwave ring
+   - `swoop` — the caster dives wing-first with blazing white wings and a wake of speed lines (Wing Attack)
+   - `wind` — a whirl of white wind strands streaming off the wings, wrapping the target on landing (Gust)
    - `motes` — notes/hearts/sparkles that drift onto the target (utilities)
 3. **Impact**: target squash-flash (reuses `flashT`), radial burst in the move tint, soft screen-space
    ripple when within 12 m of the camera, floating combat number (§6).

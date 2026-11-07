@@ -7,9 +7,11 @@ import { SPECIES_LIST } from './species';
 
 export type MoveStyle =
   | 'bubbles' | 'jet' | 'beam' | 'darts' | 'ink' | 'ring' | 'crescent'
-  | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning';
+  | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning'
+  // sky moves: a wing-first dive strike, and a travelling whirl of wind
+  | 'swoop' | 'wind';
 
-export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'conceal' | 'freeze';
+export type MoveEffectType = 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'conceal' | 'freeze' | 'push';
 
 export interface MoveEffect {
   type: MoveEffectType;
@@ -43,6 +45,8 @@ export interface MoveConfig {
   cooldown: number;
   range: number;
   style: MoveStyle;
+  /** Damage multiplier against a target above the waterline (Gust's canon double power on flyers). */
+  airborneMult?: number;
   /** Projectile speed override (m/s) — e.g. Hydro Pump extends as a near-instant lance. */
   projSpeed?: number;
   color: string;
@@ -82,7 +86,10 @@ export const MOVES: Record<string, MoveConfig> = {
   pinMissile: M({ id: 'pinMissile', type: 'bug', name: 'Pin Missile', desc: 'Fires a barrage of nine sharp pins like missiles.', kind: 'damage', category: 'physical', power: 50, cooldown: 3, range: 10, style: 'darts', projSpeed: 32, color: '#93c5fd' }),
   waterGun: M({ id: 'waterGun', type: 'water', name: 'Water Gun', desc: 'Squirts a quick jet of water.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 11, style: 'jet', projSpeed: 34, color: '#7dd3fc' }),
   octazooka: M({ id: 'octazooka', type: 'water', name: 'Octazooka', desc: 'Sprays ink that can leave the target blinded.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 11, style: 'ink', color: '#475569', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.3 } }),
-  airSlash: M({ id: 'airSlash', type: 'flying', name: 'Air Slash', desc: 'Launches a blade of compressed air.', kind: 'damage', category: 'special', power: 75, cooldown: 5, range: 11, style: 'crescent', color: '#e2e8f0' }),
+  // Canon: "attacks with a blade of air that slices even the sky. May also make the target flinch."
+  // Per the anime reference: a volley of spinning blue-white discs of compressed air (Unfezant),
+  // bursting into a sparkling sphere on the foe (Togekiss). The flinch is a short stun.
+  airSlash: M({ id: 'airSlash', type: 'flying', name: 'Air Slash', desc: 'Attacks with spinning blades of air that slice even the sky. May also make the foe flinch.', kind: 'damage', category: 'special', power: 75, cooldown: 5, range: 11, style: 'crescent', projSpeed: 27, color: '#bae6fd', effect: { type: 'stun', chance: 0.3, magnitude: 1, duration: 0.8 } }),
   dragonPulse: M({ id: 'dragonPulse', type: 'dragon', name: 'Dragon Pulse', desc: 'A shockwave of draconic energy from the mouth.', kind: 'damage', category: 'special', power: 85, cooldown: 5, range: 12, style: 'ring', color: '#2dd4bf' }),
   signalBeam: M({ id: 'signalBeam', type: 'bug', name: 'Signal Beam', desc: 'A strange, sinister beam of shimmering light.', kind: 'damage', category: 'special', power: 60, cooldown: 5, range: 10, style: 'beam', color: '#f0abfc' }),
   // The aqua cannon BUILDS around the body for a full second — then the Pokémon fires
@@ -99,7 +106,9 @@ export const MOVES: Record<string, MoveConfig> = {
   originPulse: M({ id: 'originPulse', type: 'water', name: 'Origin Pulse', desc: 'A charged barrage of primordial water orbs.', kind: 'damage', category: 'special', power: 110, cooldown: 5, range: 14, style: 'beam', color: '#60a5fa', chargeTime: 0.5 }),
   thunder: M({ id: 'thunder', type: 'electric', name: 'Thunder', desc: 'Calls a massive lightning strike that can stun.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 13, style: 'lightning', color: '#fde047', effect: { type: 'stun', magnitude: 1, duration: 1.5, chance: 0.2 } }),
   silverWind: M({ id: 'silverWind', type: 'bug', name: 'Silver Wind', desc: 'A gust of powdery scales carried on the current.', kind: 'damage', category: 'special', power: 60, cooldown: 5, range: 11, style: 'motes', color: '#e2e8f0' }),
-  wingAttack: M({ id: 'wingAttack', type: 'flying', name: 'Wing Attack', desc: 'Strikes with wide, sweeping fins.', kind: 'damage', category: 'physical', power: 60, cooldown: 3, range: 2.5, style: 'melee', color: '#bae6fd' }),
+  // Canon: "the foe is struck with large, imposing wings spread wide." Per the anime reference
+  // (Taillow, Charizard): the wings blaze pure white and the bird DIVES, striking wing-first.
+  wingAttack: M({ id: 'wingAttack', type: 'flying', name: 'Wing Attack', desc: 'Dives at the foe and strikes with large, imposing wings spread wide.', kind: 'damage', category: 'physical', power: 60, cooldown: 3, range: 9, style: 'swoop', color: '#f0f9ff' }),
   round: M({ id: 'round', type: 'normal', name: 'Round', desc: 'A song fired as a wave of sound.', kind: 'damage', category: 'special', power: 60, cooldown: 5, range: 10, style: 'ring', color: '#fca5a5' }),
   mudShot: M({ id: 'mudShot', type: 'ground', name: 'Mud Shot', desc: 'Hurls a jet of sticky mud at the target.', kind: 'damage', category: 'special', power: 55, cooldown: 3, range: 9, style: 'jet', color: '#a16207' }),
   wakeUpSlap: M({ id: 'wakeUpSlap', type: 'fighting', name: 'Wake-Up Slap', desc: 'A sharp slap that snaps the foe to attention.', kind: 'damage', category: 'physical', power: 70, cooldown: 5, range: 2.5, style: 'melee', color: '#fda4af' }),
@@ -115,7 +124,10 @@ export const MOVES: Record<string, MoveConfig> = {
   muddyWater: M({ id: 'muddyWater', type: 'water', name: 'Muddy Water', desc: 'A churning wave of muddy water crashes over the target.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 11, style: 'burst', color: '#92764e', effect: { type: 'blind', magnitude: 1, duration: 2, chance: 0.2 } }),
   crabhammer: M({ id: 'crabhammer', type: 'water', name: 'Crabhammer', desc: 'Slams down a massive pincer like a war hammer.', kind: 'damage', category: 'physical', power: 90, cooldown: 5, range: 2.5, style: 'melee', color: '#fb923c' }),
   // Sky-Pokémon kits (they never battle in the reef; numbers clone already-validated profiles)
-  gust: M({ id: 'gust', type: 'flying', name: 'Gust', desc: 'Whips up a sharp squall of wind.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 10, style: 'ring', color: '#e2e8f0' }),
+  // Canon: "a gust of wind is whipped up by wings and launched at the foe" — double power on an
+  // airborne target. Per the reference (Pidgeotto, Let's Go): white wind streams off the beating
+  // wings, whirls across, and wraps the foe in ragged strands that blow it back.
+  gust: M({ id: 'gust', type: 'flying', name: 'Gust', desc: 'Whips up a gust of wind with its wings and launches it at the foe, blowing it back. Hits flyers twice as hard.', kind: 'damage', category: 'special', power: 40, cooldown: 3, range: 10, style: 'wind', airborneMult: 2, color: '#f8fafc', effect: { type: 'push', magnitude: 9, duration: 0.35 } }),
   aeroblast: M({ id: 'aeroblast', type: 'flying', name: 'Aeroblast', desc: 'A vortex of compressed air fired like a cannon.', kind: 'damage', category: 'special', power: 110, cooldown: 7, range: 14, style: 'beam', color: '#bfefff', chargeTime: 0.4 }),
   sacredFire: M({ id: 'sacredFire', type: 'fire', name: 'Sacred Fire', desc: 'Mystical golden flames that purify what they touch.', kind: 'damage', category: 'special', power: 65, cooldown: 5, range: 12, style: 'beam', color: '#ffb27a' }),
   oblivionWing: M({ id: 'oblivionWing', type: 'flying', name: 'Oblivion Wing', desc: 'A crimson beam that drinks the life it strikes.', kind: 'damage', category: 'special', power: 90, cooldown: 7, range: 13, style: 'beam', color: '#c026d3' }),
