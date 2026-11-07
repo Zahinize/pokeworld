@@ -19,6 +19,14 @@ export const COMBAT = {
   /** Max retaliations per entity per window (anti-chaos). */
   RETALIATE_WINDOW: 10,
   RETALIATE_MAX_IN_WINDOW: 2,
+  /** Fury — a reef Pokémon fighting a SKY raider: +50% Attack and HP for the fight (never vs the trainer). */
+  FURY: { ATK_MULT: 1.5, HP_MULT: 1.5, DURATION: 12, FIGHT_DURATION: 6 },
+  /** The trainer: every reef Pokémon, whatever its behaviour, answers a catch attempt or a close
+   *  approach — no roll, no window cap; approach retaliation repeats every COOLDOWN seconds. */
+  TRAINER_HOSTILITY: { PROXIMITY_R: 7, COOLDOWN: 6 },
+  /** Reef pressure: wild KOs in the last WINDOW s, over REF, cut every respawn/reinforcement delay by
+   *  up to MAX_CUT; solo wilds (no school, no objective) come back after SOLO_RESPAWN s × the cut. */
+  KO_PRESSURE: { WINDOW: 60, REF: 4, MAX_CUT: 0.75, SOLO_RESPAWN: 90 },
 
   /** Player. */
   PLAYER_MAX_HP: 100,

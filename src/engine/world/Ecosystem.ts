@@ -47,6 +47,8 @@ export class Ecosystem {
   private reinforceAcc = 0;
   private pendingReinforce = new Map<string, number>();
   private pendingRespawn: { at: number; speciesId: string; zone: ZoneId }[] = [];
+  /** Sim times of recent wild KOs — the reef's losses drive how fast it refills (COMBAT.KO_PRESSURE). */
+  private koTimes: number[] = [];
   private hpOf: (speciesId: string) => number;
   moves!: MoveSystem;
   /** Session hook: apply damage to the player (set by GameSession; no-op headless). */
@@ -148,7 +150,7 @@ export class Ecosystem {
       atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
-      retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
+      retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
@@ -182,7 +184,7 @@ export class Ecosystem {
     // Wild retaliation vs the attacker (design §7) — predators fight back too when wilds strike them,
     // and a sky raider's stand-in is fair game like anything else
     const src = this.byId.get(sourceId) ?? this.externalCaster(sourceId);
-    if (src && (t.state as EntityState) !== 'ko' && t.behavior !== 'giant' && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back
+    if (src && (t.state as EntityState) !== 'ko' && (t.behavior !== 'giant' || sourceId <= -1000) && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back; giants answer sky raiders
     // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock;
     // a raiding bird is gone in seconds, so it draws fire without locking a duel)
     if (t.role === 'partner' && src && this.byId.has(src.id) && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
@@ -223,7 +225,7 @@ export class Ecosystem {
       if (m.state === 'leapRun' || m.state === 'leapAir') return;              // mid-leap: it lands first
       if (leaping && (m === root || m.species.id === 'remoraid')) return;      // carried riders too
       if (len3(m.x - victim.x, m.y - victim.y, m.z - victim.z) > 40) return;
-      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId;
+      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId; if (attackerId <= -1000) this.enrage(m);
       m.nextThink = this.time + n * 0.15;   // a ripple, not a volley
       n++;
     };
@@ -244,7 +246,7 @@ export class Ecosystem {
       const m = this.byId.get(id);
       if (!m || m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'retaliate') continue;
       if (len3(m.x - victim.x, m.y - victim.y, m.z - victim.z) > COMBAT.REVENGE_RADIUS) continue;
-      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId;
+      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = attackerId; if (attackerId <= -1000) this.enrage(m);
       m.nextThink = this.time + casters * COMBAT.REVENGE_STAGGER;
       casters++;
     }
@@ -279,19 +281,21 @@ export class Ecosystem {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
     if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
     const vsRaider = attackerId <= -1000; // a sky Pokémon under the reef: every hit it lands draws an answer
-    if (!vsRaider && t.retaliateN >= COMBAT.RETALIATE_MAX_IN_WINDOW) return;
+    const vsPlayer = attackerId === -2;   // the trainer: every reef Pokémon answers, whatever its temperament
+    const hostile = vsRaider || vsPlayer;
+    if (!hostile && t.retaliateN >= COMBAT.RETALIATE_MAX_IN_WINDOW) return;
     const s = t.species;
-    const vsPlayer = attackerId === -2;
     let p = vsPlayer
       ? COMBAT.RETALIATE_VS_PLAYER_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W
       : COMBAT.RETALIATE_VS_PREDATOR_BASE + s.aggression * COMBAT.RETALIATE_AGGRESSION_W - s.fear * COMBAT.RETALIATE_FEAR_W;
     if (vsPlayer && t.behavior === 'predator') p = COMBAT.PREDATOR_VS_PLAYER_CHANCE;
     if (this.ctx.ferry) p *= GAME.FERRY_TRUCE_MULT; // the ferry truce: the reef settles down to watch
     p = Math.min(0.9, Math.max(0.1, p));
-    if (vsRaider) p = Math.max(p, SKY.RAID.PROVOKE);
+    if (hostile) p = 1;
     if (this.rng.next() > p) return;
     t.retaliateN++;
     t.state = 'retaliate'; t.stateT = 0; t.retaliateTarget = attackerId;
+    if (vsRaider) this.enrage(t);
     t.vx *= 0.3; t.vy *= 0.3; t.vz *= 0.3;
     t.nextThink = this.time; // think immediately
   }
@@ -308,8 +312,12 @@ export class Ecosystem {
     if (t.role === 'partner') { this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id }); }
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
     if (t.isBoss) { this.events.push({ type: 'bossDefeated', entityId: t.id, speciesId: t.species.id, how: 'ko', shiny: t.isShiny }); return; }
-    // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes
-    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: t.species.id, zone: t.zone });
+    if (t.role !== 'partner') this.koTimes.push(this.time); // the reef's losses: the faster they fall, the faster they come back
+    const mul = this.respawnMul();
+    // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes (less under pressure)
+    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone });
+    // Solo wilds with no school or objective to refill them come back too (never the ferry Lapras)
+    else if (t.role !== 'partner' && t.groupId < 0 && !t.objectiveId && t.species.id !== 'lapras') this.pendingRespawn.push({ at: this.time + COMBAT.KO_PRESSURE.SOLO_RESPAWN * mul, speciesId: t.species.id, zone: t.zone });
   }
 
   /** Begin a capture attempt: the Pokémon freezes in place while the ball shakes. */
@@ -332,6 +340,7 @@ export class Ecosystem {
   /** Capture failed: the Pokémon breaks out and bolts — and may turn its moves on the trainer. */
   breakOut(e: Entity) {
     if (e.state !== 'captureAttempt') return;
+    e.state = 'wander'; e.stateT = 0; // out of the ball — the retaliation roll refuses a Pokémon still "in" one
     this.maybeRetaliate(e, -2);
     if ((e.state as EntityState) === 'retaliate') return; // stands its ground for a beat, then the AI resumes
     e.state = 'flee'; e.stateT = 0; e.threatId = -2; e.threatT = 0;
@@ -443,6 +452,9 @@ export class Ecosystem {
       if (e.aboardT > 0) e.aboardT -= dt;
       if (e.frozenT > 0) e.frozenT -= dt;
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
+      if (e.furyT > 0) { e.furyT -= dt; if (e.furyT <= 0 && e.furyHp > 0) { e.maxHp -= e.furyHp; e.hp = Math.min(e.hp, e.maxHp); e.furyHp = 0; } }
+      if (e.proxT > 0) e.proxT -= dt;
+      else if (this.trainerTooClose(e)) { e.proxT = COMBAT.TRAINER_HOSTILITY.COOLDOWN; this.maybeRetaliate(e, -2); }
       if (e.atkStage !== 1 && this.time >= e.atkStageUntil) e.atkStage = 1;
       if (e.defStage !== 1 && this.time >= e.defStageUntil) e.defStage = 1;
       if (e.hotT > 0) {
@@ -645,11 +657,44 @@ export class Ecosystem {
     e.maxSpeed = speed;
   }
 
+  /** Fury: fighting a sky raider, a reef Pokémon gets +50% Attack and HP for the fight (COMBAT.FURY). */
+  enrage(e: Entity) {
+    const F = COMBAT.FURY;
+    if (e.furyHp <= 0) {
+      const bonus = Math.round(e.maxHp * (F.HP_MULT - 1));
+      e.maxHp += bonus; e.hp += bonus; e.furyHp = bonus;
+      this.events.push({ type: 'fury', entityId: e.id, speciesId: e.species.id });
+    }
+    e.furyT = F.DURATION;
+    e.atkStage = Math.max(e.atkStage, F.ATK_MULT); e.atkStageUntil = Math.max(e.atkStageUntil, this.time + F.DURATION);
+  }
+
+  /** The trainer has come close: a wild answers (any behaviour), unless it is busy with something that
+   *  must not break — a ferry, a ride, a leap, a lure, a feed, the nurse's rounds, a capture, a duel. */
+  private trainerTooClose(e: Entity): boolean {
+    if (e.role === 'partner' || e.isBoss || e.id === this.immortalId || e.lured || e.rideK > 0 || e.aboardT > 0 || e.leapWith >= 0) return false;
+    const st = e.state;
+    if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'retaliate' || st === 'duel' || st === 'faint' || st === 'removed'
+      || st === 'feed' || st === 'lured' || st === 'support' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapRun' || st === 'leapAir') return false;
+    const p = this.player;
+    return len3(p.x - e.x, p.y - e.y, p.z - e.z) < COMBAT.TRAINER_HOSTILITY.PROXIMITY_R + e.species.size * 0.5;
+  }
+
+  /** How far the reef's recent losses have pushed it: 0 calm … 1 under siege (COMBAT.KO_PRESSURE). */
+  get koPressure(): number {
+    const K = COMBAT.KO_PRESSURE;
+    while (this.koTimes.length && this.koTimes[0] < this.time - K.WINDOW) this.koTimes.shift();
+    return Math.min(1, this.koTimes.length / K.REF);
+  }
+  /** Respawn/reinforcement delays shrink with pressure: ×1 calm, ×(1 − MAX_CUT) under siege. */
+  private respawnMul(): number { return 1 - COMBAT.KO_PRESSURE.MAX_CUT * this.koPressure; }
+
   /** Face the attacker, fire the best ready move, then resume normal behavior (design §7). */
   private retaliateThink(e: Entity, dt: number) {
     const tgt = e.retaliateTarget;
+    const vsRaider = tgt <= -1000; // vs a sky raider it keeps fighting until the window closes, not one cast
     const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt) ?? this.externalCaster(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
-    if (!pos || e.stateT > 3.5) {
+    if (!pos || e.stateT > (vsRaider ? COMBAT.FURY.FIGHT_DURATION : 3.5)) {
       e.state = e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
       e.stateT = 0; e.threatId = tgt; e.threatT = 0;
       if (e.groupId >= 0) { const g = this.groups[e.groupId]; g.alarm = 1; if (g.threatId < 0) g.threatId = tgt; }
@@ -672,7 +717,7 @@ export class Ecosystem {
         const slot = this.moves.pickMove(e, d, false, vsPlayer);
         if (slot !== -1) {
           this.moves.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt });
-          e.stateT = 10; // resolved on next think via the timeout branch
+          if (!vsRaider) e.stateT = 10; // resolved on next think via the timeout branch
         }
       }
     }
@@ -804,7 +849,9 @@ export class Ecosystem {
     // Ambient life migrates back in when a school has been thinned out by predators
     for (const g of this.groups) {
       if (g.kind !== 'ambientSchool' && g.kind !== 'drifters') continue;
-      if (g.initialSize >= 2 && g.memberIds.length < Math.ceil(g.initialSize / 2) && !this.pendingReinforce.has(`group-${g.id}`)) this.pendingReinforce.set(`group-${g.id}`, this.time + 40);
+      // under pressure a school refills from the first loss, and sooner
+      const keep = Math.ceil(g.initialSize * (0.5 + 0.5 * this.koPressure));
+      if (g.initialSize >= 2 && g.memberIds.length < keep && !this.pendingReinforce.has(`group-${g.id}`)) this.pendingReinforce.set(`group-${g.id}`, this.time + 40 * this.respawnMul());
     }
     for (const o of this.objectives) {
       if (o.kind === 'boss') continue;
@@ -815,7 +862,7 @@ export class Ecosystem {
         : this.aliveForObjective(o.id);
       const key = o.id;
       if ((needMembers > have.members || (needGuardian && !have.guardian)) && !this.pendingReinforce.has(key)) {
-        this.pendingReinforce.set(key, this.time + GAME.REINFORCE_DELAY);
+        this.pendingReinforce.set(key, this.time + GAME.REINFORCE_DELAY * this.respawnMul());
       }
     }
   }

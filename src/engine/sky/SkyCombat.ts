@@ -56,7 +56,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
     stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0, concealT: 0, concealDur: 0, veilT: 0, veilDur: 0,
     castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0,
     leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0,
-    frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0, retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1,
+    frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0, retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
     duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: 0, isBoss: false, isShiny: false, pairBossId: -1,
   };
   return shim as unknown as Entity;

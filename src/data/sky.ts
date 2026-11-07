@@ -157,9 +157,6 @@ export const SKY = {
     FLEE_HP: 0.6,
     /** Seconds between its casts while under (its own move cooldowns still apply). */
     CAST_GAP: 0.9,
-    /** A reef Pokémon it hits fights back this reliably (the usual retaliation roll is 10–90 %, and
-     *  capped per window; a raid is over in seconds, so every hit must draw an answer). */
-    PROVOKE: 0.95,
   },
 
   // ---- sparkles ----

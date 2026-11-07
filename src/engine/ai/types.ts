@@ -108,6 +108,10 @@ export interface Entity {
   kbx: number; kby: number; kbz: number; kbT: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
+  /** Fury vs a sky raider: seconds left, and the HP bonus to take back when it ends. */
+  furyT: number; furyHp: number;
+  /** Trainer-proximity retaliation cooldown. */
+  proxT: number;
   /** Who to retaliate against (entity id or -2 for player). */
   retaliateTarget: number;
 
@@ -184,6 +188,7 @@ export type EcoEvent =
   | { type: 'ferryReply'; entityId: number; delay: number }
   | { type: 'ferryHop'; entityId: number; x: number; y: number; z: number; size: number; off: boolean }
   | { type: 'familyDefend'; rootId: number; attackerId: number; count: number }
+  | { type: 'fury'; entityId: number; speciesId: string }
   | { type: 'leap'; entityId: number; phase: 'launch' | 'splash'; x: number; z: number; size: number; height: number; mantyke: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }

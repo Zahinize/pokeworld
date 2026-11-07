@@ -216,7 +216,7 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   the coral (`RAID.MAX_DEPTH` 28 m — twice the original 14; the reef lives 4–30 m down) after whatever is within `RAID.RADIUS` 18 m (reef Pokémon, the trainer — who counts
   `RAID.TRAINER_PULL` 6 m closer; a duel in progress pulls it in via `RAID.DUEL_PULL`), and
   casts every `RAID.CAST_GAP` 0.9 s. Its stand-in can be hit back (`CombatHost.damageExternal` → the bird):
-  every hit it lands provokes its victim at `RAID.PROVOKE` 95 %, outside the usual retaliation window cap,
+  every hit it lands provokes its victim, no roll, and the victim fights it with FURY (§7 hostility rules),
   so nothing stands there like a dummy (companions draw fire without locking a duel). The moment its HP drops under
   `RAID.FLEE_HP` 60 % (one solid reef hit takes about half a sea bird) — or its breath runs out — it bolts
   for the sky through the dive's climb-out at its usual cruise. Once airborne it is out of the reef's reach
@@ -309,6 +309,21 @@ Wild Pokémon is hit
   │     → P = 0.25 + aggression×0.5 : cast at the PLAYER before bolting
   └─ target of an active duel → §8 duel loop owns its casts
 ```
+**Hostility rules (the reef fights back).** Three overrides sit on top of the retaliation roll below:
+- **The trainer is always answered.** Every reef Pokémon, whatever its behaviour group (giants included),
+  retaliates with no roll and no window cap when a ball fails on it (`breakOut`) or when the trainer comes
+  within `TRAINER_HOSTILITY.PROXIMITY_R` 7 m (+ half its size), repeating every `COOLDOWN` 6 s while they
+  stay close. No stat boost vs the trainer. Pokémon busy with something that must not break are exempt:
+  a ferry (Lapras and riders), a leap, a lure, a feed, the nurse's rounds, a capture, a duel, bosses.
+- **Fury vs sky raiders.** A reef Pokémon hit by a sky raider's stand-in always answers, and gets
+  `COMBAT.FURY`: +50 % Attack (`atkStage`) and +50 % HP (added to `hp`/`maxHp`, taken back when it ends)
+  for `DURATION` 12 s, fighting for `FIGHT_DURATION` 6 s instead of one cast. Toast "X is enraged!".
+- **KO pressure.** Wild KOs in the last `KO_PRESSURE.WINDOW` 60 s over `REF` 4 give a pressure 0–1 that
+  cuts every respawn and reinforcement delay by up to `MAX_CUT` 75 % (predators 120 → 30 s, schools
+  40 → 10 s and refilling from the first loss, objectives 20 → 5 s). Solo wilds with no school or
+  objective — which never came back before — respawn after `SOLO_RESPAWN` 90 s × the cut (never the ferry
+  Lapras).
+
 Retaliation is a one-shot state (`retaliate`, ~1.2 s) inserted before the existing flee/scatter states; it
 never chains more than twice in 10 s per entity (anti-chaos guard).
 

@@ -72,6 +72,7 @@ export class GameSession {
   private rampageSurge = false;
   private flockDefendToastAt = 0;
   private raidToastAt = 0;
+  private furyToastAt = 0;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
@@ -1360,6 +1361,16 @@ export class GameSession {
                 this.familyToastCooldown = 25;
               }
             }
+          }
+          break;
+        }
+        case 'fury': {
+          // the reef fights back at a sky raider — +50% Attack and HP for the fight
+          const e = eco.byId.get(ev.entityId);
+          if (e && len3(e.x - p.x, e.y - p.y, e.z - p.z) < 40 && this.elapsed > this.furyToastAt) {
+            this.furyToastAt = this.elapsed + 15;
+            const sp = getSpecies(ev.speciesId);
+            store.pushToast({ kind: 'event', title: `${sp.name} is enraged!`, body: 'The reef fights back at the raider — half again the bite and the HP for this fight.', speciesId: sp.id, ttl: 4 });
           }
           break;
         }
