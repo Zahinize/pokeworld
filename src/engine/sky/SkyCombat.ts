@@ -58,6 +58,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
     leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0,
     frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0, retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
     duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: 0, isBoss: false, isShiny: false, pairBossId: -1,
+    baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
   };
   return shim as unknown as Entity;
 }
@@ -165,13 +166,19 @@ export class SkyCombat {
   /** A raider's victim: the closest thing in reach — a duel in progress pulls it in, the trainer counts too. */
   private pickVictim(b: SkyBird, player: Vec3): MoveTarget | null {
     const R = SKY.RAID.RADIUS;
+    // locked in a duel with a companion: that is its fight until one of them breaks
+    const s = this.shims.get(b.id);
+    if (s && s.duelWith !== -1) {
+      const p = this.eco.byId.get(s.duelWith);
+      if (p && p.state !== 'ko' && p.state !== 'removed' && p.duelWith === s.id) return { kind: 'entity', id: p.id };
+    }
     let best: MoveTarget | null = null, bestScore = Infinity;
     for (const e of this.eco.alive) {
       if (e.species.skyOnly || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'faint') continue;
       if (e.y < -SKY.RAID.MAX_DEPTH) continue;
       const d = Math.hypot(e.x - b.x, e.y - b.y, e.z - b.z);
       if (d > R) continue;
-      const score = d - (e.duelWith >= 0 ? SKY.RAID.DUEL_PULL : 0);
+      const score = d - (e.duelWith !== -1 ? SKY.RAID.DUEL_PULL : 0);
       if (score < bestScore) { bestScore = score; best = { kind: 'entity', id: e.id }; }
     }
     if (player.y > -SKY.RAID.MAX_DEPTH) {
@@ -193,7 +200,8 @@ export class SkyCombat {
     // mirror every stand-in onto its bird, and run the timers the ecosystem runs for its own
     for (const [birdId, s] of this.shims) {
       const b = this.sky.birds.find((x) => x.id === birdId);
-      if (!b) continue;
+      // caught, fallen or faded: nothing left to fight — a companion's duel with it ends ('gone')
+      if (!b || (b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'rampage' && b.state !== 'attacking' && b.state !== 'diving')) { s.state = 'removed'; s.duelWith = -1; continue; }
       s.hp = b.hp; s.maxHp = b.maxHp;
       if (s.mcd[0] > 0) s.mcd[0] -= dt;
       if (s.mcd[1] > 0) s.mcd[1] -= dt;

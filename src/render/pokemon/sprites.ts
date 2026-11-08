@@ -151,10 +151,18 @@ function releaseOnUpload(tex: THREE.Texture) {
 async function decode(speciesId: string, variant: SpriteVariant = 'front'): Promise<SpriteSheet> {
   const front = SPECIES[speciesId].sprite;
   const url = front.replace('/sprites/pokemon/', VARIANT_PATH[variant]);
-  const res = await fetch(url, { cache: 'force-cache' });
-  if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
-  const buf = await res.arrayBuffer();
-  const b = bake(buf);
+  // The HTTP cache is trusted first (force-cache), but never blindly: a sheet that was missing when first
+  // asked for leaves a cached miss behind (a 404, or the dev server's page served as 200) that would keep
+  // the sprite plain for good. If the cached body is not OK or does not decode, fetch past the cache once.
+  const fetchGif = async (mode: RequestCache) => {
+    const res = await fetch(url, { cache: mode });
+    if (!res.ok) throw new Error(`sprite ${speciesId} HTTP ${res.status}`);
+    return res.arrayBuffer();
+  };
+  let buf: ArrayBuffer = await fetchGif('force-cache').catch(() => new ArrayBuffer(0));
+  let b: Baked | null = null;
+  if (buf.byteLength) { try { b = bake(buf); } catch { b = null; } }
+  if (!b) { buf = await fetchGif('reload'); b = bake(buf); }
   const tex = new THREE.CanvasTexture(b.canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = false;
@@ -178,7 +186,9 @@ export function loadSpriteSheet(speciesId: string, variant: SpriteVariant = 'fro
   if (!p) {
     p = decode(speciesId, variant).catch((err) => {
       console.warn('[sprites] fallback for', key, err);
-      // missing variant → fall back toward the plain front sheet
+      // missing variant → fall back toward the plain front sheet — but never pin the failure: the next
+      // dive asks again (a sheet that lands on disk later, or a flaky fetch, must not stay plain for the session)
+      cache.delete(key);
       return variant !== 'front' ? loadSpriteSheet(speciesId, variant === 'shinyback' ? 'shiny' : 'front') : makeFallback(speciesId);
     });
     cache.set(key, p);

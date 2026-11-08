@@ -39,13 +39,13 @@ export const SKY = {
   DIVE: {
     /** Dives per minute per flock — the raid is a headline behaviour, so it must be seen: the three
      *  sea-bird flocks dive four times a minute, anything else three. */
-    PER_MINUTE: { default: 3, wingull: 6, pelipper: 6, swanna: 6 } as Record<string, number>,
+    PER_MINUTE: { default: 3, wingull: 4, pelipper: 4, swanna: 4 } as Record<string, number>,
     /** Aggression: a trainer within this range of the diving bird is the dive's target — the raid
      *  starts on top of them, this far off (so the plunge itself is not a hit). */
     AT_TRAINER_R: 70,
     AT_TRAINER_OFFSET: [3, 8] as [number, number],
     /** ...for this share of dives; the rest go after the shallows as before. */
-    AT_TRAINER_CHANCE: 0.5,
+    AT_TRAINER_CHANCE: 0.3,
     /** Timing jitter on each gap (fraction of the gap), so dives never tick like a metronome. */
     JITTER: 0.3,
     /** The first dive after a flock settles comes within this many seconds. */
@@ -147,11 +147,14 @@ export const SKY = {
     MAX_DEPTH: 28,
     /** A duel in progress pulls it in: duelists count this many metres closer. */
     DUEL_PULL: 6,
+    /** A bird in the water is off its element: catch odds double against one that has dived into the
+     *  reef (the shiny penalty still applies on top). On L3/L4 companions duel it instead. */
+    CATCH_MULT: 2,
     /** Aggression: the trainer counts this many metres closer than any fish. */
     TRAINER_PULL: 6,
     /** Seconds between any two raider casts at the trainer, across every raider in the water: three
      *  doubled flocks diving six times a minute would otherwise land a hit a second (~60 HP/s). */
-    TRAINER_CAST_GAP: 2.0,
+    TRAINER_CAST_GAP: 4.0,
     /** It bolts for the sky the moment its HP falls under this fraction — it can feel it might die.
      *  Reef counter-hits take about half a sea bird's HP, so one solid answer is enough to send it home. */
     FLEE_HP: 0.6,

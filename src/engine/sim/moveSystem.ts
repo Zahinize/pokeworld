@@ -324,7 +324,7 @@ export class MoveSystem {
       return this.skyPos;
     }
     const e = this.host.byId.get(t.id) ?? this.host.externalCaster?.(t.id);
-    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint') return null; // fainted = catchable, not hittable
+    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint' || e.shelterT > 0) return null; // fainted = catchable, not hittable; sheltered = unreachable
     return e;
   }
 

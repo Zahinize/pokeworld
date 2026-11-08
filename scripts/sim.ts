@@ -497,10 +497,10 @@ for (const levelId of [1, 2]) {
   while (!events.includes('autoCaught') && guard++ < 90) {
     step(1);
     if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
-    if (wild.duelWith < 0 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
+    if (wild.duelWith === -1 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
       // duel broke (fled, regrouped, whatever the species' temperament) — re-engage.
       // A stray school defender may have hit the partner and pulled it into its own duel: break that first.
-      if (partner.duelWith >= 0 && partner.duelWith !== wild.id) (eco as any).endDuel(partner, 'separated');
+      if (partner.duelWith !== -1 && partner.duelWith !== wild.id) (eco as any).endDuel(partner, 'separated');
       stunBystanders();
       wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
       partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;

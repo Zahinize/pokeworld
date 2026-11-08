@@ -1,6 +1,7 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone, Heart } from '../components/icons';
+import { COMBAT } from '@/data/combatConfig';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -82,6 +83,17 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
       </div>
       {compact && <div className="expand-hint">Tap for mission</div>}
     </Panel>
+  );
+}
+
+/** Lifelines: four hearts under the mission label. Every KO dims one; losing the last wipes the level. */
+function Lifelines() {
+  const lives = useStore((s) => s.hud.lives);
+  const max = COMBAT.PLAYER_LIVES;
+  return (
+    <div className={`lifelines glass ${lives <= 1 ? 'last' : ''}`} title={`Lifelines: ${lives} of ${max}. Lose them all and the level starts over.`} aria-label={`${lives} of ${max} lifelines left`}>
+      {Array.from({ length: max }, (_, i) => <span key={i} className={`heart ${i < lives ? 'on' : 'off'}`}><Ic icon={Heart} size={16} /></span>)}
+    </div>
   );
 }
 
@@ -475,6 +487,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
       <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
         <div className="hud-top-left">
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
+          <Lifelines />
         </div>
         <StatusChips />
         <TutorialBanner />

@@ -64,6 +64,13 @@ export const GAME = {
   /** The generator keeps the Lapras within this of the trainer's start point (a far spawn would
    *  make that first climb a long crossing). */
   FERRY_SPAWN_NEAR_START: 55,
+  /** Nobody spawns within this many metres (horizontal) of the trainer's start — the reef answers a trainer
+ *  within TRAINER_HOSTILITY.PROXIMITY_R (7 m + half a body), so a school on the start point would attack at
+ *  once. Whole groups are moved out together; the first mission school waits just beyond the ring. */
+  PLAYER_START_CLEAR: 18,
+  /** A downed trainer's respawn spot keeps this far from every wild Pokémon (predators keep their own, larger
+ *  PLAYER_RESPAWN_SAFE_DIST). */
+  PLAYER_RESPAWN_CLEAR: 14,
   FERRY_FIRST_RISE_TIMEOUT: 40,
   FERRY_PERIOD: [40, 55] as [number, number],   // + climb + boarding + a long voyage ≈ a ferry every 2–2.5 minutes
   /** With nobody aboard it idles this long at the surface, then dives. */

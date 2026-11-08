@@ -133,6 +133,11 @@ export interface Entity {
   isShiny: boolean;
   /** Commander duo: this boss stays glued to its partner boss (Tatsugiri ↔ Dondozo). */
   pairBossId: number;
+  /** Commander duo (COMBAT.COMMANDER): Tatsugiri's bait drift (s left), hidden in the mouth (>0), exposed after a
+   *  stagger (s left), order cue (s left), next bait time; Dondozo's gulp (s left), next gulp time, fish eaten this
+   *  gulp, and the leaderless 'lost the plot' wander (s left). */
+  baitT: number; shelterT: number; exposeT: number; orderT: number; baitAt: number;
+  gulpT: number; gulpAt: number; gulpN: number; dumbT: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -206,6 +211,11 @@ export type EcoEvent =
   | { type: 'partnerDown'; entityId: number; speciesId: string }
   | { type: 'bossSpawn'; entityId: number; speciesId: string }
   | { type: 'bossCharge'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossOrder'; entityId: number; bossId: number }
+  | { type: 'bossAmbush'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossShelter'; entityId: number; inside: boolean }
+  | { type: 'bossGulp'; entityId: number; speciesId: string; eaten: string; healed: number }
+  | { type: 'bossHungry'; entityId: number; speciesId: string }
   | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught'; shiny: boolean };
 
 export interface PlayerSnapshot {

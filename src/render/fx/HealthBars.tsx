@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { GAME } from '@/data/gameConfig';
+import { COMMANDER } from '@/data/combatConfig';
 
 const VERT = /* glsl */ `
 attribute float aFrac; attribute float aWidth; attribute float aFade;
@@ -48,10 +49,10 @@ export function HealthBars() {
     if (!mesh || !eco) return;
     let n = 0;
     for (const e of eco.alive) {
-      if (e.hpBarT <= 0 || e.state === 'ko' || e.state === 'caught' || n >= cap) continue;
+      if (e.hpBarT <= 0 || e.state === 'ko' || e.state === 'caught' || e.shelterT > 0 || n >= cap) continue;
       m.makeTranslation(e.x, e.y + e.species.size * 0.62 + 0.25, e.z);
       mesh.setMatrixAt(n, m);
-      aFrac.array[n] = e.hp / e.maxHp;
+      aFrac.array[n] = e.baitT > 0 ? COMMANDER.BAIT_FAKE_HP : e.hp / e.maxHp; // a baiting Tatsugiri LOOKS nearly dead
       aWidth.array[n] = Math.min(2.2, Math.max(0.8, e.species.size * 0.9));
       aFade.array[n] = Math.min(1, e.hpBarT / 0.6) * (e.hpBarT > GAME.HEALTH_BAR_TTL - 0.2 ? (GAME.HEALTH_BAR_TTL - e.hpBarT) / 0.2 : 1);
       n++;

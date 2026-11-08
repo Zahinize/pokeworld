@@ -15,7 +15,7 @@ import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { SKY, skyPartnerScale } from '@/data/sky';
-import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT} from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, COMMANDER } from '@/data/combatConfig';
 import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -100,7 +100,13 @@ export class Ecosystem {
       events: this.events,
       player: this.player,
       damageAbs: (t, amount, sourceId) => this.damageAbs(t, amount, sourceId),
-      damagePlayer: (amount, casterId, moveId) => { this.events.push({ type: 'playerHit', casterId, moveId, damage: amount }); this.onPlayerDamage(amount, casterId, moveId); },
+      damagePlayer: (amount, casterId, moveId) => {
+        this.events.push({ type: 'playerHit', casterId, moveId, damage: amount });
+        this.onPlayerDamage(amount, casterId, moveId);
+        // a raiding bird that strikes the trainer is met by the nearest free companion (L3/L4)
+        const src = this.externalCaster(casterId);
+        if (src && this.raiderUnderReef(src) && src.duelWith === -1) { const p = this.nearestFreePartner(this.player.x, this.player.y, this.player.z, COMBAT.RAID_DUEL_ASSIST_R); if (p) this.startDuel(p, src); }
+      },
       rng: rngFn,
       externalCaster: (id) => this.externalCaster(id),
       skyBody: (id) => this.skyHooks?.body(id) ?? null,
@@ -163,6 +169,7 @@ export class Ecosystem {
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
+      baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -203,11 +210,17 @@ export class Ecosystem {
     // and a sky raider's stand-in is fair game like anything else
     const src = this.byId.get(sourceId) ?? this.externalCaster(sourceId);
     if (src && (t.state as EntityState) !== 'ko' && (t.behavior !== 'giant' || sourceId <= -1000) && t.id !== this.immortalId) this.maybeRetaliate(t, sourceId); // the dojo dummy never fights back; giants answer sky raiders
-    // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock;
-    // a raiding bird is gone in seconds, so it draws fire without locking a duel)
-    if (t.role === 'partner' && src && this.byId.has(src.id) && !src.isBoss && t.duelWith < 0 && src.duelWith < 0 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
+    // Companions auto-defend: getting hit locks a duel with the attacker (bosses brawl, never 1v1-lock).
+    // A sky raider under the reef is a duel opponent too (L3/L4): its stand-in mirrors the bird, so the
+    // companion circles and fires at the bird itself until it bolts for the sky.
+    if (t.role === 'partner' && src && (this.byId.has(src.id) || this.raiderUnderReef(src)) && !src.isBoss && t.duelWith === -1 && src.duelWith === -1 && (t.state as EntityState) !== 'ko') this.startDuel(t, src);
+    // …and a raider that strikes a reef Pokémon right next to a companion is answered by that companion
+    if (src && t.role !== 'partner' && this.raiderUnderReef(src) && src.duelWith === -1) {
+      const p = this.nearestFreePartner(t.x, t.y, t.z, COMBAT.RAID_DUEL_ASSIST_R);
+      if (p) this.startDuel(p, src);
+    }
     // A wild that strikes a companion gets dueled right back
-    if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith < 0 && src.duelWith < 0) this.startDuel(src, t);
+    if (src?.role === 'partner' && t.role !== 'partner' && t.behavior !== 'predator' && !t.isBoss && (t.state as EntityState) !== 'ko' && (t.state as EntityState) !== 'faint' && t.duelWith === -1 && src.duelWith === -1) this.startDuel(src, t);
     // Group revenge: a guardian-less group swarms any predator that attacks a member (design §7)
     if (src && src.behavior === 'predator' && t.groupId >= 0) {
       const g = this.groups[t.groupId];
@@ -272,6 +285,7 @@ export class Ecosystem {
 
   private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
     if (t.isBoss && !this.bossesActive) return; // dormant bosses cannot be harmed — challenge them first
+    if (t.shelterT > 0) return; // Tatsugiri in Dondozo's mouth: nothing reaches it
     t.hp = Math.max(t.id === this.immortalId ? 1 : 0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
@@ -319,9 +333,9 @@ export class Ecosystem {
   }
 
   knockOut(t: Entity, bySourceId = -1) {
-    if (t.duelWith >= 0) {
-      const other = this.byId.get(t.duelWith);
-      if (t.role === 'partner') { if (other) { other.duelWith = -1; if (other.state === 'duel') { other.state = 'flee'; other.stateT = 0; } } this.events.push({ type: 'duelEnd', partnerId: t.id, wildId: t.duelWith, reason: 'partnerDown' }); }
+    if (t.duelWith !== -1) {
+      const other = this.byId.get(t.duelWith) ?? this.externalCaster(t.duelWith); // a reef wild, or a raiding bird's stand-in
+      if (t.role === 'partner') { if (other) { other.duelWith = -1; if (other.state === 'duel') { other.state = other.id <= -1000 ? 'wander' : 'flee'; other.stateT = 0; } } this.events.push({ type: 'duelEnd', partnerId: t.id, wildId: t.duelWith, reason: 'partnerDown' }); }
       else if (other?.role === 'partner') this.endDuel(other, 'gone');
       t.duelWith = -1;
     }
@@ -471,6 +485,9 @@ export class Ecosystem {
       if (e.aboardT > 0) e.aboardT -= dt;
       if (e.frozenT > 0) e.frozenT -= dt;
       if (e.retaliateWindowT > 0) e.retaliateWindowT -= dt;
+      if (e.exposeT > 0) e.exposeT -= dt;
+      if (e.orderT > 0) e.orderT -= dt;
+      if (e.dumbT > 0) e.dumbT -= dt;
       if (e.furyT > 0) { e.furyT -= dt; if (e.furyT <= 0 && e.furyHp > 0) { e.maxHp -= e.furyHp; e.hp = Math.min(e.hp, e.maxHp); e.furyHp = 0; } }
       if (e.proxT > 0) e.proxT -= dt;
       else if (this.trainerTooClose(e)) { e.proxT = COMBAT.TRAINER_HOSTILITY.COOLDOWN; this.maybeRetaliate(e, -2); }
@@ -615,8 +632,8 @@ export class Ecosystem {
   private partnerThink(e: Entity, dt: number) {
     const p = this.player;
     // Duel: orbit the opponent and exchange moves automatically
-    if (e.duelWith >= 0) {
-      const w = this.byId.get(e.duelWith);
+    if (e.duelWith !== -1) {
+      const w = this.byId.get(e.duelWith) ?? this.externalCaster(e.duelWith); // a reef wild, or a raiding bird's stand-in
       if (!w || w.state === 'removed' || w.state === 'caught' || w.state === 'ko') { this.endDuel(e, 'gone'); return; }
       const d = len3(w.x - e.x, w.y - e.y, w.z - e.z);
       if (d > COMBAT.DUEL_BREAK_DIST) { this.endDuel(e, 'separated'); return; }
@@ -630,7 +647,7 @@ export class Ecosystem {
     // Commanded cast: chase the ordered target until the move is in range
     if (e.orderTarget >= 0 && e.orderMove !== -1) {
       const t = this.byId.get(e.orderTarget);
-      if (!t || t.state === 'removed' || t.state === 'caught' || t.state === 'ko' || t.state === 'captureAttempt') { e.orderTarget = -1; e.orderMove = -1; }
+      if (!t || t.state === 'removed' || t.state === 'caught' || t.state === 'ko' || t.state === 'captureAttempt' || t.shelterT > 0) { e.orderTarget = -1; e.orderMove = -1; }
       else {
         const kit = kitOf(e);
         const move = kit[e.orderMove];
@@ -784,6 +801,16 @@ export class Ecosystem {
         e.vx = e.dx = L.vx; e.vy = e.dy = L.vy; e.vz = e.dz = L.vz;
         e.aboardT = 0.5; e.wakeT = Math.max(e.wakeT, L.wakeT);
         return;   // fully scripted this frame — no clamps, no drift
+      }
+    }
+    // Tatsugiri sheltering in Dondozo's mouth: carried inside it every frame (the big fish integrates first)
+    if (e.shelterT > 0 && e.pairBossId >= 0) {
+      const D = this.byId.get(e.pairBossId);
+      if (D && D.state !== 'ko' && D.state !== 'removed' && D.state !== 'caught') {
+        const m = this.mouthOf(D, this.player, this.tmpMouth);
+        e.x = m.x; e.y = m.y; e.z = m.z;
+        e.vx = e.dx = D.vx; e.vy = e.dy = D.vy; e.vz = e.dz = D.vz;
+        return;
       }
     }
     const leaping = e.state === 'leapAir';
@@ -1018,21 +1045,131 @@ export class Ecosystem {
   }
 
   /** Aggressive boss AI: guard the site, brawl with partners/player, telegraphed violent charges. */
-  private bossThink(e: Entity, dt: number) {
-    // Commander duo: ride at the partner boss's side (Tatsugiri never leaves Dondozo — Pokémon lore)
+  /** The living Dondozo that `e` rides (Tatsugiri's half of the commander duo), if any. */
+  private pairOf(e: Entity): Entity | undefined {
     const pair = e.pairBossId >= 0 ? this.byId.get(e.pairBossId) : undefined;
-    if (pair && pair.state !== 'ko' && pair.state !== 'removed' && pair.state !== 'caught') {
-      const tx = pair.x + Math.sin(this.time * 0.8 + e.phase) * 1.2;
-      const ty = pair.y + pair.species.size * 0.45;
-      const tz = pair.z + Math.cos(this.time * 0.7 + e.phase) * 1.2;
-      const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
-      const sp = Math.max(pair.species.burst, e.species.burst);
-      const k = Math.min(1, d / 3);
-      e.dx = (tx - e.x) / d * sp * k; e.dy = (ty - e.y) / d * sp * k; e.dz = (tz - e.z) / d * sp * k;
-      e.maxSpeed = sp;
-      if (d > 30) { e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0; } // never separated
-      e.state = this.bossesActive ? 'wander' : 'rest';
-      if (!this.bossesActive) return;
+    return pair && pair.state !== 'ko' && pair.state !== 'removed' && pair.state !== 'caught' ? pair : undefined;
+  }
+
+  /** The living commander riding `boss` (Tatsugiri on Dondozo), if any — sheltered or not. */
+  private commanderOf(boss: Entity): Entity | undefined {
+    for (const o of this.alive) if (o.isBoss && o.pairBossId === boss.id && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed') return o;
+    return undefined;
+  }
+
+  /** Dondozo's mouth: a third of a body ahead of its centre, on the side it is moving (or facing `toward`). */
+  private mouthOf(boss: Entity, toward: Vec3, out: Vec3): Vec3 {
+    let fx = boss.vx, fz = boss.vz;
+    if (fx * fx + fz * fz < 0.04) { fx = toward.x - boss.x; fz = toward.z - boss.z; }
+    const l = Math.hypot(fx, fz) || 1;
+    out.x = boss.x + (fx / l) * boss.species.size * 0.35; out.y = boss.y - boss.species.size * 0.05; out.z = boss.z + (fz / l) * boss.species.size * 0.35;
+    return out;
+  }
+
+  /** What a gluttonous Dondozo can swallow: a reef wild smaller than itself that is not a companion, a boss, a
+   *  mission target, a ferry rider, or already out of play. */
+  private edibleBy(boss: Entity, f: Entity): boolean {
+    if (f === boss || f.isBoss || f.role === 'partner' || f.species.skyOnly || f.id === this.immortalId || f.objectiveId) return false;
+    const st = f.state;
+    if (st === 'ko' || st === 'caught' || st === 'removed' || st === 'captureAttempt' || st === 'faint' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapRun' || st === 'leapAir') return false;
+    if (f.aboardT > 0 || f.rideK > 0) return false;
+    return f.species.size < boss.species.size * 0.6;
+  }
+
+  /** Swallowed whole: the fish is gone at once (no body, no KO toast) and Dondozo heals. */
+  private swallow(boss: Entity, f: Entity) {
+    if (f.duelWith !== -1) { const p = this.byId.get(f.duelWith); if (p?.role === 'partner') this.endDuel(p, 'gone'); }
+    f.hp = 0;
+    this.remove(f);
+    this.koTimes.push(this.time); // the reef's loss all the same — pressure brings replacements faster
+    const healed = Math.round(boss.maxHp * COMMANDER.GULP_HEAL);
+    boss.hp = Math.min(boss.maxHp, boss.hp + healed);
+    boss.gulpN++;
+    boss.hpBarT = GAME.HEALTH_BAR_TTL;
+    this.events.push({ type: 'bossGulp', entityId: boss.id, speciesId: boss.species.id, eaten: f.species.id, healed });
+  }
+
+  /** Aggressive boss AI: guard the site, brawl with partners/player, telegraphed violent charges.
+   *  The Level 3 duo adds the Pokédex lore (COMBAT.COMMANDER): Tatsugiri commands, baits and shelters;
+   *  Dondozo obeys, ambushes, gulps — and is slow and dumb once its commander is gone. */
+  private bossThink(e: Entity, dt: number) {
+    const C = COMMANDER;
+    const pair = this.pairOf(e);
+    if (pair) {
+      // ---- the commander (Tatsugiri): rides at the partner boss's side — never leaves Dondozo (lore)
+      const saddle = (speedMul = 1) => {
+        const tx = pair.x + Math.sin(this.time * 0.8 + e.phase) * 1.2;
+        const ty = pair.y + pair.species.size * 0.45;
+        const tz = pair.z + Math.cos(this.time * 0.7 + e.phase) * 1.2;
+        const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
+        const sp = Math.max(pair.species.burst, e.species.burst) * (this.bossesActive ? BOSS_FIGHT_SPEED_MULT : 1) * speedMul;
+        const k = Math.min(1, d / 3);
+        e.dx = (tx - e.x) / d * sp * k; e.dy = (ty - e.y) / d * sp * k; e.dz = (tz - e.z) / d * sp * k;
+        e.maxSpeed = sp;
+        if (d > 30) { e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0; } // never separated
+      };
+      if (!this.bossesActive) { saddle(); e.state = 'rest'; return; }
+      e.state = 'wander';
+      // Mouth Shelter: hidden inside Dondozo's mouth — untouchable, unseen — until Dondozo is staggered
+      if (e.shelterT > 0) {
+        const m = this.mouthOf(pair, this.player, this.tmpMouth);
+        e.x = m.x; e.y = m.y; e.z = m.z; e.vx = pair.vx; e.vy = pair.vy; e.vz = pair.vz; e.dx = e.dy = e.dz = 0; e.maxSpeed = 0;
+        e.baitT = 0;
+        const staggered = pair.state === 'charging' && pair.stateT >= COMBAT.CHARGE_TELEGRAPH + 1.3; // the recovery window
+        if (staggered) { e.shelterT = 0; e.exposeT = C.EXPOSE_FOR; this.events.push({ type: 'bossShelter', entityId: e.id, inside: false }); }
+        return;
+      }
+      if (e.hp < e.maxHp * C.SHELTER_HP && e.exposeT <= 0) {
+        e.shelterT = 1; e.baitT = 0;
+        if (e.duelWith !== -1) { const dp = this.byId.get(e.duelWith); if (dp?.role === 'partner') this.endDuel(dp, 'gone'); }
+        this.events.push({ type: 'bossShelter', entityId: e.id, inside: true });
+        return;
+      }
+      // Feigned Weakness: drift out, float limp with a near-empty bar — whoever closes in springs the ambush
+      if (e.baitT > 0) {
+        e.baitT -= dt;
+        const d = len3(e.target.x - e.x, e.target.y - e.y, e.target.z - e.z) || 1;
+        const sp = d > 1.5 ? e.species.burst * 1.2 : 0.5;
+        e.dx = (e.target.x - e.x) / d * sp; e.dy = (e.target.y - e.y) / d * sp - 0.15 + Math.sin(this.time * 1.6 + e.phase) * 0.25; e.dz = (e.target.z - e.z) / d * sp;
+        e.maxSpeed = Math.max(sp, 0.6);
+        e.hpBarT = GAME.HEALTH_BAR_TTL - 0.25; // the bar stays up — and lies (HealthBars shows BAIT_FAKE_HP)
+        // the bite: trainer or companion within reach of the bait
+        let victim: Entity | null = null, vd = C.BAIT_TRIGGER_R;
+        for (const pt of this.alive) {
+          if (pt.role !== 'partner' || pt.state === 'ko') continue;
+          const dd = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+          if (dd < vd) { vd = dd; victim = pt; }
+        }
+        const pd = len3(this.player.x - e.x, this.player.y - e.y, this.player.z - e.z);
+        const playerBit = pd < vd;
+        if ((victim || playerBit) && pair.state !== 'charging') {
+          const tgt: Vec3 = playerBit ? this.player : victim!;
+          const dx = tgt.x - pair.x, dy = tgt.y - pair.y, dz = tgt.z - pair.z;
+          const l = len3(dx, dy, dz) || 1;
+          pair.wander.x = dx / l; pair.wander.y = dy / l; pair.wander.z = dz / l;
+          pair.state = 'charging'; pair.stateT = COMBAT.CHARGE_TELEGRAPH * (1 - C.AMBUSH_TELEGRAPH_MULT); pair.t1 = 0;
+          this.events.push({ type: 'bossAmbush', entityId: pair.id, targetKind: playerBit ? 'player' : 'partner' });
+          e.baitT = 0; e.baitAt = this.time + C.BAIT_EVERY;
+        } else if (e.baitT <= 0) {
+          e.baitAt = this.time + C.BAIT_EVERY * 0.6; // nobody bit — try again sooner
+        }
+        return;
+      }
+      if (e.baitAt === 0) e.baitAt = this.time + C.BAIT_FIRST;
+      if (this.time > e.baitAt && pair.state !== 'charging' && pair.gulpT <= 0 && e.hp > e.maxHp * 0.6) {
+        // drift out between Dondozo and whoever is closest — the trap is laid toward the prey
+        let fx = this.player.x, fy = this.player.y, fz = this.player.z, bd = len3(fx - pair.x, fy - pair.y, fz - pair.z);
+        for (const pt of this.alive) {
+          if (pt.role !== 'partner' || pt.state === 'ko') continue;
+          const dd = len3(pt.x - pair.x, pt.y - pair.y, pt.z - pair.z);
+          if (dd < bd) { bd = dd; fx = pt.x; fy = pt.y; fz = pt.z; }
+        }
+        const dx = fx - pair.x, dz = fz - pair.z; const l = Math.hypot(dx, dz) || 1;
+        e.target.x = pair.x + (dx / l) * C.BAIT_DIST; e.target.y = Math.max(floorY(e.target.x, e.target.z) + 1.2, (pair.y + fy) * 0.5); e.target.z = pair.z + (dz / l) * C.BAIT_DIST;
+        e.baitT = C.BAIT_FOR;
+        return;
+      }
+      saddle();
       // command support from the saddle: cast at whatever threatens the pair
       let focus: Entity | null = null; let bestD = 26;
       for (const pt of this.alive) {
@@ -1060,6 +1197,11 @@ export class Ecosystem {
     if (e.state === 'rest') { e.state = 'wander'; e.stateT = 0; }
     const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     const p = this.player;
+    // the duo: Dondozo with (or without) its commander
+    const duo = e.species.id === 'dondozo';
+    const cmd = duo ? this.commanderOf(e) : undefined;
+    const dumb = duo && !cmd;              // leaderless: slow, aimless, forgetful
+    const chargeGap = () => t.chargeEvery * (cmd ? C.ORDER_CHARGE_MULT : dumb ? C.DUMB_CHARGE_MULT : 1) * (0.8 + this.rng.next() * 0.4);
     // choose a focus: nearest living partner, else the player
     let focus: Vec3 = p; let focusEnt: Entity | null = null; let bestD = len3(p.x - e.x, p.y - e.y, p.z - e.z);
     for (const pt of this.alive) {
@@ -1072,7 +1214,7 @@ export class Ecosystem {
       if (e.stateT < COMBAT.CHARGE_TELEGRAPH) {
         e.dx = e.dy = e.dz = 0; e.maxSpeed = 0.4; e.flashT = 0.2;
       } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3) {
-        const sp = t.chargeSpeed * 1.9;
+        const sp = t.chargeSpeed * 1.9 * BOSS_FIGHT_SPEED_MULT; // swagger: the lunge comes half again as fast
         e.dx = e.wander.x * sp; e.dy = e.wander.y * sp; e.dz = e.wander.z * sp;
         e.maxSpeed = sp;
         // contact damage
@@ -1091,27 +1233,83 @@ export class Ecosystem {
           }
         }
       } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3 + COMBAT.CHARGE_RECOVERY) {
-        // recovery: slow drift, softened defenses — the punish window
+        // recovery: slow drift, softened defenses — the punish window (and the commander's shelter opens)
         e.dx = e.vx * 0.2; e.dy = 0; e.dz = e.vz * 0.2; e.maxSpeed = 1;
         e.defStage = 0.75; e.defStageUntil = this.time + 0.5;
-      } else { e.state = 'wander'; e.stateT = 0; e.t2 = t.chargeEvery * (0.8 + this.rng.next() * 0.4); }
+      } else { e.state = 'wander'; e.stateT = 0; e.t2 = chargeGap(); }
+      return;
+    }
+    // Glutton's Gulp: hurt and hungry, Dondozo inhales the reef — fish are dragged to its mouth and swallowed
+    if (duo) {
+      if (e.gulpT > 0) {
+        e.gulpT -= dt;
+        const m = this.mouthOf(e, focus, this.tmpMouth);
+        let nearest: Entity | null = null, nd = C.GULP_RADIUS;
+        for (const f of this.alive) {
+          if (!this.edibleBy(e, f)) continue;
+          const dx = m.x - f.x, dy = m.y - f.y, dz = m.z - f.z; const d = len3(dx, dy, dz);
+          if (d < nd) { nd = d; nearest = f; }
+          if (d > C.GULP_PULL_R) continue;
+          if (d < e.species.size * 0.45 + 0.8) { if (e.gulpN < C.GULP_MAX) this.swallow(e, f); continue; }
+          const pull = C.GULP_PULL_SPEED * (1 - d / C.GULP_PULL_R) + 2;
+          f.kbx = dx / d * pull; f.kby = dy / d * pull; f.kbz = dz / d * pull; f.kbT = 0.2;
+        }
+        if (nearest && e.gulpN < C.GULP_MAX) {
+          const d = len3(nearest.x - e.x, nearest.y - e.y, nearest.z - e.z) || 1;
+          const sp = e.species.burst * BOSS_FIGHT_SPEED_MULT;
+          e.dx = (nearest.x - e.x) / d * sp; e.dy = (nearest.y - e.y) / d * sp; e.dz = (nearest.z - e.z) / d * sp; e.maxSpeed = sp;
+        } else { e.dx = e.vx * 0.3; e.dy = 0; e.dz = e.vz * 0.3; e.maxSpeed = 1; }
+        if (e.gulpT <= 0 && e.gulpN === 0) this.events.push({ type: 'bossHungry', entityId: e.id, speciesId: e.species.id });
+        return;
+      }
+      if (e.hp < e.maxHp * C.GULP_HP && this.time > e.gulpAt && !(cmd && cmd.baitT > 0)) {
+        let any = false;
+        for (const f of this.alive) if (this.edibleBy(e, f) && len3(f.x - e.x, f.y - e.y, f.z - e.z) < C.GULP_RADIUS) { any = true; break; }
+        if (any) { e.gulpT = C.GULP_FOR; e.gulpN = 0; e.gulpAt = this.time + C.GULP_EVERY; return; }
+        e.gulpAt = this.time + C.HUNGRY_RETRY;
+        this.events.push({ type: 'bossHungry', entityId: e.id, speciesId: e.species.id });
+      }
+    }
+    // Feigned Weakness, Dondozo's half: lurk behind the bait, on the far side from the prey, and hold the charge
+    if (cmd && cmd.baitT > 0) {
+      const bx = cmd.target.x, bz = cmd.target.z;
+      const dx = bx - focus.x, dz = bz - focus.z; const l = Math.hypot(dx, dz) || 1;
+      const tx = bx + (dx / l) * C.LURK_BEHIND, tz = bz + (dz / l) * C.LURK_BEHIND, ty = cmd.target.y - e.species.size * 0.2;
+      const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
+      const sp = e.species.speed * 1.2;
+      e.dx = (tx - e.x) / d * sp * Math.min(1, d / 4); e.dy = (ty - e.y) / d * sp * Math.min(1, d / 4); e.dz = (tz - e.z) / d * sp * Math.min(1, d / 4);
+      e.maxSpeed = sp;
       return;
     }
     // brawl: keep mid range from the focus, cast whenever ready
     e.t2 -= dt;
+    // a leaderless Dondozo loses the plot now and then: swims off toward nothing in particular
+    if (dumb) {
+      if (e.dumbT <= 0 && this.rng.next() < dt / C.DUMB_WANDER_EVERY) {
+        e.dumbT = C.DUMB_WANDER_FOR;
+        const a = this.rng.next() * Math.PI * 2;
+        e.target.x = e.x + Math.cos(a) * 15; e.target.y = e.y + (this.rng.next() - 0.5) * 4; e.target.z = e.z + Math.sin(a) * 15;
+      }
+      if (e.dumbT > 0) { focus = e.target; focusEnt = null; }
+    }
     const d = len3(focus.x - e.x, focus.y - e.y, focus.z - e.z);
-    if (e.t2 <= 0 && d < 40) {
-      // wind up a charge toward the focus
+    if (e.t2 <= 0 && d < 40 && !(dumb && e.dumbT > 0)) {
+      // wind up a charge toward the focus — on the commander's order, or blindly
       e.state = 'charging'; e.stateT = 0; e.t1 = 0;
-      const dx = focus.x - e.x, dy = focus.y - e.y, dz = focus.z - e.z;
+      let dx = focus.x - e.x, dy = focus.y - e.y, dz = focus.z - e.z;
+      if (dumb) { // a dumb lunge: aimed off by up to DUMB_AIM_ERR either way
+        const err = (this.rng.next() * 2 - 1) * C.DUMB_AIM_ERR, c = Math.cos(err), sn = Math.sin(err);
+        const rx = dx * c - dz * sn, rz = dx * sn + dz * c; dx = rx; dz = rz;
+      }
       const l = len3(dx, dy, dz) || 1;
       e.wander.x = dx / l; e.wander.y = dy / l; e.wander.z = dz / l;
+      if (cmd) { cmd.orderT = 0.9; cmd.talkT = 1.0; cmd.flashT = 0.25; this.events.push({ type: 'bossOrder', entityId: cmd.id, bossId: e.id }); }
       this.events.push({ type: 'bossCharge', entityId: e.id, targetKind: focusEnt ? 'partner' : 'player' });
       return;
     }
     const hold = 7 + e.species.size * 0.6;
     const k = (d - hold) / (d || 1);
-    const sp = e.species.speed * 1.5;
+    const sp = e.species.speed * 1.5 * BOSS_FIGHT_SPEED_MULT * (dumb ? C.DUMB_SPEED_MULT : 1); // swagger: a boss in a fight moves half again as fast
     e.dx = (focus.x - e.x) * k * 0.35 + Math.sin(this.time * 0.7 + e.phase) * 0.4;
     e.dy = (focus.y - e.y) * k * 0.25;
     e.dz = (focus.z - e.z) * k * 0.35 + Math.cos(this.time * 0.6 + e.phase) * 0.4;
@@ -1123,6 +1321,8 @@ export class Ecosystem {
     const slot = this.moves.pickMove(e, d, false, !focusEnt);
     if (slot !== -1 && d < 20) this.moves.cast(e, slot, focusEnt ? { kind: 'entity', id: focusEnt.id } : { kind: 'player' });
   }
+
+  private readonly tmpMouth: Vec3 = { x: 0, y: 0, z: 0 };
 
   // ---------------------------------------------------------------------------------------------
   // Companions (partners) & duels
@@ -1153,7 +1353,7 @@ export class Ecosystem {
   removePartner(id: number) {
     const e = this.byId.get(id);
     if (!e || e.role !== 'partner') return;
-    if (e.duelWith >= 0) this.endDuel(e, 'recalled');
+    if (e.duelWith !== -1) this.endDuel(e, 'recalled');
     this.remove(e);
   }
 
@@ -1161,9 +1361,9 @@ export class Ecosystem {
 
   /** Lock a 1v1 duel between a partner and a wild Pokémon (cap enforced). */
   startDuel(partner: Entity, wild: Entity) {
-    if (partner.duelWith >= 0 || wild.duelWith >= 0) return;
+    if (partner.duelWith !== -1 || wild.duelWith !== -1) return;
     if (wild.state === 'ko' || wild.state === 'caught' || wild.state === 'faint' || wild.state === 'captureAttempt') return;
-    const active = this.alive.filter((e) => e.role === 'partner' && e.duelWith >= 0).length;
+    const active = this.alive.filter((e) => e.role === 'partner' && e.duelWith !== -1).length;
     if (active >= COMBAT.DUEL_MAX_CONCURRENT) return;
     partner.duelWith = wild.id; wild.duelWith = partner.id;
     partner.state = 'duel'; partner.stateT = 0;
@@ -1173,19 +1373,34 @@ export class Ecosystem {
   }
 
   endDuel(partner: Entity, reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone') {
-    const wild = this.byId.get(partner.duelWith);
+    const wild = this.byId.get(partner.duelWith) ?? this.externalCaster(partner.duelWith);
     this.events.push({ type: 'duelEnd', partnerId: partner.id, wildId: partner.duelWith, reason });
     partner.duelWith = -1;
     if (partner.state === 'duel') { partner.state = 'wander'; partner.stateT = 0; }
     if (wild) {
       wild.duelWith = -1;
-      if (wild.state === 'duel') { wild.state = 'flee'; wild.stateT = 0; wild.threatId = partner.id; wild.threatT = 0; }
+      // a bird's stand-in is flown by the sky, not by the reef's states
+      if (wild.state === 'duel') { if (wild.id <= -1000) { wild.state = 'wander'; } else { wild.state = 'flee'; wild.stateT = 0; wild.threatId = partner.id; wild.threatT = 0; } }
     }
+  }
+
+  /** A sky raider's stand-in while the bird is in the water (ids below -1000 are the sky's). */
+  raiderUnderReef(e: Entity): boolean { return e.id <= -1000 && e.state !== 'removed' && e.y < GAME.SURFACE_Y; }
+
+  /** The closest active companion within `r` of a point that is not already fighting or ordered. */
+  private nearestFreePartner(x: number, y: number, z: number, r: number): Entity | null {
+    let best: Entity | null = null, bd = r;
+    for (const e of this.alive) {
+      if (e.role !== 'partner' || e.duelWith !== -1 || e.orderTarget >= 0 || e.state === 'ko' || e.state === 'removed') continue;
+      const d = len3(e.x - x, e.y - y, e.z - z);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
   }
 
   /** Wild KO'd by a companion: automatically caught — joins the roster (and the mission, if a target). */
   private autoCapture(t: Entity) {
-    if (t.duelWith >= 0) { const partner = this.byId.get(t.duelWith); if (partner) this.endDuel(partner, 'faint'); }
+    if (t.duelWith !== -1) { const partner = this.byId.get(t.duelWith); if (partner) this.endDuel(partner, 'faint'); }
     t.hp = 1;
     this.capture(t); // handles removal + predator respawn scheduling
     this.events.push({ type: 'autoCaught', entityId: t.id, speciesId: t.species.id });
@@ -1200,10 +1415,16 @@ export class Ecosystem {
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       const fy = floorY(x, z);
       const y = Math.min(-6, Math.max(fy + 4, fy + (-(6) - fy) * (0.3 + this.rng.next() * 0.4)));
-      let dPred = Infinity;
-      for (const e of this.alive) if (e.behavior === 'predator') dPred = Math.min(dPred, len3(e.x - x, e.y - y, e.z - z));
-      if (dPred >= minDist) return { x, y, z };
-      if (dPred > bestScore) { bestScore = dPred; best = { x, y, z }; }
+      let dPred = Infinity, dWild = Infinity;
+      for (const e of this.alive) {
+        if (e.role === 'partner' || e.state === 'ko' || e.state === 'caught' || e.state === 'removed') continue;
+        const d = len3(e.x - x, e.y - y, e.z - z);
+        if (e.behavior === 'predator') dPred = Math.min(dPred, d);
+        dWild = Math.min(dWild, d); // the reef answers a trainer who surfaces next to it — keep clear of everyone
+      }
+      if (dPred >= minDist && dWild >= GAME.PLAYER_RESPAWN_CLEAR) return { x, y, z };
+      const score = Math.min(dPred, dWild * (minDist / GAME.PLAYER_RESPAWN_CLEAR));
+      if (score > bestScore) { bestScore = score; best = { x, y, z }; }
     }
     return best; // farthest-from-predators fallback
   }

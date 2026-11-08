@@ -288,6 +288,16 @@ a { color: var(--aqua); }
 .mission-panel .expand-hint { font-size: 11px; color: var(--dim); margin-top: 8px; }
 .mission-mini { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--text); }
 .mission-mini b { font-family: var(--font-display); font-weight: 900; }
+/* Lifelines: four hearts under the mission label — red while held, hollow once spent */
+.lifelines { display: flex; width: max-content; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border-radius: 999px; }
+.lifelines .heart { display: inline-flex; transition: transform .35s ease, opacity .35s ease; }
+.lifelines .heart svg { fill: #f43f5e; color: #ff6b81; filter: drop-shadow(0 0 6px rgba(244, 63, 94, .55)); }
+.lifelines .heart.on { animation: pop .3s ease both; }
+.lifelines .heart.off { opacity: .32; transform: scale(.86); }
+.lifelines .heart.off svg { fill: none; color: rgba(255,255,255,.55); filter: none; }
+.lifelines.last .heart.on svg { animation: pulse 1s ease-in-out infinite; }
+.hud.touch .lifelines { gap: 4px; margin-top: 5px; padding: 4px 9px; }
+.hud.touch .lifelines .heart svg { width: 12px; height: 12px; }
 .mission-mini b small { color: var(--muted); font-weight: 700; }
 .mission-mini .mini-bar { width: 54px; height: 5px; border-radius: 999px; background: rgba(255,255,255,.1); overflow: hidden; font-style: normal; }
 .mission-mini .mini-bar em { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #35d0ff, #7ff0c9); font-style: normal; }

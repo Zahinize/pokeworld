@@ -25,7 +25,7 @@ import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT } from '@/data/combatConfig';
+import { COMBAT, COMMANDER } from '@/data/combatConfig';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
 import { getMove, isSupportive, movesFor } from '@/data/moves';
@@ -71,8 +71,8 @@ export class GameSession {
   private surfaceDrainAcc = new Map<number, number>();
   private rampageSurge = false;
   private flockDefendToastAt = 0;
-  private raidToastAt = 0;
-  private furyToastAt = 0;
+  private orderToastAt = 0;
+  private gulpToastAt = 0;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
@@ -153,6 +153,10 @@ export class GameSession {
   }
   /** Seconds left of the downed-recovery countdown (0 = not recovering). */
   recoveringT = 0;
+  /** Lifelines left this run: every KO costs one, the last wipes the level (COMBAT.PLAYER_LIVES). */
+  lives: number = COMBAT.PLAYER_LIVES;
+  /** Why the last defeat screen came up: the party fell, or the lifelines ran out. */
+  defeatCause: 'party' | 'lives' = 'party';
   /** Post-respawn calm: incoming damage ignored. */
   private calmT = 0;
   private regenGrace = 0;
@@ -218,6 +222,7 @@ export class GameSession {
     for (const f of SKY.FLOCKS) if (f.shiny && !this.sheets.has(sheetKey(f.speciesId, 'shiny'))) loadSpriteSheet(f.speciesId, 'shiny').then((sh) => this.sheets.set(sheetKey(f.speciesId, 'shiny'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
+    this.lives = COMBAT.PLAYER_LIVES;
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
     this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
@@ -233,7 +238,10 @@ export class GameSession {
     this.battleStats.clear(); this.recentDmg.clear(); this.lastHitter.clear();
     this.eco.onPlayerDamage = (amount, casterId) => {
       const attacker = this.eco?.byId.get(casterId) ?? this.skyCombat?.shimById.get(casterId);
-      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: !!attacker.species.skyOnly && attacker.species.secondary.includes('legendary') } : undefined);
+      // elite = a shiny (reef or sky) or a legendary: it keeps a harder hit under the level's cap
+      const bird = this.skyCombat && casterId <= -1000 ? this.sky?.birds.find((b) => b.id === this.skyCombat!.birdIdOf(casterId)) : undefined;
+      const elite = !!attacker && (attacker.isShiny || !!bird?.shiny || attacker.species.rarity === 'legendary');
+      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: !!attacker.species.skyOnly && attacker.species.secondary.includes('legendary'), elite } : undefined);
     };
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -244,7 +252,7 @@ export class GameSession {
     this.tutorial = levelId === 1 && !store.save.settings.tutorialDone ? createTutorial() : null;
     this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
     this.tutScan.wildNearDist = Infinity; this.tutScan.skyBirdNear = false; this.tutScanAcc = 0; this.tutDoneT = 0;
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines() });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines(), lives: this.lives, recovering: 0, koBy: null });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -278,6 +286,7 @@ export class GameSession {
     }
     this.mission.caught = this.mission.objectives.reduce((n, o) => n + o.caught + (o.guardianCaught ? 1 : 0), 0);
     this.mission.complete = this.mission.caught >= this.mission.total;
+    this.lives = Math.max(1, Math.min(COMBAT.PLAYER_LIVES, run.lives ?? COMBAT.PLAYER_LIVES)); // lost hearts stay lost across a resume
     this.eco.update(0.016, this.eco.player, 0); // flush removals
   }
 
@@ -597,9 +606,13 @@ export class GameSession {
     return true;
   }
 
-  /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. */
-  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean }) {
+  /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. No single hit
+   *  takes more than the level's PLAYER_HIT_CAP (a shiny or legendary attacker gets SHINY_MULT× more). */
+  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean; elite?: boolean }) {
     if (this.recoveringT > 0 || this.calmT > 0 || this.phase !== 'playing') return;
+    const C = COMBAT.PLAYER_HIT_CAP;
+    const cap = Math.round(COMBAT.PLAYER_MAX_HP * (C.FRAC[this.level.id] ?? C.DEFAULT) * (by?.elite ? C.SHINY_MULT : 1));
+    amount = Math.min(amount, cap);
     this.playerHp = Math.max(0, this.playerHp - amount);
     this.regenGrace = COMBAT.PLAYER_REGEN_GRACE;
     const store = useStore.getState();
@@ -610,6 +623,19 @@ export class GameSession {
   private beginRecovery(by: { name: string; sky: boolean } | null = null) {
     this.clearSlingAim();
     if (this.ride) this.dismount(true); // knocked off the bird
+    // a lifeline is spent; the fourth fall wipes the level — the trainer starts it from scratch
+    this.lives = Math.max(0, this.lives - 1);
+    const store0 = useStore.getState();
+    store0.setHud({ lives: this.lives });
+    if (this.lives <= 0) {
+      store0.setCurrentRun(null); // nothing to resume: the level's progress is gone
+      this.triggerDefeat('lives');
+      return;
+    }
+    this.persistRun();
+    store0.pushToast(this.lives === 1
+      ? { kind: 'alert', title: 'Last lifeline!', body: `One more fall and Level ${this.level.id} starts over — every catch here undone.`, ttl: 7 }
+      : { kind: 'warn', title: 'Lifeline lost', body: `${this.lives} of ${COMBAT.PLAYER_LIVES} left. Lose them all and this level resets.`, ttl: 6 });
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
@@ -780,9 +806,11 @@ export class GameSession {
     this.emit();
   }
 
-  private triggerDefeat() {
+  private triggerDefeat(cause: 'party' | 'lives' = 'party') {
+    this.defeatCause = cause;
     this.dismount(true);
     this.phase = 'defeated';
+    this.recoveringT = 0; this.calmT = 0;
     releasePointer();
     Audio.escape(); Audio.ko();
     const store = useStore.getState();
@@ -818,8 +846,8 @@ export class GameSession {
         for (const id of this.activePartners) {
           const p = id >= 0 ? eco.byId.get(id) : undefined;
           if (!p) continue;
-          if (p.duelWith >= 0) {
-            const foe = eco.byId.get(p.duelWith);
+          if (p.duelWith !== -1) {
+            const foe = eco.byId.get(p.duelWith) ?? eco.externalCaster(p.duelWith); // a reef wild, or a raiding bird's stand-in
             if (foe && foe.duelWith === p.id) { foe.duelWith = -1; if (foe.state === 'duel') { foe.state = 'wander'; foe.stateT = 0; } }
           }
           p.duelWith = -1; p.orderTarget = -1; p.orderMove = -1;
@@ -841,7 +869,7 @@ export class GameSession {
         for (const id of this.activePartners) {
           const partner = id >= 0 ? eco.byId.get(id) : undefined;
           if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
-          if (partner.duelWith >= 0 || partner.orderTarget >= 0) continue; // mid-fight already
+          if (partner.duelWith !== -1 || partner.orderTarget >= 0) continue; // mid-fight already
           const kit = kitOf(partner);
           const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
           if (slot !== undefined) this.orderCast(partner, slot, t);
@@ -947,7 +975,7 @@ export class GameSession {
     for (const id of this.activePartners) {
       const partner = id >= 0 ? eco.byId.get(id) : undefined;
       if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
-      if (partner.duelWith >= 0 && partner.duelWith !== target.id) continue; // busy with its own fight
+      if (partner.duelWith !== -1 && partner.duelWith !== target.id) continue; // busy with its own fight
       const kit = kitOf(partner);
       for (const slot of [0, 1] as const) {
         if (!eco.moves.ready(partner, slot)) continue;
@@ -983,7 +1011,7 @@ export class GameSession {
   private orderCast(partner: Entity, moveSlot: 0 | 1, target: Entity): boolean {
     const eco = this.eco!;
     if (!eco.moves.ready(partner, moveSlot)) return false;
-    if (partner.duelWith >= 0 && partner.duelWith !== target.id) return false; // locked in its own fight
+    if (partner.duelWith !== -1 && partner.duelWith !== target.id) return false; // locked in its own fight
     const move = kitOf(partner)[moveSlot];
     const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
     if (d <= effectiveRange(partner, move) + partner.species.size * 0.5) {
@@ -1018,7 +1046,7 @@ export class GameSession {
       const e = id >= 0 ? eco?.byId.get(id) : undefined;
       if (!e || e.state === 'ko' || e.state === 'removed') return null;
       const kit = kitOf(e);
-      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], cdMax: [kit[0].cooldown, kit[1].cooldown] as [number, number], dueling: e.duelWith >= 0 };
+      return { token: this.tok(e), speciesId: e.species.id, shiny: e.isShiny, hp: Math.round(e.hp), maxHp: e.maxHp, moves: [kit[0].name, kit[1].name] as [string, string], moveTypes: [kit[0].type, kit[1].type] as [string, string], cd: [e.mcd[0], e.mcd[1]] as [number, number], cdMax: [kit[0].cooldown, kit[1].cooldown] as [number, number], dueling: e.duelWith !== -1 };
     });
     // Low-HP swap suggestion: the game tells you exactly what to press, when it matters
     let swapPrompt: { slot: 0 | 1; from: string; to: string } | null = null;
@@ -1366,16 +1394,7 @@ export class GameSession {
           }
           break;
         }
-        case 'fury': {
-          // the reef fights back at a sky raider — +50% Attack and HP for the fight
-          const e = eco.byId.get(ev.entityId);
-          if (e && len3(e.x - p.x, e.y - p.y, e.z - p.z) < 40 && this.elapsed > this.furyToastAt) {
-            this.furyToastAt = this.elapsed + 15;
-            const sp = getSpecies(ev.speciesId);
-            store.pushToast({ kind: 'event', title: `${sp.name} is enraged!`, body: 'The reef fights back at the raider — half again the bite and the HP for this fight.', speciesId: sp.id, ttl: 4 });
-          }
-          break;
-        }
+        case 'fury': break; // the reef fights back at a sky raider (+50 % Attack/HP) — seen in the fight, never announced (user ruling: only "hunting you" alerts)
         case 'familyDefend': {
           // the Mantine family turns on whoever struck one of them
           const root = eco.byId.get(ev.rootId);
@@ -1405,10 +1424,10 @@ export class GameSession {
             // the predator is hunting YOU
             store.pushToast({ kind: 'warn', title: `${pred.isShiny ? 'SHINY ' : ''}${pred.species.name} is hunting you!`, body: pred.isShiny ? 'Twice the bite, twice the HP, and it will not stop. Catch it, or let your team deal with it.' : 'Catch it, fight it with your team, or get out of its water.', speciesId: pred.species.id, ttl: 4 });
             this.huntToastCooldown = 12;
-          } else if (pred && t && t.objectiveId && near(t, 70) && this.huntToastCooldown <= 0 && this.mission) {
-            const o = this.mission.objectives.find((x) => x.id === t.objectiveId);
-            if (o && !objectiveDone(o)) { store.pushToast({ kind: 'warn', title: `${pred.species.name} is hunting`, body: `It's closing in on the ${t.species.name}${t.groupId >= 0 ? ' school' : ''}.`, speciesId: pred.species.id, ttl: 4 }); this.huntToastCooldown = 20; }
           }
+          // a hunt on a fish or a school is not announced (user ruling): the predator alert chip and the
+          // mission panel's at-risk marker still show it
+          void t;
           break;
         }
         case 'reinforce': break;
@@ -1462,6 +1481,39 @@ export class GameSession {
           if (near(e, 60)) { Audio.alarm(); Audio.breach(); }
           break;
         }
+        // ---- the Level 3 commander duo (COMBAT.COMMANDER lore)
+        case 'bossOrder': {
+          const c = eco.byId.get(ev.entityId);
+          if (near(c, 70)) {
+            Audio.playCry(getSpecies('tatsugiri').dexId, 0.8);
+            if (this.elapsed > this.orderToastAt) { this.orderToastAt = this.elapsed + 18; store.pushToast({ kind: 'alert', title: 'Tatsugiri gives the order!', body: 'Dondozo charges on command — take the commander down and the big fish turns slow and dumb.', speciesId: 'tatsugiri', ttl: 5 }); }
+          }
+          break;
+        }
+        case 'bossAmbush': {
+          const e = eco.byId.get(ev.entityId);
+          if (near(e, 80)) { Audio.alarm(); Audio.breach(); store.pushToast({ kind: 'alert', title: 'It was a trap!', body: `Tatsugiri feigned weakness — Dondozo lunges from behind at ${ev.targetKind === 'player' ? 'you' : 'your companion'}!`, speciesId: 'dondozo', ttl: 5 }); }
+          break;
+        }
+        case 'bossShelter': {
+          const c = eco.byId.get(ev.entityId);
+          if (near(c, 80)) {
+            if (ev.inside) { Audio.bubble(2); store.pushToast({ kind: 'warn', title: "Tatsugiri hides in Dondozo's mouth", body: 'Nothing can reach it in there. Stagger Dondozo — punish a charge — to flush it out.', speciesId: 'tatsugiri', ttl: 6 }); }
+            else { Audio.playCry(getSpecies('tatsugiri').dexId, 0.7); store.pushToast({ kind: 'event', title: 'Tatsugiri is exposed!', body: `Dondozo is staggered — ${COMMANDER.EXPOSE_FOR} seconds before the commander dives back in.`, speciesId: 'tatsugiri', ttl: 5 }); }
+          }
+          break;
+        }
+        case 'bossGulp': {
+          const e = eco.byId.get(ev.entityId);
+          if (e) { this.pushFx('splash', e.x, e.y, e.z, e.species.size * 0.4); this.pushNumber(`+${ev.healed}`, '#7ff0c9', e.x, e.y + e.species.size * 0.6, e.z, false); }
+          if (near(e, 80)) { Audio.bubble(3); if (this.elapsed > this.gulpToastAt) { this.gulpToastAt = this.elapsed + 8; store.pushToast({ kind: 'warn', title: `Dondozo swallows a ${getSpecies(ev.eaten).name} whole!`, body: `+${ev.healed} HP. The glutton feeds on the reef — lure or scatter the schools and it goes hungry.`, speciesId: 'dondozo', ttl: 5 }); } }
+          break;
+        }
+        case 'bossHungry': {
+          const e = eco.byId.get(ev.entityId);
+          if (near(e, 80) && this.elapsed > this.gulpToastAt) { this.gulpToastAt = this.elapsed + 8; store.pushToast({ kind: 'event', title: 'Dondozo snaps at empty water', body: "Nothing within reach to swallow — it's hungry, and it can't heal.", speciesId: 'dondozo', ttl: 5 }); }
+          break;
+        }
         case 'bossDefeated': {
           const sp = getSpecies(ev.speciesId);
           const token = makeToken(sp.id, ev.shiny);
@@ -1478,6 +1530,10 @@ export class GameSession {
           store.pushToast({ kind: 'catch', title: `${tokenLabel(token)} defeated — added to your collection!`, body: ev.shiny ? 'A SHINY trophy — its full power now fights for you.' : 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, shiny: ev.shiny, missionTarget: true, ttl: 6 });
           this.pushFx('catch', eco.byId.get(ev.entityId)?.x ?? 0, eco.byId.get(ev.entityId)?.y ?? 0, eco.byId.get(ev.entityId)?.z ?? 0, sp.size);
           if (this.mission?.complete && this.phase === 'playing') { this.phase = 'completing'; this.completeTimer = 2.2; }
+          // the commander falls first: Dondozo is lost without it (COMBAT.COMMANDER — slow, dumb, aimless)
+          if (ev.speciesId === 'tatsugiri' && this.bossIds.some((id) => { const b = eco.byId.get(id); return b?.species.id === 'dondozo' && b.state !== 'ko' && b.state !== 'caught' && b.state !== 'removed'; })) {
+            store.pushToast({ kind: 'event', title: 'Dondozo is lost without its commander', body: 'Slow, dumb and aimless now — its charges come late and miss. Finish it.', speciesId: 'dondozo', ttl: 6 });
+          }
           break;
         }
         case 'duelEnd': break;
@@ -1749,13 +1805,8 @@ export class GameSession {
             }
             if (snatched) { snatched.state = 'caught'; snatched.stateT = 0; snatched.animT = 0; } // the bird got one
           }
-          // the splash began a raid: a few seconds of trouble under the swell for anything close
-          const raider = this.sky?.birds.find((b) => b.id === ev.birdId);
-          if (raider?.state === 'attacking' && len3(ev.x - p.x, 0, ev.z - p.z) < 45 && (raider.shiny || this.elapsed > this.raidToastAt)) {
-            this.raidToastAt = this.elapsed + 20;
-            const sp = getSpecies(ev.speciesId);
-            store.pushToast({ kind: raider.shiny ? 'warn' : 'event', title: raider.shiny ? `A SHINY ${sp.name} raids the reef!` : `A wild ${sp.name} raids the reef!`, body: raider.shiny ? 'Twice the bite, twice the HP — and it will not let go.' : 'It picks a fight with anything close for a few seconds, then bolts for the sky.', speciesId: sp.id, ttl: 5 });
-          }
+          // the splash began a raid: a few seconds of trouble under the swell for anything close — seen,
+          // not announced (user ruling: no raid toasts, shiny or plain; only "hunting you" alerts)
           break;
         }
         case 'raidFlee': break; // the bird climbs out on its own; nothing to announce
@@ -1828,7 +1879,7 @@ export class GameSession {
     useStore.getState().setCurrentRun({
       levelId: this.level.id, seed: this.seed, startedAt: Date.now() - this.elapsed * 1000,
       objectives: this.mission.objectives.map((o) => ({ id: o.id, caught: o.caught, guardianCaught: o.guardianCaught })),
-      caught: this.mission.caught, total: this.mission.total,
+      caught: this.mission.caught, total: this.mission.total, lives: this.lives,
     });
   }
 

@@ -155,11 +155,15 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     const anchor = nearPlayer
       ? farFrom(rng, 12, () => {
           const p = posInZone(rng, zone, member, 0.5);
-          // pull toward the player start so the first target is right there
+          // pull toward the player start so the first target is close — but just beyond the clear ring,
+          // never on top of the trainer (the reef answers anyone within PROXIMITY_R)
           p.x = playerStart.x + (p.x - playerStart.x) * 0.35 + rng.range(-4, 4);
           p.z = playerStart.z + (p.z - playerStart.z) * 0.35 + rng.range(-4, 4);
+          const dx = p.x - playerStart.x, dz = p.z - playerStart.z, d = Math.hypot(dx, dz) || 1;
+          const want = GAME.PLAYER_START_CLEAR + 2.5 + Math.sqrt(count) * 1.2 + 2;
+          if (d < want) { p.x = playerStart.x + (dx / d) * want; p.z = playerStart.z + (dz / d) * want; }
           return p;
-        }, [], 0)
+        }, [playerStart], GAME.PLAYER_START_CLEAR + 2.5 + Math.sqrt(count) * 1.2)
       : farFrom(rng, 16, () => posInZone(rng, zone, member), anchors, 28);
     anchors.push(anchor);
     const gi = groups.length;
@@ -387,22 +391,84 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   const lapIdx = spawns.findIndex((sp) => sp.speciesId === 'lapras');
   if (lapIdx >= 0) {
     const lp = spawns[lapIdx].pos;
-    const far = Math.hypot(lp.x - playerStart.x, lp.z - playerStart.z);
+    const lx = lp.x, lz = lp.z; // snapshot: `lp` is the live position and moves mid-loop
+    const far = Math.hypot(lx - playerStart.x, lz - playerStart.z);
     if (far > GAME.FERRY_SPAWN_NEAR_START) {
       const a = rng.next() * Math.PI * 2, r = GAME.FERRY_SPAWN_NEAR_START * (0.55 + rng.next() * 0.4);
       let nx = playerStart.x + Math.cos(a) * r, nz = playerStart.z + Math.sin(a) * r;
       const rr = Math.hypot(nx, nz), lim = GAME.WORLD_RADIUS - 12;
       if (rr > lim) { nx *= lim / rr; nz *= lim / rr; }
-      const dx = nx - lp.x, dz = nz - lp.z;
+      const dx = nx - lx, dz = nz - lz;
       for (const sp of spawns) {
-        if (sp !== spawns[lapIdx] && Math.hypot(sp.pos.x - lp.x, sp.pos.z - lp.z) > 8) continue; // the entourage rides along
+        if (sp !== spawns[lapIdx] && Math.hypot(sp.pos.x - lx, sp.pos.z - lz) > 8) continue; // the entourage rides along (measured from the OLD berth)
         sp.pos.x += dx; sp.pos.z += dz;
         sp.pos.y = Math.max(sp.pos.y, floorY(sp.pos.x, sp.pos.z) + getSpecies(sp.speciesId).size + 1.5);
       }
     }
   }
 
+  clearPlayerStart(rng, spawns, groups, playerStart);
+
   return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, playerStart, summary };
+}
+
+/**
+ * Nobody within GAME.PLAYER_START_CLEAR of the trainer's start. Groups move as a whole (their anchor is
+ * pushed straight out until every member clears the ring, so a school stays a school), solos are pushed out
+ * radially, and an entourage follows the spawn it is attached to. Depth is re-floored after the move.
+ */
+function clearPlayerStart(rng: RNG, spawns: SpawnSpec[], groups: GroupSpec[], start: Vec3) {
+  const CLEAR = GAME.PLAYER_START_CLEAR;
+  const lim = GAME.WORLD_RADIUS - 12;
+  const clampWorld = (p: { x: number; z: number }) => { const r = Math.hypot(p.x, p.z); if (r > lim) { p.x *= lim / r; p.z *= lim / r; } };
+  const refloor = (sp: SpawnSpec) => { sp.pos.y = Math.max(sp.pos.y, floorY(sp.pos.x, sp.pos.z) + getSpecies(sp.speciesId).size * 0.6 + 1.0); };
+  const moved = new Map<number, { dx: number; dz: number }>(); // spawn index → shift (for entourages)
+  // 1. groups: push the anchor out until the nearest member clears the ring
+  groups.forEach((g, gi) => {
+    if (g.followsSpawn !== undefined) return; // an entourage follows its leader (step 3)
+    const members = spawns.map((sp, i) => [sp, i] as const).filter(([sp]) => sp.groupIndex === gi);
+    if (!members.length) return;
+    let nearest = Infinity;
+    for (const [sp] of members) nearest = Math.min(nearest, Math.hypot(sp.pos.x - start.x, sp.pos.z - start.z));
+    if (nearest >= CLEAR) return;
+    const ax = g.anchor.x - start.x, az = g.anchor.z - start.z;
+    const ad = Math.hypot(ax, az);
+    const dirA = ad > 0.5 ? Math.atan2(az, ax) : rng.next() * Math.PI * 2;
+    const need = CLEAR - nearest + 1.5; // how much further out the whole group must go
+    const nx = start.x + Math.cos(dirA) * (ad + need), nz = start.z + Math.sin(dirA) * (ad + need);
+    const target = { x: nx, z: nz }; clampWorld(target);
+    const dx = target.x - g.anchor.x, dz = target.z - g.anchor.z;
+    g.anchor.x += dx; g.anchor.z += dz;
+    for (const [sp, i] of members) { sp.pos.x += dx; sp.pos.z += dz; refloor(sp); moved.set(i, { dx, dz }); }
+  });
+  // 2. solos: straight out to the ring
+  spawns.forEach((sp, i) => {
+    if (sp.groupIndex >= 0) return;
+    const dx0 = sp.pos.x - start.x, dz0 = sp.pos.z - start.z, d = Math.hypot(dx0, dz0);
+    if (d >= CLEAR) return;
+    const a = d > 0.5 ? Math.atan2(dz0, dx0) : rng.next() * Math.PI * 2;
+    const want = CLEAR + 1.5 + rng.next() * 3;
+    const target = { x: start.x + Math.cos(a) * want, z: start.z + Math.sin(a) * want }; clampWorld(target);
+    moved.set(i, { dx: target.x - sp.pos.x, dz: target.z - sp.pos.z });
+    sp.pos.x = target.x; sp.pos.z = target.z; refloor(sp);
+  });
+  // 3. entourages ride along with the spawn they follow
+  groups.forEach((g, gi) => {
+    if (g.followsSpawn === undefined) return;
+    const m = moved.get(g.followsSpawn);
+    if (!m) return;
+    g.anchor.x += m.dx; g.anchor.z += m.dz;
+    for (const sp of spawns) if (sp.groupIndex === gi) { sp.pos.x += m.dx; sp.pos.z += m.dz; refloor(sp); }
+  });
+  // 4. stragglers: a courtier spread around a leader that sits just past the ring — nudged out on its own
+  for (const sp of spawns) {
+    const dx0 = sp.pos.x - start.x, dz0 = sp.pos.z - start.z, d = Math.hypot(dx0, dz0);
+    if (d >= CLEAR) continue;
+    const a = d > 0.5 ? Math.atan2(dz0, dx0) : rng.next() * Math.PI * 2;
+    const want = CLEAR + 0.5 + rng.next() * 1.5;
+    const target = { x: start.x + Math.cos(a) * want, z: start.z + Math.sin(a) * want }; clampWorld(target);
+    sp.pos.x = target.x; sp.pos.z = target.z; refloor(sp);
+  }
 }
 
 /** Primary behavior a spawned entity should run (guardians use the guardian system). */
