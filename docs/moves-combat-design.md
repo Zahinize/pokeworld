@@ -246,7 +246,9 @@ Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklet
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
 Fire/Wing Attack · Yveltal Oblivion Wing/Wing Attack. The Move Dojo (`#arena`) fields sky Pokémon under a
 "Sky" group: the stage rises to the waterline (dummy surfaced, trainer just under the swell, the bird
-hovering 8 m ahead at flock render scale) so every sky move can be reviewed against Dondozo.
+hovering 8 m ahead at flock render scale) so every sky move can be reviewed against Dondozo. A "Bosses"
+group fields the five bosses (`bossOnly` species plus Basculegion) at companion scale with their true kits,
+so a boss move can be rebuilt and reviewed there too.
 
 ---
 
@@ -536,7 +538,12 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
 **Swagger** (`BOSS_FIGHT_SPEED_MULT` 1.5): while the encounter is on (`bossesActive`), every boss moves
 half again as fast — brawl hold speed (species speed × 1.5 × 1.5), the commander's saddle ride, and the
 charge lunge (`chargeSpeed` × 1.9 × 1.5). The charge telegraph and recovery windows are unchanged, so the
-warning stays fair; a dormant boss in its lair keeps its slow hover. **Shadow in the lair**: until the
+warning stays fair; a dormant boss in its lair keeps its slow hover. **Attack rate** (`BOSS_ATTACK_RATE_MULT`
+1.5): bosses also attack half again as often — their move cooldowns tick at 1.5× in `Ecosystem.update`, and
+every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps and Basculegion's
+soul recharge) is divided by it. Telegraph and recovery stay as they were. The commander now rides Dondozo's
+charge: while Dondozo is in `charging` (and Tatsugiri is neither baiting nor sheltered) it is carried on its
+back every frame in `integrate`, so a faster charge cadence can no longer pull the duo apart. **Shadow in the lair**: until the
 trainer reaches the bosses (the 30 m greeting trigger), each one renders as a black silhouette — sprite
 status 4 in `PokemonLayer`: no light, depth tint or caustics, a faint violet sheen on its brightest markings
 pulsing with `aGlow`, and a deep-violet halo instead of the cyan one. The greeting reveals the true colours.

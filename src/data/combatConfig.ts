@@ -137,6 +137,10 @@ export const BOSS_TUNING: Record<string, BossTuning> = {
 /** Swagger: every boss moves this much faster while the fight is on — brawl, saddle ride and charge lunge
  *  alike (never while dormant in its lair). The charge telegraph is unchanged, so the warning stays fair. */
 export const BOSS_FIGHT_SPEED_MULT = 1.5;
+/** Swagger, part two: bosses ATTACK this much faster too — move cooldowns tick at this rate and every charge
+ *  gap (the opening one, the ordered, dumb and soul-bought ones alike) is divided by it. The charge telegraph
+ *  and the recovery stagger are untouched: the warning stays fair and the punish window stays open. */
+export const BOSS_ATTACK_RATE_MULT = 1.5;
 
 /** The Level 3 commander duo (Pokédex lore): Tatsugiri commands, Dondozo obeys.
  *  ORDER: while Tatsugiri lives, every Dondozo charge is called by it — charges come at ORDER_CHARGE_MULT of

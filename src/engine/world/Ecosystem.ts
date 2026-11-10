@@ -15,7 +15,7 @@ import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { SKY, skyPartnerScale } from '@/data/sky';
-import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, BOSS_ATTACK_RATE_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
 import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -489,8 +489,9 @@ export class Ecosystem {
       // Timers
       if (e.hpBarT > 0) e.hpBarT -= dt;
       if (e.flashT > 0) e.flashT -= dt;
-      if (e.mcd[0] > 0) e.mcd[0] -= dt;
-      if (e.mcd[1] > 0) e.mcd[1] -= dt;
+      const cdt = e.isBoss ? dt * BOSS_ATTACK_RATE_MULT : dt; // swagger: a boss's moves come back half again as fast
+      if (e.mcd[0] > 0) e.mcd[0] -= cdt;
+      if (e.mcd[1] > 0) e.mcd[1] -= cdt;
       if (e.stunT > 0) e.stunT -= dt;
       if (e.slowT > 0) e.slowT -= dt;
       if (e.blindT > 0) e.blindT -= dt;
@@ -846,12 +847,13 @@ export class Ecosystem {
         return;   // fully scripted this frame — no clamps, no drift
       }
     }
-    // Tatsugiri sheltering in Dondozo's mouth: carried inside it every frame (the big fish integrates first)
-    if (e.shelterT > 0 && e.pairBossId >= 0) {
+    // Tatsugiri sheltering in Dondozo's mouth: carried inside it every frame (the big fish integrates first);
+    // and when Dondozo charges, the commander rides the lunge on its back rather than being left behind
+    if (e.pairBossId >= 0 && (e.shelterT > 0 || e.baitT <= 0)) {
       const D = this.byId.get(e.pairBossId);
-      if (D && D.state !== 'ko' && D.state !== 'removed' && D.state !== 'caught') {
-        const m = this.mouthOf(D, this.player, this.tmpMouth);
-        e.x = m.x; e.y = m.y; e.z = m.z;
+      if (D && D.state !== 'ko' && D.state !== 'removed' && D.state !== 'caught' && (e.shelterT > 0 || D.state === 'charging')) {
+        if (e.shelterT > 0) { const m = this.mouthOf(D, this.player, this.tmpMouth); e.x = m.x; e.y = m.y; e.z = m.z; }
+        else { e.x = D.x; e.y = D.y + D.species.size * 0.45; e.z = D.z; }
         e.vx = e.dx = D.vx; e.vy = e.dy = D.vy; e.vz = e.dz = D.vz;
         return;
       }
@@ -1089,7 +1091,7 @@ export class Ecosystem {
     e.cs = { ...e.cs, atk: e.cs.atk * t.atk * shinyMult, spAtk: e.cs.spAtk * t.atk * shinyMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
     e.home = { x, y, z };
     e.state = 'wander'; e.stateT = 0;
-    e.t2 = 3 + this.rng.next() * 2; // bosses open aggressively — first charge comes fast
+    e.t2 = (3 + this.rng.next() * 2) / BOSS_ATTACK_RATE_MULT; // bosses open aggressively — first charge comes fast
     this.events.push({ type: 'bossSpawn', entityId: e.id, speciesId });
     return e;
   }
@@ -1261,7 +1263,7 @@ export class Ecosystem {
     const duo = e.species.id === 'dondozo';
     const cmd = duo ? this.commanderOf(e) : undefined;
     const dumb = duo && !cmd;              // leaderless: slow, aimless, forgetful
-    const chargeGap = () => t.chargeEvery * (cmd ? C.ORDER_CHARGE_MULT : dumb ? C.DUMB_CHARGE_MULT : 1) * (0.8 + this.rng.next() * 0.4);
+    const chargeGap = () => t.chargeEvery * (cmd ? C.ORDER_CHARGE_MULT : dumb ? C.DUMB_CHARGE_MULT : 1) * (0.8 + this.rng.next() * 0.4) / BOSS_ATTACK_RATE_MULT;
     // choose a focus: nearest living partner, else the player
     let focus: Vec3 = p; let focusEnt: Entity | null = null; let bestD = len3(p.x - e.x, p.y - e.y, p.z - e.z);
     for (const pt of this.alive) {
@@ -1300,7 +1302,7 @@ export class Ecosystem {
         e.state = 'wander'; e.stateT = 0; e.t2 = chargeGap();
         if (legion) {
           if (e.respectN > 0) { e.respectN = 0; e.atkStage = 1; e.atkStageUntil = 0; } // the absorbed souls went into that blow
-          if (e.souls > 0) { e.souls--; e.t2 = LEGION.SOUL_RECHARGE; this.events.push({ type: 'bossSoulSpent', entityId: e.id, left: e.souls }); } // a soul buys another Wave Crash
+          if (e.souls > 0) { e.souls--; e.t2 = LEGION.SOUL_RECHARGE / BOSS_ATTACK_RATE_MULT; this.events.push({ type: 'bossSoulSpent', entityId: e.id, left: e.souls }); } // a soul buys another Wave Crash
         }
       }
       return;
