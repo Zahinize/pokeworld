@@ -20,7 +20,7 @@ function statOf(token: string, key: StatKey): number {
   const base = baseSpeciesId(token);
   const st = combatStatsOf(base);
   const t = SPECIES[base]?.bossOnly ? BOSS_TUNING[base] : undefined;
-  const shinyMult = t && isShinyToken(token) ? BOSS_SHINY_MULT : 1;
+  const shinyMult = isShinyToken(token) ? (t ? BOSS_SHINY_MULT : 2) : 1; // a shiny reef companion fights at double strength
   if (key === 'hp') return Math.round(st.maxHp * (t?.hp ?? 1) * shinyMult);
   if (key === 'atk') return Math.round(Math.max(st.atk, st.spAtk) * (t?.atk ?? 1) * shinyMult);
   return st.def;
@@ -39,7 +39,17 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   // Roster sort: strongest first by the chosen stat, with its value shown on every cell.
   const [sortBy, setSortBy] = useState<StatKey>('atk');
   // Regular roster vs Boss Pokémon: bosses (and their shiny forms) are trophies — you may field ONE at a time.
-  const caught = useMemo(() => SPECIES_LIST.filter((sp) => !sp.bossOnly && (collection[sp.id]?.caught ?? 0) > 0).sort((a, b) => statOf(b.id, sortBy) - statOf(a.id, sortBy) || b.stage - a.stage || a.dexId - b.dexId), [collection, sortBy]);
+  // every caught reef/sky form, shiny trophies as their own picks beside the plain form
+  const caught = useMemo(() => {
+    const out: string[] = [];
+    for (const sp of SPECIES_LIST) {
+      if (sp.bossOnly) continue;
+      if ((collection[sp.id]?.caught ?? 0) > 0) out.push(sp.id);
+      if ((collection[makeToken(sp.id, true)]?.caught ?? 0) > 0) out.push(makeToken(sp.id, true));
+    }
+    const stage = (t: string) => SPECIES[baseSpeciesId(t)].stage, dex = (t: string) => SPECIES[baseSpeciesId(t)].dexId;
+    return out.sort((a, b) => statOf(b, sortBy) - statOf(a, sortBy) || stage(b) - stage(a) || dex(a) - dex(b));
+  }, [collection, sortBy]);
   const bossTokens = useMemo(() => {
     const out: string[] = [];
     for (const sp of SPECIES_LIST) {
@@ -157,13 +167,14 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                 ) : (
                   <div className="party-scroll">
                     <div className="party-grid">
-                      {caught.map((sp) => {
-                        const idx = party.indexOf(sp.id);
+                      {caught.map((t) => {
+                        const idx = party.indexOf(t);
+                        const shiny = isShinyToken(t);
                         return (
-                          <button key={sp.id} className={`card clickable party-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(sp.id)} aria-pressed={idx >= 0}>
-                            <SpriteImg id={sp.id} size={48} />
-                            <span className="n">{sp.name}</span>
-                            <span className="stat">{statOf(sp.id, sortBy)} {STAT_SUFFIX[sortBy]}</span>
+                          <button key={t} className={`card clickable party-cell ${shiny ? 'shiny-cell' : ''} ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
+                            <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
+                            <span className="n">{shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
+                            <span className="stat">{statOf(t, sortBy)} {STAT_SUFFIX[sortBy]}</span>
                             {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                           </button>
                         );

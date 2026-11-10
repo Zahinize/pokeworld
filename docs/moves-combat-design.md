@@ -347,7 +347,16 @@ one reef-wide `TRAINER_CAST_GAP` 4.0 s (raiders share their own 4.0 s gap). Toas
 grace, never ignores prey, rests `SHINY_COOLDOWN_MULT` ¼ as long between hunts, weighs the trainer
 `SHINY_PLAYER_MULT` 1.5× more and eats anything outside its own pack (`SHINY_ANY_W`, other predators and
 giants included). It draws from its shiny sheet with the shiny glow, is its own trophy, and respawns
-shiny. The sim's hit band is 10–220/5 min for this reef.
+shiny. The sim's hit band is 10–220/5 min for this reef. **Catching one** records the shiny token
+(`GameSession.onCaught` → `makeToken(id, isShiny)`, the same key a shiny boss or shiny bird uses), so it
+shows as its own "Shiny X" card in the Collection and as its own pick in the Mission Brief roster, where
+it fields at 2× HP/Attack like every shiny companion (`Ecosystem.addPartner`). Catches made before this
+fix were folded into the plain form and cannot be told apart in the save.
+
+**Fullscreen.** Offered on the start screen ("Play in fullscreen" enters fullscreen and starts the game),
+in the Worlds and Level pickers, in the HUD corner next to Pause, and in the pause menu; `F` toggles it
+anywhere outside a text field. `ui/components/FullscreenButton.tsx` owns the hook and button; the option
+hides itself where the browser has no element fullscreen (iPhone Safari).
 
 **Hostility rules (the reef fights back).** Three overrides sit on top of the retaliation roll below:
 - **The trainer is always answered.** Every reef Pokémon, whatever its behaviour group (giants included),

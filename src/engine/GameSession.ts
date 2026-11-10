@@ -1871,7 +1871,8 @@ export class GameSession {
     Audio.catchSuccess();
     Audio.playCry(e.species.dexId, 0.5, 0.25); // every catch is greeted by the Pokémon's own cry
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
-    store.recordCatch(e.species.id, this.level.id);
+    const token = this.tok(e); // a shiny is its own trophy and its own party pick — never folded into the plain form
+    store.recordCatch(token, this.level.id);
     let missionTarget = false, label: string | undefined;
     if (this.mission) {
       const out = applyCatch(this.mission, e);
@@ -1883,8 +1884,8 @@ export class GameSession {
       }
       store.setMission(this.mission);
     }
-    store.setLastCatch({ speciesId: e.species.id, missionTarget, objectiveLabel: label });
-    store.pushToast({ kind: 'catch', title: byCompanion ? `KO! ${e.species.name} joins your collection` : `Caught ${e.species.name}!`, body: missionTarget ? label : 'Added to collection · not a mission target', speciesId: e.species.id, missionTarget, ttl: 4 });
+    store.setLastCatch({ speciesId: e.species.id, shiny: e.isShiny, missionTarget, objectiveLabel: label });
+    store.pushToast({ kind: 'catch', title: byCompanion ? `KO! ${tokenLabel(token)} joins your collection` : e.isShiny ? `SHINY! Caught ${e.species.name}!` : `Caught ${e.species.name}!`, body: missionTarget ? label : e.isShiny ? 'A SHINY trophy — it fights for you at double strength' : 'Added to collection · not a mission target', speciesId: e.species.id, shiny: e.isShiny, missionTarget, ttl: e.isShiny ? 6 : 4 });
     this.persistRun();
     if (this.mission?.complete && this.phase === 'playing') {
       this.phase = 'completing'; this.completeTimer = 1.6;

@@ -127,6 +127,7 @@ a { color: var(--aqua); }
 .start-btn { min-height: 64px; padding: 0 54px; font-size: 20px; letter-spacing: .08em; text-transform: uppercase; border-radius: 999px; color: #04162b; position: relative; overflow: hidden; isolation: isolate;
   background: linear-gradient(180deg, #ffe9a3, #ffd166 45%, #ff9f43); box-shadow: 0 0 0 3px rgba(255,209,102,.25), 0 14px 44px rgba(255,159,67,.45), inset 0 1px 0 rgba(255,255,255,.7); animation: fadeUp .8s .7s ease both, startGlow 2.4s 1.5s ease-in-out infinite; }
 .start-btn::after { content: ''; position: absolute; inset: -40% -60%; background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,.85) 50%, transparent 60%); transform: translateX(-100%); animation: shine 2.6s 1.6s ease-in-out infinite; z-index: -1; }
+.start-fs { margin-top: 14px; min-height: 42px; animation: fadeUp .8s 1s ease both; }
 .start-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 0 0 4px rgba(255,209,102,.35), 0 18px 54px rgba(255,159,67,.6), inset 0 1px 0 rgba(255,255,255,.7); }
 @keyframes shine { 0% { transform: translateX(-100%) } 45%, 100% { transform: translateX(100%) } }
 @keyframes startGlow { 0%, 100% { box-shadow: 0 0 0 3px rgba(255,209,102,.25), 0 14px 44px rgba(255,159,67,.45), inset 0 1px 0 rgba(255,255,255,.7) } 50% { box-shadow: 0 0 0 6px rgba(255,209,102,.18), 0 18px 60px rgba(255,159,67,.7), inset 0 1px 0 rgba(255,255,255,.7) } }
@@ -210,6 +211,8 @@ a { color: var(--aqua); }
 .stat-filter:hover { background: rgba(53,208,255,.2); }
 .party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
 .boss-cell .stat { color: var(--gold); }
+.shiny-cell { border-color: rgba(255,209,102,.5); }
+.shiny-cell .stat { color: var(--gold); }
 .reef-status { color: var(--dim); }
 .reef-status.ready { color: var(--green); font-weight: 800; }
 /* stacked frame (portrait phones & tablets, narrow windows): the roster becomes the scroll region */

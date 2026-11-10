@@ -10,6 +10,7 @@ import { LeaderboardScreen } from './ui/screens/LeaderboardScreen';
 import { useAuth, authChoiceMade } from './state/auth';
 import { startSync } from './net/sync';
 import { StartScreen } from './ui/screens/StartScreen';
+import { installFullscreenHotkey } from './ui/components/FullscreenButton';
 import { MainMenu } from './ui/screens/MainMenu';
 import { LevelSelect } from './ui/screens/LevelSelect';
 import { MissionBrief } from './ui/screens/MissionBrief';
@@ -73,6 +74,7 @@ export default function App() {
     return () => { off(); };
   }, [screen]);
 
+  useEffect(() => { installFullscreenHotkey(); }, []); // F toggles fullscreen on every screen
   // The move dojo (DEV): #arena jumps straight into the testing stage from any menu screen.
   useEffect(() => {
     if (!(import.meta as { env?: { DEV?: boolean } }).env?.DEV) return;

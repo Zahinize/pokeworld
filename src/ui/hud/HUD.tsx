@@ -12,6 +12,7 @@ import { objectiveDone } from '@/engine/sim/mission';
 import { PokeballIcon, SpriteImg, TypeIcon, Panel } from '../components/common';
 import { TYPE_COLORS, type MoveType } from '@/data/moves';
 import { Audio } from '@/audio/AudioManager';
+import { FullscreenButton } from '../components/FullscreenButton';
 import { requestPointerLock } from '@/render/player/CameraRig';
 import { CollectionView } from '../screens/CollectionScreen';
 import { SettingsView } from '../screens/SettingsScreen';
@@ -377,6 +378,7 @@ function StatusChips() {
     <div className="hud-top-right">
       <div className="row" style={{ gap: 8 }}>
         <span className="chip mono"><span>{timeLabel === 'Night' ? <Ic icon={Moon} size={13} /> : timeLabel === 'Evening' || timeLabel === 'Dawn' ? <Ic icon={Sunset} size={13} /> : <Ic icon={Sun} size={13} />}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{hud.depth < 1 ? 'Surface' : `${Math.round(hud.depth)} m`}</span></span>
+        <FullscreenButton variant="icon" className="interactive" />
         <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}><Ic icon={Pause} size={16} /></button>
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert"><Ic icon={AlertTriangle} size={13} /> <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
@@ -459,6 +461,7 @@ function PauseOverlay({ onQuit }: { onQuit: () => void }) {
             <button className="btn ghost block" onClick={() => setOverlay('collection')}><Ic icon={BookOpen} size={15} /> Collection</button>
             <button className="btn ghost block" onClick={() => setOverlay('settings')}><Ic icon={Settings} size={15} /> Settings</button>
           </div>
+          <FullscreenButton variant="block" />
           <button className="btn ghost block" onClick={onQuit}>Quit to menu · progress is saved</button>
         </div>
 
