@@ -71,6 +71,10 @@ export const GAME = {
   /** A downed trainer's respawn spot keeps this far from every wild Pokémon (predators keep their own, larger
  *  PLAYER_RESPAWN_SAFE_DIST). */
   PLAYER_RESPAWN_CLEAR: 14,
+  /** A school's guardian never strays farther than the school radius + this (m) from its anchor: beyond it,
+ *  whatever it was doing — watching or answering the trainer, a pass-through — it drops and swims back at
+ *  burst speed on a floor-safe path. The posse's roaming predators hunt the trainer; guardians never leave. */
+  GUARDIAN_LEASH: 10,
   FERRY_FIRST_RISE_TIMEOUT: 40,
   FERRY_PERIOD: [40, 55] as [number, number],   // + climb + boarding + a long voyage ≈ a ferry every 2–2.5 minutes
   /** With nobody aboard it idles this long at the surface, then dives. */

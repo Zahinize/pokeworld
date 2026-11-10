@@ -31,6 +31,8 @@ export interface SimContext {
   playerGraceOver: boolean;
   /** How nasty this level's predators are toward the trainer (LEVEL_NASTY). */
   nasty: number;
+  /** The trainer's living companions (companion levels): hunted exactly like the trainer. */
+  partners: Entity[];
   current: Vec3;
   /** A Lapras currently idling at the surface as the reef's ferry (small species bob alongside). */
   ferry: Entity | null;
@@ -448,6 +450,9 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
   });
   const pd = len3(ctx.player.x - A.x, ctx.player.y - A.y, ctx.player.z - A.z);
   const pdSelf = len3(ctx.player.x - e.x, ctx.player.y - e.y, ctx.player.z - e.z);
+  // the leash: too far from the school (it fled, or the trainer drew this one off) → straight home
+  const dA = Math.hypot(e.x - A.x, e.z - A.z);
+  const strayed = dA > g.radius + GAME.GUARDIAN_LEASH;
   // Alomomola guards its Wishiwashi AND nurses the reef (lore): between patrols it tends the
   // most-wounded Pokémon near its school. A threat always outranks the bedside.
   const support = s.secondary.includes('support');
@@ -457,6 +462,7 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
   const hullSpeed = escorting ? Math.hypot(ctx.ferry!.vx, ctx.ferry!.vz) * 1.3 : 0;
 
   if (e.lured) e.state = 'lured';
+  else if (strayed) { if (e.state !== 'orbit') { e.state = 'orbit'; e.stateT = 0; } }
   else if (threat >= 0) {
     if (e.state !== 'intercept') { e.state = 'intercept'; e.stateT = 0; }
     if (g.alarm <= 0.05) ctx.events.push({ type: 'alarm', groupId: g.id, threatId: threat });
@@ -520,6 +526,14 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
       break;
     }
     default: {
+      if (strayed) {
+        // home at burst speed, aiming at the anchor's column above the floor so a ridge between them
+        // never turns the swim into a stalled vertical push
+        const ty = Math.max(A.y, floorY(A.x, A.z) + s.size * 0.6 + 1.0);
+        seek(e, A.x, ty, A.z, 3, 4);
+        speed = s.burst * 0.9;
+        break;
+      }
       // orbit
       const orbitSpeed = (bottomType ? 0.12 : 0.28) / Math.max(1, g.radius * 0.4);
       e.lureOrbit += dt * orbitSpeed * (0.8 + 0.4 * e.speedMul);
@@ -589,6 +603,8 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   e.huntCooldown = Math.max(0, e.huntCooldown - dt);
   const huntingPlayer = e.targetId === PLAYER_ID;
   const target: Prey | undefined = huntingPlayer ? playerPrey(ctx) : e.targetId >= 0 ? ctx.byId.get(e.targetId) : undefined;
+  // the trainer's TEAM is hunted as one: a companion gets the same relentless treatment as the trainer
+  const huntingTeam = huntingPlayer || (!!target && (target as Entity).role === 'partner');
   const targetOk = huntingPlayer ? ctx.player.huntable === true : (!!target && target.state !== 'removed' && target.state !== 'ko' && target.state !== 'caught' && target.state !== 'captureAttempt');
   const tdist = targetOk ? len3(target!.x - e.x, target!.y - e.y, target!.z - e.z) : Infinity;
   const targetRef = (): MoveTarget => (huntingPlayer ? { kind: 'player' } : { kind: 'entity', id: target!.id });
@@ -606,7 +622,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'circle':
     case 'rush':
       // a predator on the trainer's trail never gives up for distance — it crosses the reef
-      if (!targetOk || (!huntingPlayer && tdist > 48)) { endHunt(3 + ctx.rng() * 3, false); }
+      if (!targetOk || (!huntingTeam && tdist > 48)) { endHunt(3 + ctx.rng() * 3, false); }
       break;
   }
 
@@ -666,6 +682,16 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
           if (pd < pr) {
             const w = H.PLAYER_W * (1 + H.ESCALATE_W * esc) * (shiny ? H.SHINY_PLAYER_MULT : 1) * (1 - pd / pr) * (0.6 + ctx.rng() * 0.8);
             if (w > bestW) { bestW = w; bestIsPlayer = true; }
+          }
+        }
+        if (trainerOpen) {
+          // …and so is every companion: same weight, same reach, same escalation
+          const pr = H.PLAYER_R * (1 + H.ESCALATE_R * esc);
+          for (const pt of ctx.partners) {
+            const pd = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+            if (pd >= pr) continue;
+            const w = H.PLAYER_W * (1 + H.ESCALATE_W * esc) * (shiny ? H.SHINY_PLAYER_MULT : 1) * (1 - pd / pr) * (0.6 + ctx.rng() * 0.8);
+            if (w > bestW) { bestW = w; best = pt; bestIsPlayer = false; }
           }
         }
         if ((best || bestIsPlayer) && bestW > 0.05) {
@@ -735,11 +761,11 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
         }
         // a predator that has tasted the trainer means to kill: the nastier the level and the longer
         // the dive has run, the more often it stays on the hunt instead of retreating to rest
-        if (huntingPlayer && ctx.rng() < H.PERSIST * esc) { e.state = 'approach'; e.stateT = 0; }
+        if (huntingTeam && targetOk && target!.hp > 0 && ctx.rng() < H.PERSIST * esc) { e.state = 'approach'; e.stateT = 0; }
         else endHunt(cool, true);
       } else if (e.stateT > 6.5) {
         // no bite yet (the reef-wide gap, a move on cooldown): on the trainer, circle and come again
-        if (huntingPlayer) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
+        if (huntingTeam) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
         else endHunt(3 + ctx.rng() * 3, true);
       }
       break;
@@ -756,7 +782,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, e.state === 'rush' ? 0.8 : 2);
   // a predator on the trainer's trail comes at full speed however far from the camera it starts
-  commit(e, speed * (huntingPlayer && targetOk ? 1 : activityFactor(e, ctx)));
+  commit(e, speed * (huntingTeam && targetOk ? 1 : activityFactor(e, ctx)));
 }
 
 // ---------------------------------------------------------------------------------------------

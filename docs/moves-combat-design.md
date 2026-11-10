@@ -326,7 +326,12 @@ packs and the Carvanha shoal pile on. It escalates from `ESCALATE_FLOOR` 0.5 the
 over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and the sighting range by
 `ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
 escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
-(Level 1 ×1.0 … Level 4 ×1.3). **The posse** (`HUNTERS_MIN` 2/3/3/4 by level): every frame the
+(Level 1 ×1.0 … Level 4 ×1.3). **The team is the prey** (companion levels): a companion is weighed, chased
+and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
+grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
+member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a
+raider weighs a companion with the trainer's `TRAINER_PULL`. Measured L3/L4: 1.4–1.7 hunters on the trainer,
+0.9–1.2 on each companion; dives per head equal. **The posse** (`HUNTERS_MIN` 2/3/3/4 by level): every frame the
 Ecosystem counts the roaming predators on the trainer's trail (hunting them, or retaliating at them) and,
 if short, conscripts the nearest idle roamers from anywhere on the reef — then pulls ones off fish. A
 predator hunting the trainer never gives up for distance (it crosses the reef at full speed, exempt from
@@ -361,6 +366,20 @@ Retaliation is a one-shot state (`retaliate`, ~1.2 s) inserted before the existi
 never chains more than twice in 10 s per entity (anti-chaos guard).
 
 ### Guardians & group revenge
+**The guardian leash** (`GAME.GUARDIAN_LEASH` 10 m): a school's guardian never strays farther than the school
+radius + 10 m from its anchor. Beyond it, whatever it was doing — watching or answering the trainer, a
+pass-through — it drops and swims home at burst speed, aimed at the anchor's column above the floor (a ridge
+between them used to turn the swim into a stalled vertical push). A guardian's retaliation at the trainer
+also ends at the leash and never raises its school's alarm against the trainer, so the school holds and the
+guardian stays with it. **Ball a guarded Pokémon and its guardian always answers** (`GUARDIAN_DEFEND_CATCH_CHANCE`
+1): it LUNGES — closes to a body length or two rather than move range, firing on the way — fights for
+`GUARDIAN_DEFEND_DURATION` 5 s with several casts, follows a retreating trainer only as far as the leash
+(~8–10 m past its orbit), then turns home. Measured: Gyarados/Walrein to 3.6–4.9 m of the trainer, 2–6 casts,
+never past leash + 0.4 m, back on the school in 10–25 s. Playtest bug this fixes (Nov 2026): a guardian Gyarados stayed in its watch posture
+beside the trainer while predators ran its Magikarp off 100 m, then crawled after them for minutes — from the
+trainer's side it read as a guardian leaving its school to follow them. Guardians never join the posse:
+only roaming (`role: 'solo'`) predators hunt the trainer.
+
 - **Guardian aggression**: in `intercept`, the guardian now also casts its moves at the predator on
   cooldown while holding position between predator and school. Guardians prefer their utility (Wrap, Flash,
   Supersonic) to *disrupt* hunts, switching to damage when the predator targets them.
@@ -459,7 +478,7 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
   `ORDER_CHARGE_MULT` 0.5 × `chargeEvery`. KO or catch Tatsugiri first and Dondozo is **lost without its
   commander**: charge gaps × `DUMB_CHARGE_MULT` 1.6, lunges aimed up to `DUMB_AIM_ERR` (26°) off, brawl speed
   × `DUMB_SPEED_MULT` 0.75, and every ~`DUMB_WANDER_EVERY` 9 s it swims off toward nothing for
-  `DUMB_WANDER_FOR` 3 s. Measured: 8/8 charges called, 11.8 s mean gap commanded vs 29.8 s leaderless.
+  `DUMB_WANDER_FOR` 3 s. Measured: every charge called, 16.7 s between charges commanded (10 s gap + the 6.3 s charge) vs 35.9 s leaderless.
 - **Feigned Weakness.** From `BAIT_FIRST` 14 s, then every `BAIT_EVERY` 35 s, Tatsugiri drifts
   `BAIT_DIST` 10 m out toward the nearest prey and floats limp for `BAIT_FOR` 9 s; its HP bar stays up and
   LIES (`HealthBars` shows `BAIT_FAKE_HP` 12 %). Dondozo lurks `LURK_BEHIND` 8 m on the far side and holds
@@ -478,6 +497,31 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
   snaps at empty water", retry after `HUNGRY_RETRY` 12 s. Lure or scatter the schools and it starves.
 
 ### Level 4 — The Deep Trench (bosses: Wailord, then Kyogre)
+#### Basculegion, the first wave — Pokédex lore (`LEGION` in combatConfig)
+- **Souls of the Fallen.** `Ecosystem.fallen` counts every reef Pokémon KO'd on the dive (swallowed ones too).
+  When the fight opens Basculegion takes `SOULS_PER_KO` 0.5 wisps per fallen, between `SOULS_MIN` 2 and
+  `SOULS_MAX` 8: each is +`SOUL_HP` 4 % max HP at once, and is spent at the end of a charge for an extra Wave
+  Crash — the next charge comes `SOUL_RECHARGE` 2.5 s later instead of the usual 18 s gap. The wisps orbit it
+  (violet halos in `PokemonLayer`, one fewer per soul spent). The posse and the raids feed the boss: a quiet
+  reef means 2 wisps, a slaughtered one 8 (+32 % HP, eight chained charges). Measured: a charge every 8.9 s
+  while souls last, every 25.4 s after.
+- **Last Respects.** A companion downed in the fight is absorbed (`knockOut`, partner): its next attack —
+  move or charge — hits `RESPECT_ATK` +50 % harder per soul absorbed (up to `RESPECT_MAX` 3) within
+  `RESPECT_WINDOW` 30 s; the bonus rides one attack and is spent. The first three companions absorbed in a
+  fight also add a wisp each — capped, because uncapped every downed companion bought another Wave Crash that
+  downed the next one and the souls never ran out (the sim's L4 fight stalemated at 11 wisps). Toast "Last Respects". Send the next
+  companion fast or it snowballs.
+- **Upstream Surge.** From `SURGE_FIRST` 10 s, every `SURGE_EVERY` 22 s, it drives a current down a lane
+  toward its focus (`SURGE_LEN` 45 m long, `SURGE_WIDTH` 9 m to each side) for `SURGE_PUSH_FOR` 3 s. The
+  trainer in the lane is accelerated back at `SURGE_PUSH` 16 m/s² (14.6 m in the 3 s, measured live) and
+  companions are carried back at `SURGE_PARTNER_PUSH` 9 m/s per frame — unless **braced**: a reef rock within
+  `BRACE_REACH` 4.5 m stands between them and the boss (a companion within 8 m of a braced trainer is braced
+  with them). The reef-wide current spikes for the push, then Basculegion rushes down the same lane with no
+  further telegraph — the current was the telegraph.
+- **Bosses run only their own AI**: `maybeRetaliate` now ignores bosses. A predator-type boss used to be thrown
+  into the generic retaliation by every companion hit, which broke its charge mid-lunge so the charge timer
+  never reset — Basculegion charged every ~7 s instead of its tuned 18 s.
+
 1. **Phase 1 — Catch**: "Catch 5 Stage 2 Pokémon" (Kingdra/Gyarados-class spawns, duplicates allowed).
 2. **Phase 2 — Wailord**: a marked site far across the open water. On approach: **strong currents** (a
    radial current field pushes player, companions and fish; particle streams), wilds scatter reef-wide.

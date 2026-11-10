@@ -623,7 +623,7 @@ for (const levelId of [1, 2]) {
         if (bothAlive) maxPairSep = Math.max(maxPairSep, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
       }
     }
-    if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s)`);
+    if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s) — ${bossEnts.map((b) => `${b.species.id} ${Math.round(b.hp)}/${b.maxHp} ${b.state}${b.souls ? ` souls ${b.souls}` : ''}`).join(' · ')} | partners ${[partner1, partner2].map((q) => `${q.species.id} ${q.state} hp ${Math.round(q.hp)} duel ${q.duelWith}`).join(', ')}`);
     if (charges > 0) ok(`L${levelId}: bosses charged ${charges}× (stay agile!)`); else fail(`L${levelId}: bosses never charged`);
     if (bossEnts.length > 1 && bossEnts[1].pairBossId >= 0) {
       if (maxPairSep > 0 && maxPairSep < 16) ok(`L${levelId}: commander duo stayed together (max separation ${maxPairSep.toFixed(1)}m)`); else fail(`L${levelId}: duo separated (${maxPairSep.toFixed(1)}m)`);

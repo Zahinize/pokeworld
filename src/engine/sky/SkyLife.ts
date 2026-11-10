@@ -84,6 +84,8 @@ export class SkyLife {
   onSplash: ((b: SkyBird, duration: number) => boolean) | null = null;
   /** Where the reef's schooling guardians are (no deeper than `maxDepth`): dives come down on them. */
   diveSpots: ((maxDepth: number) => { x: number; z: number }[]) | null = null;
+  /** Where the trainer's submerged companions are (companion levels): a dive aimed at the trainer may pick one. */
+  teamSpots: (() => { x: number; z: number }[]) | null = null;
 
   private flocks: Flock[] = [];
   private rng: RNG;
@@ -233,7 +235,12 @@ export class SkyLife {
           // nearest schooling guardian in range — the raid starts on its school; otherwise the shallows
           let tx: number | null = null, tz = 0;
           const chance = f.shinyN > 0 ? SKY.SHINY.AT_TRAINER_CHANCE : SKY.DIVE.AT_TRAINER_CHANCE;
-          if (Math.hypot(b.x - px, b.z - pz) < SKY.DIVE.AT_TRAINER_R && this.rng.chance(chance)) { tx = px; tz = pz; }
+          if (Math.hypot(b.x - px, b.z - pz) < SKY.DIVE.AT_TRAINER_R && this.rng.chance(chance)) {
+            // the dive comes down on the TEAM: the trainer, or (companion levels) one of their companions
+            const team = this.teamSpots ? this.teamSpots() : [];
+            const k = this.rng.int(0, team.length);
+            if (k === 0) { tx = px; tz = pz; } else { tx = team[k - 1].x; tz = team[k - 1].z; }
+          }
           else if (this.diveSpots) {
             let best: number = SKY.DIVE.AT_TRAINER_R;
             for (const s of this.diveSpots(SKY.RAID.MAX_DEPTH)) { const d = Math.hypot(s.x - b.x, s.z - b.z); if (d < best) { best = d; tx = s.x; tz = s.z; } }

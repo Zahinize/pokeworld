@@ -138,6 +138,9 @@ export interface Entity {
    *  gulp, and the leaderless 'lost the plot' wander (s left). */
   baitT: number; shelterT: number; exposeT: number; orderT: number; baitAt: number;
   gulpT: number; gulpAt: number; gulpN: number; dumbT: number;
+  /** Basculegion (COMBAT LEGION): soul wisps orbiting it, souls absorbed for its next attack, the Upstream
+   *  Surge's push (s left) and the next surge time (0 = the fight has not opened yet). */
+  souls: number; respectN: number; surgeT: number; surgeAt: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -216,6 +219,10 @@ export type EcoEvent =
   | { type: 'bossShelter'; entityId: number; inside: boolean }
   | { type: 'bossGulp'; entityId: number; speciesId: string; eaten: string; healed: number }
   | { type: 'bossHungry'; entityId: number; speciesId: string }
+  | { type: 'bossSouls'; entityId: number; souls: number; fallen: number; hp: number }
+  | { type: 'bossSoulSpent'; entityId: number; left: number }
+  | { type: 'bossRespects'; entityId: number; fallen: string; stacks: number }
+  | { type: 'bossSurge'; entityId: number; phase: 'start' | 'rush' }
   | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught'; shiny: boolean };
 
 export interface PlayerSnapshot {

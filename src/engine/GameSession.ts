@@ -25,7 +25,7 @@ import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT, COMMANDER } from '@/data/combatConfig';
+import { COMBAT, COMMANDER, LEGION } from '@/data/combatConfig';
 import { kitOf, effectiveRange, stagesOf } from './sim/moveSystem';
 import { computeDamage } from './sim/combat';
 import { getMove, isSupportive, movesFor } from '@/data/moves';
@@ -73,6 +73,9 @@ export class GameSession {
   private flockDefendToastAt = 0;
   private orderToastAt = 0;
   private gulpToastAt = 0;
+  /** The trainer is inside Basculegion's surge lane and not braced (for tests and the HUD). */
+  surgeSwept = false;
+  private surgeCurrentWas = 0;
   /** What the crosshair is on (species only) — drives auto ball selection. */
   private aimSpecies: ReturnType<typeof getSpecies> | null = null;
   /** Attract mode: the real reef runs a slow cinematic loop behind the menu screens. */
@@ -1096,6 +1099,8 @@ export class GameSession {
     // Player
     const inp = this.phase === 'playing' ? this.input : { forward: 0, strafe: 0, up: 0, sprint: false, lookDX: 0, lookDY: 0 };
     if (eco.bossCurrent > 0) { const c = eco.bossCurrent; this.player.vx += Math.cos(eco.time * 0.4) * c * 2.4 * dt; this.player.vz += Math.sin(eco.time * 0.33) * c * 2.4 * dt; this.player.vy += Math.sin(eco.time * 0.5) * c * 0.8 * dt; }
+    // Basculegion's Upstream Surge: swept back down the lane unless a reef rock stands between you and it
+    { const sg = eco.surgePushAt(this.player.x, this.player.y, this.player.z); this.surgeSwept = !!sg; if (sg) { this.player.vx += sg.dx * LEGION.SURGE_PUSH * dt; this.player.vz += sg.dz * LEGION.SURGE_PUSH * dt; } }
     this.player.update(dt, inp, eco.obstacles);
     this.input.lookDX = 0; this.input.lookDY = 0;
     // Simulation
@@ -1509,6 +1514,34 @@ export class GameSession {
           if (near(e, 80)) { Audio.bubble(3); if (this.elapsed > this.gulpToastAt) { this.gulpToastAt = this.elapsed + 8; store.pushToast({ kind: 'warn', title: `Dondozo swallows a ${getSpecies(ev.eaten).name} whole!`, body: `+${ev.healed} HP. The glutton feeds on the reef — lure or scatter the schools and it goes hungry.`, speciesId: 'dondozo', ttl: 5 }); } }
           break;
         }
+        // ---- Basculegion (COMBAT LEGION lore)
+        case 'bossSouls': {
+          const e = eco.byId.get(ev.entityId);
+          if (e) { this.pushFx('lure', e.x, e.y, e.z, e.species.size); this.pushNumber(`+${ev.hp}`, '#c4b5fd', e.x, e.y + e.species.size * 0.7, e.z, true); }
+          store.pushToast({ kind: 'alert', title: `Basculegion wears ${ev.souls} fallen souls`, body: `${ev.fallen} reef Pokémon fell on this dive — every soul is +${Math.round(LEGION.SOUL_HP * 100)}% HP and one extra Wave Crash.`, speciesId: 'basculegion', shiny: !!e?.isShiny, ttl: 7 });
+          break;
+        }
+        case 'bossSoulSpent': {
+          const e = eco.byId.get(ev.entityId);
+          if (e) { this.pushFx('hit', e.x, e.y + e.species.size * 0.5, e.z, e.species.size * 0.4, '#c4b5fd'); if (near(e, 70)) Audio.bubble(2); }
+          break;
+        }
+        case 'bossRespects': {
+          const e = eco.byId.get(ev.entityId);
+          if (e) this.pushFx('lure', e.x, e.y, e.z, e.species.size * 0.8);
+          Audio.legendary();
+          store.pushToast({ kind: 'alert', title: 'Last Respects', body: `Basculegion absorbs ${getSpecies(ev.fallen).name}'s soul — its next attack hits ${Math.round(LEGION.RESPECT_ATK * 100 * ev.stacks)}% harder. Send the next companion fast.`, speciesId: 'basculegion', shiny: !!e?.isShiny, ttl: 6 });
+          break;
+        }
+        case 'bossSurge': {
+          const e = eco.byId.get(ev.entityId);
+          if (ev.phase === 'start') {
+            this.surgeCurrentWas = eco.bossCurrent; eco.bossCurrent = Math.max(eco.bossCurrent, 2.6); // the whole reef feels the current
+            Audio.breach();
+            if (near(e, 90)) store.pushToast({ kind: 'alert', title: 'Upstream Surge!', body: 'Basculegion drives a current down the lane — get behind a reef rock or be swept back, then dodge the rush.', speciesId: 'basculegion', shiny: !!e?.isShiny, ttl: 5 });
+          } else { eco.bossCurrent = this.surgeCurrentWas; }
+          break;
+        }
         case 'bossHungry': {
           const e = eco.byId.get(ev.entityId);
           if (near(e, 80) && this.elapsed > this.gulpToastAt) { this.gulpToastAt = this.elapsed + 8; store.pushToast({ kind: 'event', title: 'Dondozo snaps at empty water', body: "Nothing within reach to swallow — it's hungry, and it can't heal.", speciesId: 'dondozo', ttl: 5 }); }
@@ -1614,6 +1647,8 @@ export class GameSession {
     sky.diveSpots = (maxDepth) => eco.alive
       .filter((e) => e.species.secondary.includes('guardian') && e.role !== 'partner' && e.y > -maxDepth && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt')
       .map((e) => ({ x: e.x, z: e.z }));
+    // …and on the trainer's team: a dive aimed at the trainer may land on a submerged companion instead
+    sky.teamSpots = () => eco.alive.filter((e) => e.role === 'partner' && e.state !== 'ko' && e.state !== 'removed' && e.y < -0.5).map((e) => ({ x: e.x, z: e.z }));
     eco.skyHooks = {
       body: (id) => {
         const b = sky.birds.find((x) => x.id === id);

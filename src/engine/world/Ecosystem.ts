@@ -15,7 +15,7 @@ import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { SKY, skyPartnerScale } from '@/data/sky';
-import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, COMMANDER } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
 import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -81,7 +81,7 @@ export class Ecosystem {
     this.ctx = {
       time: 0, isNight: false, nightness: 0, player: this.player, rng: rngFn, obstacles: this.obstacles,
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
-      predatorGraceOver: false, playerGraceOver: false, nasty: COMBAT.PREDATOR_HUNT.LEVEL_NASTY[gen.levelId] ?? 1, current: this.current, ferry: null,
+      predatorGraceOver: false, playerGraceOver: false, nasty: COMBAT.PREDATOR_HUNT.LEVEL_NASTY[gen.levelId] ?? 1, partners: [], current: this.current, ferry: null,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
       cast: (e, slot, target) => {
         // predators share one cast gap at the trainer (COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP)
@@ -170,6 +170,7 @@ export class Ecosystem {
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
       baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
+      souls: 0, respectN: 0, surgeT: 0, surgeAt: 0,
     };
     if (behavior === 'bottom') e.y = floorY(e.x, e.z) + s.size * 0.42;
     if (behavior === 'predator' || behavior === 'curious' || behavior === 'giant' || behavior === 'defensive') { e.target.x = e.x; e.target.z = e.z; }
@@ -310,6 +311,9 @@ export class Ecosystem {
 
   /** Retaliation roll (anti-chaos window enforced). `attackerId` may be -2 for the player. */
   maybeRetaliate(t: Entity, attackerId: number) {
+    // a boss runs its own AI and nothing else: the generic retaliation used to knock a predator-type boss
+    // (Basculegion) out of its charge mid-lunge, so the charge timer never reset and it charged every ~7 s
+    if (t.isBoss) return;
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
     if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
     const vsRaider = attackerId <= -1000; // a sky Pokémon under the reef: every hit it lands draws an answer
@@ -341,10 +345,22 @@ export class Ecosystem {
     }
     t.state = 'ko'; t.stateT = 0; t.animT = 0; t.vx *= 0.2; t.vz *= 0.2; t.vy = 0;
     const by = bySourceId >= 0 ? this.byId.get(bySourceId) : undefined;
-    if (t.role === 'partner') { this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id }); }
+    if (t.role === 'partner') {
+      this.events.push({ type: 'partnerDown', entityId: t.id, speciesId: t.species.id });
+      // Last Respects: a Basculegion in the fight absorbs the fallen companion — its next attack hits harder
+      if (this.bossesActive) for (const b of this.alive) {
+        if (!b.isBoss || b.species.id !== 'basculegion' || b.state === 'ko' || b.state === 'caught' || b.state === 'removed') continue;
+        b.respectN = Math.min(LEGION.RESPECT_MAX, b.respectN + 1);
+        // a wisp too — but only RESPECT_MAX of them in the whole fight (gulpN counts them here): unlimited, every
+        // downed companion bought another Wave Crash that downed the next one, and the souls never ran out
+        if (b.gulpN < LEGION.RESPECT_MAX) { b.gulpN++; b.souls++; }
+        b.atkStage = 1 + LEGION.RESPECT_ATK * b.respectN; b.atkStageUntil = this.time + LEGION.RESPECT_WINDOW;
+        this.events.push({ type: 'bossRespects', entityId: b.id, fallen: t.species.id, stacks: b.respectN });
+      }
+    }
     this.events.push({ type: 'ko', entityId: t.id, speciesId: t.species.id, bySpeciesId: by?.species.id });
     if (t.isBoss) { this.events.push({ type: 'bossDefeated', entityId: t.id, speciesId: t.species.id, how: 'ko', shiny: t.isShiny }); return; }
-    if (t.role !== 'partner') this.koTimes.push(this.time); // the reef's losses: the faster they fall, the faster they come back
+    if (t.role !== 'partner') { this.koTimes.push(this.time); this.fallen++; } // the reef's losses: the faster they fall, the faster they come back
     const mul = this.respawnMul();
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes (less under pressure)
     if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone, shiny: t.isShiny });
@@ -437,6 +453,9 @@ export class Ecosystem {
     const ctx = this.ctx;
     ctx.time = this.time; ctx.nightness = nightness; ctx.isNight = nightness > 0.55; ctx.predatorGraceOver = this.time > GAME.PREDATOR_GRACE;
     ctx.playerGraceOver = this.time > COMBAT.PREDATOR_HUNT.PLAYER_GRACE;
+    // the trainer's living companions: prey for the posse and for raiders, exactly like the trainer
+    ctx.partners.length = 0;
+    for (const e of this.alive) if (e.role === 'partner' && e.state !== 'ko' && e.state !== 'removed' && e.state !== 'caught') ctx.partners.push(e);
     const cur = 0.3 + this.bossCurrent * 2.2;
     this.current.x = Math.cos(this.time * 0.025) * cur; this.current.z = Math.sin(this.time * 0.031) * cur;
     if (this.lureUntil >= 0 && this.time >= this.lureUntil) this.endLure();
@@ -557,21 +576,36 @@ export class Ecosystem {
     if (this.hunterQuota <= 0 || this.ctx.player.huntable !== true || !this.ctx.playerGraceOver) return;
     const H = COMBAT.PREDATOR_HUNT;
     const p = this.player;
+    // the prey is the TEAM: the trainer and every living companion (companion levels) — the posse grows by
+    // TEAM_EXTRA_PER_COMPANION per companion and is spread so nobody on the team is left alone
+    const partners = this.ctx.partners;
+    const quota = this.hunterQuota + partners.length * H.TEAM_EXTRA_PER_COMPANION;
     const isHunter = (e: Entity) => e.behavior === 'predator' && e.role === 'solo';
+    const chasing = (e: Entity) => e.state === 'approach' || e.state === 'circle' || e.state === 'rush';
+    /** -2 trainer, a companion's id, or -1 if this hunter is not on the team. */
+    const teamTarget = (e: Entity): number => {
+      if ((e.targetId === -2 && chasing(e)) || (e.state === 'retaliate' && e.retaliateTarget === -2)) return -2;
+      if (e.targetId >= 0 && chasing(e)) { const t = this.byId.get(e.targetId); if (t?.role === 'partner') return t.id; }
+      return -1;
+    };
+    const load = new Map<number, number>([[-2, 0]]);
+    for (const pt of partners) load.set(pt.id, 0);
     let hunting = 0;
-    const onTrainer = (e: Entity) => (e.targetId === -2 && (e.state === 'approach' || e.state === 'circle' || e.state === 'rush')) || (e.state === 'retaliate' && e.retaliateTarget === -2);
-    for (const e of this.alive) if (isHunter(e) && onTrainer(e)) hunting++;
-    if (hunting >= this.hunterQuota) return;
+    for (const e of this.alive) { if (!isHunter(e)) continue; const t = teamTarget(e); if (t !== -1 && load.has(t)) { load.set(t, load.get(t)! + 1); hunting++; } }
+    if (hunting >= quota) return;
     // conscripts: idle roamers first, then ones busy with fish — nearest first, within reach
-    const cands = this.alive.filter((e) => isHunter(e) && !onTrainer(e) && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt' && e.state !== 'faint' && e.state !== 'duel' && e.state !== 'retaliate' && e.stunT <= 0);
-    void H;
+    const cands = this.alive.filter((e) => isHunter(e) && teamTarget(e) === -1 && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt' && e.state !== 'faint' && e.state !== 'duel' && e.state !== 'retaliate' && e.stunT <= 0);
     const rank = (e: Entity) => (e.state === 'patrol' || e.state === 'retreat' ? 0 : 1000) + len3(e.x - p.x, e.y - p.y, e.z - p.z);
     cands.sort((a, b) => rank(a) - rank(b));
     for (const e of cands) {
-      if (hunting >= this.hunterQuota) break;
+      if (hunting >= quota) break;
+      // the least-hunted member of the team gets this one (the trainer on a tie)
+      let pick = -2, least = load.get(-2)!;
+      for (const [id, n] of load) if (n < least) { least = n; pick = id; }
       if (e.targetId >= 0) this.events.push({ type: 'huntEnd', predatorId: e.id });
-      e.targetId = -2; e.state = 'approach'; e.stateT = 0; e.huntCooldown = 0; e.nextThink = this.time;
-      this.events.push({ type: 'huntStart', predatorId: e.id, targetId: -2 });
+      e.targetId = pick; e.state = 'approach'; e.stateT = 0; e.huntCooldown = 0; e.nextThink = this.time;
+      this.events.push({ type: 'huntStart', predatorId: e.id, targetId: pick });
+      load.set(pick, least + 1);
       hunting++;
     }
   }
@@ -757,21 +791,30 @@ export class Ecosystem {
     const tgt = e.retaliateTarget;
     const vsRaider = tgt <= -1000; // vs a sky raider it keeps fighting until the window closes, not one cast
     const pos: Vec3 | null = tgt === -2 ? this.player : (() => { const a = this.byId.get(tgt) ?? this.externalCaster(tgt); return a && a.state !== 'ko' && a.state !== 'removed' && a.state !== 'caught' ? a : null; })();
-    if (!pos || e.stateT > (vsRaider ? COMBAT.FURY.FIGHT_DURATION : 3.5)) {
-      e.state = e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
+    const guardian = e.role === 'guardian' && e.groupId >= 0;
+    const g0 = guardian ? this.groups[e.groupId] : undefined;
+    const leashed = !!g0 && Math.hypot(e.x - g0.anchor.x, e.z - g0.anchor.z) > g0.radius + GAME.GUARDIAN_LEASH; // a guardian never chases past its leash
+    const defending = guardian && tgt === -2; // a guardian answering the trainer: a real fight, then home
+    if (!pos || leashed || e.stateT > (vsRaider ? COMBAT.FURY.FIGHT_DURATION : defending ? COMBAT.GUARDIAN_DEFEND_DURATION : 3.5)) {
+      e.state = guardian ? 'orbit' : e.behavior === 'predator' ? 'patrol' : e.groupId >= 0 ? 'scatter' : 'flee';
       e.stateT = 0; e.threatId = tgt; e.threatT = 0;
-      if (e.groupId >= 0) { const g = this.groups[e.groupId]; g.alarm = 1; if (g.threatId < 0) g.threatId = tgt; }
+      // the school takes the alarm — except a guardian's own answer to the trainer, which is the guardian's
+      // business: the school holds, and the guardian stays with it
+      if (e.groupId >= 0 && !(guardian && tgt === -2)) { const g = this.groups[e.groupId]; g.alarm = 1; if (g.threatId < 0) g.threatId = tgt; }
       return;
     }
     const d = len3(pos.x - e.x, pos.y - e.y, pos.z - e.z);
     const vsPlayer = tgt === -2; // stat drops mean nothing to a trainer — use damage moves only
     const kit = kitOf(e).filter((m) => !vsPlayer || m.kind === 'damage');
     const reach = Math.max(...kit.map((m) => effectiveRange(e, m)));
-    if (d > reach * 0.85) {
+    // a defending guardian LUNGES: it closes to a body length or two, not to move range — and fires on the way
+    const closeTo = defending ? Math.min(reach * 0.85, 3.5 + e.species.size * 0.5) : reach * 0.85;
+    if (d > closeTo) {
       // close the distance first — an avenging school visibly surges at its attacker
       const k = e.species.burst * 0.75 / (d || 1);
       e.dx = (pos.x - e.x) * k; e.dy = (pos.y - e.y) * k * 0.7; e.dz = (pos.z - e.z) * k;
       e.maxSpeed = e.species.burst * 0.75;
+      if (defending && d <= reach && e.stateT > 0.3) { const slot = this.moves.pickMove(e, d, false, true); if (slot !== -1) this.ctx.cast(e, slot, { kind: 'player' }); }
     } else {
       // in range: hold, face, cast
       e.dx = (pos.x - e.x) * 0.15; e.dy = (pos.y - e.y) * 0.1; e.dz = (pos.z - e.z) * 0.15;
@@ -780,7 +823,7 @@ export class Ecosystem {
         const slot = this.moves.pickMove(e, d, false, vsPlayer);
         if (slot !== -1) {
           // through the sim context so a predator's retaliation shares the reef-wide gap at the trainer
-          if (this.ctx.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt }) && !vsRaider) e.stateT = 10; // resolved on next think via the timeout branch
+          if (this.ctx.cast(e, slot, tgt === -2 ? { kind: 'player' } : { kind: 'entity', id: tgt }) && !vsRaider && !defending) e.stateT = 10; // resolved on next think via the timeout branch
         }
       }
     }
@@ -812,6 +855,13 @@ export class Ecosystem {
         e.vx = e.dx = D.vx; e.vy = e.dy = D.vy; e.vz = e.dz = D.vz;
         return;
       }
+    }
+    // Upstream Surge: a companion in the lane is carried back down the current every frame (its formation
+    // steering would shrug off a mere shove) — unless it is braced behind rock, or its trainer is, close by
+    if (e.role === 'partner' && this.surge && this.time <= this.surge.until && this.inSurgeLane(e.x, e.y, e.z)) {
+      const sg = this.surge, pl = this.player;
+      const braced = this.bracedAgainstSurge(e.x, e.y, e.z) || (len3(pl.x - e.x, pl.y - e.y, pl.z - e.z) < 8 && this.bracedAgainstSurge(pl.x, pl.y, pl.z));
+      if (!braced) { e.x += sg.dx * LEGION.SURGE_PARTNER_PUSH * dt; e.z += sg.dz * LEGION.SURGE_PARTNER_PUSH * dt; }
     }
     const leaping = e.state === 'leapAir';
     const agility = e.behavior === 'giant' ? 0.22 : e.behavior === 'bottom' ? 0.7 : e.state === 'rush' || e.state === 'scatter' || e.state === 'flee' ? 1.6 : 1.0;
@@ -1081,7 +1131,7 @@ export class Ecosystem {
     if (f.duelWith !== -1) { const p = this.byId.get(f.duelWith); if (p?.role === 'partner') this.endDuel(p, 'gone'); }
     f.hp = 0;
     this.remove(f);
-    this.koTimes.push(this.time); // the reef's loss all the same — pressure brings replacements faster
+    this.koTimes.push(this.time); this.fallen++; // the reef's loss all the same — pressure brings replacements faster
     const healed = Math.round(boss.maxHp * COMMANDER.GULP_HEAL);
     boss.hp = Math.min(boss.maxHp, boss.hp + healed);
     boss.gulpN++;
@@ -1197,6 +1247,16 @@ export class Ecosystem {
     if (e.state === 'rest') { e.state = 'wander'; e.stateT = 0; }
     const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     const p = this.player;
+    // Basculegion: the fight opens — it rises wearing the souls of everything that fell on this reef
+    const legion = e.species.id === 'basculegion';
+    if (legion && e.surgeAt === 0) {
+      e.surgeAt = this.time + LEGION.SURGE_FIRST;
+      e.souls = Math.max(LEGION.SOULS_MIN, Math.min(LEGION.SOULS_MAX, Math.floor(this.fallen * LEGION.SOULS_PER_KO)));
+      const bonus = Math.round(e.maxHp * LEGION.SOUL_HP * e.souls);
+      e.maxHp += bonus; e.hp += bonus;
+      this.events.push({ type: 'bossSouls', entityId: e.id, souls: e.souls, fallen: this.fallen, hp: bonus });
+    }
+    const respect = legion ? 1 + LEGION.RESPECT_ATK * e.respectN : 1; // Last Respects: the next attack
     // the duo: Dondozo with (or without) its commander
     const duo = e.species.id === 'dondozo';
     const cmd = duo ? this.commanderOf(e) : undefined;
@@ -1221,7 +1281,7 @@ export class Ecosystem {
         const pr = e.species.size * 0.55 + 1.1;
         if (len3(p.x - e.x, p.y - e.y, p.z - e.z) < pr && this.time > e.t1) {
           const [lo, hi] = COMBAT.CHARGE_PLAYER_DAMAGE;
-          const dmg = Math.round(lo + this.rng.next() * (hi - lo));
+          const dmg = Math.round((lo + this.rng.next() * (hi - lo)) * respect);
           this.events.push({ type: 'playerHit', casterId: e.id, moveId: 'charge', damage: dmg });
           this.onPlayerDamage(dmg, e.id, 'charge');
           e.t1 = this.time + 1; // one player hit per charge
@@ -1229,14 +1289,20 @@ export class Ecosystem {
         for (const pt of this.alive) {
           if (pt.role !== 'partner' || pt.state === 'ko') continue;
           if (len3(pt.x - e.x, pt.y - e.y, pt.z - e.z) < pr && pt.flashT <= 0) {
-            this.damageAbs(pt, Math.round(pt.maxHp * 0.4 * COMBAT.CHARGE_COMPANION_MULT), e.id);
+            this.damageAbs(pt, Math.round(pt.maxHp * 0.4 * COMBAT.CHARGE_COMPANION_MULT * respect), e.id);
           }
         }
       } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3 + COMBAT.CHARGE_RECOVERY) {
         // recovery: slow drift, softened defenses — the punish window (and the commander's shelter opens)
         e.dx = e.vx * 0.2; e.dy = 0; e.dz = e.vz * 0.2; e.maxSpeed = 1;
         e.defStage = 0.75; e.defStageUntil = this.time + 0.5;
-      } else { e.state = 'wander'; e.stateT = 0; e.t2 = chargeGap(); }
+      } else {
+        e.state = 'wander'; e.stateT = 0; e.t2 = chargeGap();
+        if (legion) {
+          if (e.respectN > 0) { e.respectN = 0; e.atkStage = 1; e.atkStageUntil = 0; } // the absorbed souls went into that blow
+          if (e.souls > 0) { e.souls--; e.t2 = LEGION.SOUL_RECHARGE; this.events.push({ type: 'bossSoulSpent', entityId: e.id, left: e.souls }); } // a soul buys another Wave Crash
+        }
+      }
       return;
     }
     // Glutton's Gulp: hurt and hungry, Dondozo inhales the reef — fish are dragged to its mouth and swallowed
@@ -1281,6 +1347,31 @@ export class Ecosystem {
       e.maxSpeed = sp;
       return;
     }
+    // Upstream Surge: it drives a current down a lane — the team is swept back unless braced behind rock —
+    // then rushes down the same lane
+    if (legion) {
+      if (e.surgeT > 0) {
+        e.surgeT -= dt;
+        const sg = this.surge;
+        e.dx = e.vx * 0.2; e.dy = 0; e.dz = e.vz * 0.2; e.maxSpeed = 0.8; e.flashT = 0.15; // braced against its own current
+        if (e.surgeT <= 0 || !sg) {
+          if (sg) { e.wander.x = sg.dx; e.wander.y = 0; e.wander.z = sg.dz; }
+          e.state = 'charging'; e.stateT = COMBAT.CHARGE_TELEGRAPH; e.t1 = 0; // the current WAS the telegraph
+          e.surgeT = 0; e.surgeAt = this.time + LEGION.SURGE_EVERY; this.surge = null;
+          this.events.push({ type: 'bossSurge', entityId: e.id, phase: 'rush' });
+          this.events.push({ type: 'bossCharge', entityId: e.id, targetKind: focusEnt ? 'partner' : 'player' });
+        }
+        return;
+      }
+      const dF = len3(focus.x - e.x, focus.y - e.y, focus.z - e.z);
+      if (this.time > e.surgeAt && dF < LEGION.SURGE_LEN * 0.8 && dF > 3) {
+        const dx = focus.x - e.x, dz = focus.z - e.z; const l = Math.hypot(dx, dz) || 1;
+        this.surge = { bossId: e.id, x: e.x, y: e.y, z: e.z, dx: dx / l, dz: dz / l, until: this.time + LEGION.SURGE_PUSH_FOR };
+        e.surgeT = LEGION.SURGE_PUSH_FOR;
+        this.events.push({ type: 'bossSurge', entityId: e.id, phase: 'start' });
+        return;
+      }
+    }
     // brawl: keep mid range from the focus, cast whenever ready
     e.t2 -= dt;
     // a leaderless Dondozo loses the plot now and then: swims off toward nothing in particular
@@ -1319,7 +1410,46 @@ export class Ecosystem {
     if (dh > 45) { e.dx += (e.home.x - e.x) * 0.05; e.dz += (e.home.z - e.z) * 0.05; }
     // cast at partners in range, or the player
     const slot = this.moves.pickMove(e, d, false, !focusEnt);
-    if (slot !== -1 && d < 20) this.moves.cast(e, slot, focusEnt ? { kind: 'entity', id: focusEnt.id } : { kind: 'player' });
+    if (slot !== -1 && d < 20 && this.moves.cast(e, slot, focusEnt ? { kind: 'entity', id: focusEnt.id } : { kind: 'player' }) && legion && e.respectN > 0) {
+      e.respectN = 0; e.atkStageUntil = this.time + 1.5; // Last Respects rides this one move, then it is spent
+    }
+  }
+
+  /** Reef Pokémon KO'd on this dive (swallowed ones included) — Basculegion wears their souls. */
+  fallen = 0;
+  /** Basculegion's Upstream Surge while it is pushing: the lane's origin, direction and end time. */
+  surge: { bossId: number; x: number; y: number; z: number; dx: number; dz: number; until: number } | null = null;
+
+  /** Inside the surge lane: ahead of the boss within SURGE_LEN, within SURGE_WIDTH of its axis, near its depth. */
+  inSurgeLane(x: number, y: number, z: number): boolean {
+    const sg = this.surge; if (!sg) return false;
+    const rx = x - sg.x, rz = z - sg.z;
+    const along = rx * sg.dx + rz * sg.dz;
+    if (along < 0 || along > LEGION.SURGE_LEN) return false;
+    const lat = Math.abs(rx * sg.dz - rz * sg.dx);
+    return lat <= LEGION.SURGE_WIDTH && Math.abs(y - sg.y) < 12;
+  }
+
+  /** Braced: a reef rock stands just upstream — between this point and the boss, within BRACE_REACH. */
+  bracedAgainstSurge(x: number, y: number, z: number): boolean {
+    const sg = this.surge; if (!sg) return false;
+    for (const o of this.obstacles) {
+      const ox = o.x - x, oz = o.z - z;
+      const up = -(ox * sg.dx + oz * sg.dz);            // how far upstream (toward the boss) the rock sits
+      if (up < 0 || up > o.r + LEGION.BRACE_REACH) continue;
+      if (Math.abs(ox * sg.dz - oz * sg.dx) > o.r * 0.9 + 0.5) continue; // off to the side: no shelter
+      if (Math.abs(o.y - y) > o.r + 2.5) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /** The surge's push on the trainer at this point (unit direction), or null if out of the lane or braced. */
+  surgePushAt(x: number, y: number, z: number): { dx: number; dz: number } | null {
+    const sg = this.surge;
+    if (!sg || this.time > sg.until) return null;
+    if (!this.inSurgeLane(x, y, z) || this.bracedAgainstSurge(x, y, z)) return null;
+    return sg;
   }
 
   private readonly tmpMouth: Vec3 = { x: 0, y: 0, z: 0 };

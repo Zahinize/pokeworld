@@ -48,10 +48,17 @@ export const COMBAT = {
      *  are conscripted from anywhere on the reef, then ones chasing fish are pulled off them — and a
      *  predator hunting the trainer never gives up for distance: it crosses the reef, and when it cannot
      *  bite yet it circles. The trainer kills them, catches them, or keeps moving; standing still is death. */
-    HUNTERS_MIN: { 1: 2, 2: 3, 3: 3, 4: 4 } as Record<number, number> },
+    HUNTERS_MIN: { 1: 2, 2: 3, 3: 3, 4: 4 } as Record<number, number>,
+    /** Companion levels: the TEAM is the prey — predators weigh a companion exactly as they weigh the trainer,
+     *  stay on it with the same persistence, and the posse grows by this many hunters per active companion,
+     *  spread over trainer and companions (the least-hunted member gets the next conscript). */
+    TEAM_EXTRA_PER_COMPANION: 1 },
   /** No single hit on the TRAINER takes more than this fraction of max HP, per level (the generic clamp is
    *  55 %, which every predator reaches — two hits killed). A shiny or legendary attacker keeps SHINY_MULT× more.
    *  Four hits to fall on Level 1, three on Level 4, with regen in between. */
+  /** A guardian answering the trainer (a ball on its school, the trainer too close) fights for this long —
+   *  several casts, not one — following up to GAME.GUARDIAN_LEASH past its school before it always turns back. */
+  GUARDIAN_DEFEND_DURATION: 5,
   PLAYER_HIT_CAP: { FRAC: { 1: 0.30, 2: 0.33, 3: 0.36, 4: 0.40 } as Record<number, number>, DEFAULT: 0.36, SHINY_MULT: 1.25 },
 
   /** Player. */
@@ -87,7 +94,7 @@ export const COMBAT = {
   FAINT_RECOVER_HP_FRAC: 0.2,
 
   /** Guardian strikes the trainer when a guarded group member is being caught. */
-  GUARDIAN_DEFEND_CATCH_CHANCE: 0.75,
+  GUARDIAN_DEFEND_CATCH_CHANCE: 1, // always: ball a guarded Pokémon and its guardian lunges (user ruling)
 
   /** Group revenge. */
   REVENGE_RADIUS: 20,
@@ -147,6 +154,23 @@ export const COMMANDER = {
   SHELTER_HP: 0.4, EXPOSE_FOR: 6,
   BAIT_FIRST: 14, BAIT_EVERY: 35, BAIT_FOR: 9, BAIT_DIST: 10, BAIT_TRIGGER_R: 6, BAIT_FAKE_HP: 0.12, AMBUSH_TELEGRAPH_MULT: 0.5, LURK_BEHIND: 8,
   GULP_HP: 0.5, GULP_EVERY: 25, GULP_FOR: 4, GULP_RADIUS: 30, GULP_PULL_R: 12, GULP_PULL_SPEED: 9, GULP_MAX: 4, GULP_HEAL: 0.06, HUNGRY_RETRY: 12,
+};
+
+/** Basculegion, Level 4's first boss (Pokédex lore: it clads itself in the souls of fallen comrades).
+ *  SOULS: every reef Pokémon KO'd in the level before the fight feeds it — SOULS_PER_KO wisps each, between
+ *  SOULS_MIN and SOULS_MAX. Each wisp is +SOUL_HP of max HP when the fight opens, and is spent after a charge
+ *  for an extra Wave Crash: the next charge comes SOUL_RECHARGE s later instead of the usual gap.
+ *  LAST RESPECTS: a companion downed in the fight is absorbed — its next attack (move or charge) hits
+ *  RESPECT_ATK harder per soul absorbed (up to RESPECT_MAX), within RESPECT_WINDOW s, and the first
+ *  RESPECT_MAX companions absorbed in a fight each add a wisp (capped: it must not feed itself forever).
+ *  UPSTREAM SURGE: from SURGE_FIRST, every SURGE_EVERY s, it drives a current down a lane SURGE_LEN long and
+ *  SURGE_WIDTH to each side for SURGE_PUSH_FOR s — trainer (SURGE_PUSH m/s²) and companions (SURGE_PARTNER_PUSH
+ *  m/s) are swept back unless a reef rock stands within BRACE_REACH between them and the boss — then it rushes
+ *  down the lane with no further telegraph. */
+export const LEGION = {
+  SOULS_PER_KO: 0.5, SOULS_MIN: 2, SOULS_MAX: 8, SOUL_HP: 0.04, SOUL_RECHARGE: 2.5,
+  RESPECT_ATK: 0.5, RESPECT_MAX: 3, RESPECT_WINDOW: 30,
+  SURGE_FIRST: 10, SURGE_EVERY: 22, SURGE_PUSH_FOR: 3, SURGE_LEN: 45, SURGE_WIDTH: 9, SURGE_PUSH: 16, SURGE_PARTNER_PUSH: 9, BRACE_REACH: 4.5,
 };
 
 /** Shiny bosses multiply HP/Attack again on top of BOSS_TUNING: 2× base → 3× total. */

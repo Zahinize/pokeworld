@@ -460,6 +460,20 @@ export function PokemonLayer() {
         }
         haloN++;
       }
+      // Basculegion's soul wisps: the fallen it wears, circling it — one fewer every time a soul is spent
+      if (e.souls > 0 && !shadow) {
+        const R = e.species.size * 0.75 + 0.9;
+        for (let k = 0; k < e.souls && haloN < halo.cap; k++) {
+          const a = time * 1.25 + (k / e.souls) * Math.PI * 2;
+          tmpM.makeTranslation(e.x + Math.cos(a) * R, y + e.species.size * 0.25 + Math.sin(time * 2.1 + k * 1.7) * 0.5, e.z + Math.sin(a) * R);
+          halo.mesh.setMatrixAt(haloN, tmpM);
+          halo.aSize.array[haloN] = 1.25 + 0.25 * Math.sin(time * 3.3 + k);
+          halo.aAlpha.array[haloN] = 0.75;
+          const c3 = haloN * 3;
+          halo.aColor.array[c3] = 0.72; halo.aColor.array[c3 + 1] = 0.66; halo.aColor.array[c3 + 2] = 1.0;
+          haloN++;
+        }
+      }
     }
     halo.mesh.count = haloN;
     halo.mesh.instanceMatrix.needsUpdate = true; halo.aSize.needsUpdate = true; halo.aAlpha.needsUpdate = true; halo.aColor.needsUpdate = true;

@@ -59,6 +59,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
     frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0, retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
     duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: 0, isBoss: false, isShiny: false, pairBossId: -1,
     baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
+    souls: 0, respectN: 0, surgeT: 0, surgeAt: 0,
   };
   return shim as unknown as Entity;
 }
@@ -178,7 +179,8 @@ export class SkyCombat {
       if (e.y < -SKY.RAID.MAX_DEPTH) continue;
       const d = Math.hypot(e.x - b.x, e.y - b.y, e.z - b.z);
       if (d > R) continue;
-      const score = d - (e.duelWith !== -1 ? SKY.RAID.DUEL_PULL : 0);
+      // a companion draws a raider exactly as the trainer does; a duel in progress pulls it in too
+      const score = d - (e.role === 'partner' ? SKY.RAID.TRAINER_PULL : e.duelWith !== -1 ? SKY.RAID.DUEL_PULL : 0);
       if (score < bestScore) { bestScore = score; best = { kind: 'entity', id: e.id }; }
     }
     if (player.y > -SKY.RAID.MAX_DEPTH) {
