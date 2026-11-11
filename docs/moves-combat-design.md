@@ -58,10 +58,11 @@ New module `src/data/moves.ts`:
 
 ```ts
 type MoveStyle = 'bubbles' | 'jet' | 'beam' | 'darts' | 'ink' | 'ring' | 'crescent'
-               | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning';
+               | 'dash' | 'melee' | 'burst' | 'motes' | 'geyser' | 'lightning'
+               | 'swoop' | 'wind';   // sky: wing-first dive strike · travelling whirl of wind
 
 interface MoveEffect {
-  type: 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal';
+  type: 'slow' | 'blind' | 'stun' | 'defDrop' | 'atkDrop' | 'defUp' | 'speedUp' | 'heal' | 'push';  // push: blown back (m/s, s)
   magnitude: number;      // fraction (0.3 = 30%) or heal fraction of max HP
   duration: number;       // seconds (heal: applied over duration)
   chance?: number;        // secondary effects on damage moves (e.g. 0.2 stun)
@@ -76,6 +77,7 @@ interface MoveConfig {
   cooldown: number;                   // 3 | 5 | 7 seconds
   range: number;                      // metres; 'melee'/'dash' styles close distance first
   style: MoveStyle;
+  airborneMult?: number;              // damage × vs a target above the waterline (Gust ×2)
   color: string;                      // projectile/FX tint
   chargeTime?: number;                // wind-up seconds for big moves (0.4–0.5)
   effect?: MoveEffect;
@@ -172,6 +174,82 @@ Legend: **D** damage / **U** utility · **Ph** physical / **Sp** special · powe
 Kit-rule audit: every row has ≥1 **D**; no row is U+U. 25 species carry a utility and therefore have a
 companion replacement; the other 15 kits are used as-is by companions.
 
+### Sky Pokémon (redesign in progress)
+
+Sky kits fire in companion duels, legendary rampages and retaliation against the trainer's balls. The
+three shared Flying moves were rebuilt first from their canon descriptions and the anime/game references
+(white-blazing wings on a diving bird · white wind strands off beating wings whirling round the foe ·
+a volley of spinning blue-white air discs bursting into a cyan sphere):
+
+| Move | Spec | Canon → design |
+|---|---|---|
+| Wing Attack | D·Ph·60·3s·`swoop` 9m | "struck with large, imposing wings spread wide" → the wings blaze pure white and the bird dives wing-first; the dive is the ram (full-speed surge, speed-line wake, white impact) |
+| Gust | D·Sp·40·3s·`wind` 10m · push 9 m/s 0.35s · ×2 vs airborne | "a gust of wind whipped up by wings and launched at the foe" → wind streams off both wings into a travelling whirl of white strands that wraps the target and blows it back (heavier bodies budge less) |
+| Air Slash | D·Sp·75·5s·`crescent` 11m · 30% stun 0.8s | "a blade of air that slices even the sky; may make the target flinch" → a volley of four spinning saw-edged discs (white hub, blue rim) in a staggered line, bursting into a glittering cyan sphere; the flinch is a short stun |
+
+**Where sky kits fire** (`src/engine/sky/SkyCombat.ts`). Birds are not reef entities, so each attacker
+gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), and birds can be targets
+(`MoveTarget {kind:'sky'}` → `skyBody` / `damageSky`). Three triggers:
+- **Ball retaliation** — a Poké Ball connecting with a sky Pokémon sends its whole group (flock, or every
+  Ducklett) after the trainer for `RETALIATE_DURATION` 10 s: they come down to `RETALIATE_ALT` 3.5 m,
+  circle at `RETALIATE_ORBIT_R` 7 m and fire whatever is ready, throttled group-wide to one cast per
+  `RETALIATE_CAST_GAP` 1.2 s (~13 HP/s on a 100 HP trainer). Diving below `RETALIATE_MAX_DEPTH` −3.5 m
+  puts the trainer out of reach — they circle and wait. The struck bird stays in the ball's grip.
+- **Rampage defence** — a rampaging legendary's blast wounding a sky Pokémon sends its group at the
+  legendary for the rest of the rampage. Their damage is scaled by `DEFEND_LEGENDARY_DMG_MULT` 0.5 with no
+  floor: a big enough flock CAN bring the legend down (toast "The flock brought down X!", a death, not a
+  catch). The legend fights back: its own stand-in casts its kit at the nearest attacker whenever ready,
+  with cooldowns × `LEGENDARY_COUNTER_CD_MULT` 0.5, on top of its area blasts — birds it kills are
+  replaced by `FLOCK_REFILL`.
+- **Reef raid** — every dive-hunt splash becomes a raid. Dives are a headline behaviour, so they are
+  frequent and aggressive: `DIVE.PER_MINUTE` gives each flock four dives a minute (Wingull, Pelipper,
+  Swanna; three for anything else — six was a bloodbath, see the tuning note under §8), jittered ±30 %, first dive 4–10 s after the flock settles, and a flock
+  with nobody free to dive retries a second later. A trainer within `DIVE.AT_TRAINER_R` 70 m of the diving
+  bird is the dive's target 30 % of the time (`AT_TRAINER_CHANCE`; a shiny flock always); otherwise the nearest schooling guardian
+  in range (`SkyLife.diveSpots`, fed by the session from the reef's guardians) — the splash lands
+  `AT_TRAINER_OFFSET` 3–8 m beside the target, so raids start on the trainer or on a school. Flocks are
+  doubled (`FLOCKS` counts: Wingull 8–12, Pelipper 4–6, Swanna 6–8), plus three **shiny flocks** (Wingull 5
+  with 2 shiny, Pelipper 6 with 2, Swanna 3 with 1; `MAX_BIRDS` 64 in the renderer). A shiny (`SKY.SHINY`)
+  has twice the HP and Attack, a third of the catch odds, dives half again as often, always goes for a
+  trainer in range, raids half again as long and only breaks off under 30 % HP; it draws from its shiny
+  sheet and is its own collection entry. The bird stays under for `RAID.DURATION` 3–5 s, goes down into
+  the coral (`RAID.MAX_DEPTH` 28 m — twice the original 14; the reef lives 4–30 m down) after whatever is within `RAID.RADIUS` 18 m (reef Pokémon, the trainer — who counts
+  `RAID.TRAINER_PULL` 6 m closer; a duel in progress pulls it in via `RAID.DUEL_PULL`), and
+  casts every `RAID.CAST_GAP` 0.9 s. Its stand-in can be hit back (`CombatHost.damageExternal` → the bird):
+  every hit it lands provokes its victim, no roll, and the victim fights it with FURY (§7 hostility rules),
+  so nothing stands there like a dummy (companions draw fire without locking a duel). The moment its HP drops under
+  `RAID.FLEE_HP` 60 % (one solid reef hit takes about half a sea bird) — or its breath runs out — it bolts
+  for the sky through the dive's climb-out at its usual cruise. Once airborne it is out of the reef's reach
+  (its stand-in reads `removed`). A raid can still end badly against a family or a school volley; a bird
+  the reef kills is replaced from the horizon after `FLOCK_REFILL` 45–75 s, one the trainer catches is not.
+  **A bird in the water is out of its element**: a ball that connects with any sky Pokémon below the
+  waterline rolls at `RAID.CATCH_MULT` 2× the odds (Wingull 46 → 91 % on a Poké Ball; a shiny raider
+  still resists, 0.35 × 2 = 70 % of plain odds). On Levels 3 and 4 **companions duel raiders**: a raider
+  that strikes a companion is dueled by it, one that strikes the trainer or a reef Pokémon is dueled by
+  the nearest free companion within `COMBAT.RAID_DUEL_ASSIST_R` 16 m. The duel locks on the bird's
+  stand-in (`duelWith` is the stand-in's id, below −1000 — every "in a duel" check is `duelWith !== -1`,
+  never a sign test), the companion orbits and fires at the bird itself, the raider turns its casts on its
+  duelist, and the duel ends `gone` the moment the bird climbs out, is caught or falls (a companion's KO
+  is a catch, reef rules). Measured L3: Kingdra drops a 99-HP Swanna in two hits and is free for the next raider.
+- **Speed** — nothing on the attack flies faster than cruise × `SORTIE_SPEED_MULT` 1.25 (`skyCruiseSpeed`:
+  flock orbit speed, Ducklett paddle, species speed for legendaries). The Wing Attack dive of a sky
+  Pokémon runs at that speed too, so its contact window stretches with the distance (≤ 2 s) instead of
+  teleporting the bird; the climb-out after a dive or raid is plain cruise, and so is the flight back to
+  the flock (the circling pursuit is clamped to cruise: a straggler cuts the corner, it never sprints).
+  Attack stats are untouched. The KO banner says "Sky Legendary" only for an actual legendary.
+- **Companions** — sky Pokémon can be picked for the party on Levels 3 and 4 (companion levels). A
+  flyer hovers 10 m ahead over the swell, never submerges, breathes air (no surface drain), stays visible
+  when the trainer surfaces, auto-engages sky birds like any surfaced companion, and strikes reef targets
+  from above (a Wing Attack over a submerged target connects when the bird is overhead).
+
+Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble ·
+Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
+Fire/Wing Attack · Yveltal Oblivion Wing/Wing Attack. The Move Dojo (`#arena`) fields sky Pokémon under a
+"Sky" group: the stage rises to the waterline (dummy surfaced, trainer just under the swell, the bird
+hovering 8 m ahead at flock render scale) so every sky move can be reviewed against Dondozo. A "Bosses"
+group fields the five bosses (`bossOnly` species plus Basculegion) at companion scale with their true kits,
+so a boss move can be rebuilt and reviewed there too.
+
 ---
 
 ## 5. Move animations — smooth & anime-inspired
@@ -188,6 +266,8 @@ Every cast reads as **anticipation → travel → impact**, like a TV-anime exch
    - `ink` — lobbed glob (arc) that bursts into an expanding dark veil
    - `dash` — the caster itself lunges with afterimages and a wake line
    - `geyser` / `lightning` / `burst` — column/radial one-shots at the target with soft shockwave ring
+   - `swoop` — the caster dives wing-first with blazing white wings and a wake of speed lines (Wing Attack)
+   - `wind` — a whirl of white wind strands streaming off the wings, wrapping the target on landing (Gust)
    - `motes` — notes/hearts/sparkles that drift onto the target (utilities)
 3. **Impact**: target squash-flash (reuses `flashT`), radial burst in the move tint, soft screen-space
    ripple when within 12 m of the camera, floating combat number (§6).
@@ -240,10 +320,77 @@ Wild Pokémon is hit
   │     → P = 0.25 + aggression×0.5 : cast at the PLAYER before bolting
   └─ target of an active duel → §8 duel loop owns its casts
 ```
+**Predators hunt the trainer (`COMBAT.PREDATOR_HUNT`).** On every level, after the trainer's own
+`PLAYER_GRACE` 10 s (the reef's prey keep the 25 s grace), a roaming predator's hunt check weighs the
+trainer like prey — `PLAYER_W` 0.8 inside `PLAYER_R` 40 m (a favourite fish is 1.0) — and then
+approaches, circles and rushes them exactly as it would a fish, casting damage moves at `{kind:'player'}`;
+packs and the Carvanha shoal pile on. It escalates from `ESCALATE_FLOOR` 0.5 the moment the grace ends:
+over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and the sighting range by
+`ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
+escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
+(Level 1 ×1.0 … Level 4 ×1.3). **The team is the prey** (companion levels): a companion is weighed, chased
+and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
+grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
+member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a
+raider weighs a companion with the trainer's `TRAINER_PULL`. Measured L3/L4: 1.4–1.7 hunters on the trainer,
+0.9–1.2 on each companion; dives per head equal. **The posse** (`HUNTERS_MIN` 2/3/3/4 by level): every frame the
+Ecosystem counts the roaming predators on the trainer's trail (hunting them, or retaliating at them) and,
+if short, conscripts the nearest idle roamers from anywhere on the reef — then pulls ones off fish. A
+predator hunting the trainer never gives up for distance (it crosses the reef at full speed, exempt from
+the far-LOD activity throttle), and when it cannot bite
+yet (the reef-wide cast gap, moves on cooldown) it circles and comes again rather than retreating; it
+is also exempt from the generic proximity retaliation, which would otherwise break its hunt. The trainer
+kills them, catches them, or keeps moving. The trainer is prey only while
+`PlayerSnapshot.huntable` (playing, not recovering, not in the dojo). Predator casts at the trainer share
+one reef-wide `TRAINER_CAST_GAP` 4.0 s (raiders share their own 4.0 s gap). Toast "X is hunting you!" — the only hunt/raid/fury toast that remains (user ruling, Nov 2026): raids, shiny raids, fury and hunts on fish are shown in the water, never announced. Level spawn counts are doubled
+(6/6/6/8), and `SHINY_PER_LEVEL` 2 packs get a **shiny lead**: `SHINY_MULT` 2× HP and Attack, no opening
+grace, never ignores prey, rests `SHINY_COOLDOWN_MULT` ¼ as long between hunts, weighs the trainer
+`SHINY_PLAYER_MULT` 1.5× more and eats anything outside its own pack (`SHINY_ANY_W`, other predators and
+giants included). It draws from its shiny sheet with the shiny glow, is its own trophy, and respawns
+shiny. The sim's hit band is 10–220/5 min for this reef. **Catching one** records the shiny token
+(`GameSession.onCaught` → `makeToken(id, isShiny)`, the same key a shiny boss or shiny bird uses), so it
+shows as its own "Shiny X" card in the Collection and as its own pick in the Mission Brief roster, where
+it fields at 2× HP/Attack like every shiny companion (`Ecosystem.addPartner`). Catches made before this
+fix were folded into the plain form and cannot be told apart in the save.
+
+**Fullscreen.** Offered on the start screen ("Play in fullscreen" enters fullscreen and starts the game),
+in the Worlds and Level pickers, in the HUD corner next to Pause, and in the pause menu; `F` toggles it
+anywhere outside a text field. `ui/components/FullscreenButton.tsx` owns the hook and button; the option
+hides itself where the browser has no element fullscreen (iPhone Safari).
+
+**Hostility rules (the reef fights back).** Three overrides sit on top of the retaliation roll below:
+- **The trainer is always answered.** Every reef Pokémon, whatever its behaviour group (giants included),
+  retaliates with no roll and no window cap when a ball fails on it (`breakOut`) or when the trainer comes
+  within `TRAINER_HOSTILITY.PROXIMITY_R` 7 m (+ half its size), repeating every `COOLDOWN` 6 s while they
+  stay close. No stat boost vs the trainer. Pokémon busy with something that must not break are exempt:
+  a ferry (Lapras and riders), a leap, a lure, a feed, the nurse's rounds, a capture, a duel, bosses.
+- **Fury vs sky raiders.** A reef Pokémon hit by a sky raider's stand-in always answers, and gets
+  `COMBAT.FURY`: +50 % Attack (`atkStage`) and +50 % HP (added to `hp`/`maxHp`, taken back when it ends)
+  for `DURATION` 12 s, fighting for `FIGHT_DURATION` 6 s instead of one cast. No toast (user ruling: only "hunting you" alerts).
+- **KO pressure.** Wild KOs in the last `KO_PRESSURE.WINDOW` 60 s over `REF` 4 give a pressure 0–1 that
+  cuts every respawn and reinforcement delay by up to `MAX_CUT` 75 % (predators 120 → 30 s, schools
+  40 → 10 s and refilling from the first loss, objectives 20 → 5 s). Solo wilds with no school or
+  objective — which never came back before — respawn after `SOLO_RESPAWN` 90 s × the cut (never the ferry
+  Lapras).
+
 Retaliation is a one-shot state (`retaliate`, ~1.2 s) inserted before the existing flee/scatter states; it
 never chains more than twice in 10 s per entity (anti-chaos guard).
 
 ### Guardians & group revenge
+**The guardian leash** (`GAME.GUARDIAN_LEASH` 10 m): a school's guardian never strays farther than the school
+radius + 10 m from its anchor. Beyond it, whatever it was doing — watching or answering the trainer, a
+pass-through — it drops and swims home at burst speed, aimed at the anchor's column above the floor (a ridge
+between them used to turn the swim into a stalled vertical push). A guardian's retaliation at the trainer
+also ends at the leash and never raises its school's alarm against the trainer, so the school holds and the
+guardian stays with it. **Ball a guarded Pokémon and its guardian always answers** (`GUARDIAN_DEFEND_CATCH_CHANCE`
+1): it LUNGES — closes to a body length or two rather than move range, firing on the way — fights for
+`GUARDIAN_DEFEND_DURATION` 5 s with several casts, follows a retreating trainer only as far as the leash
+(~8–10 m past its orbit), then turns home. Measured: Gyarados/Walrein to 3.6–4.9 m of the trainer, 2–6 casts,
+never past leash + 0.4 m, back on the school in 10–25 s. Playtest bug this fixes (Nov 2026): a guardian Gyarados stayed in its watch posture
+beside the trainer while predators ran its Magikarp off 100 m, then crawled after them for minutes — from the
+trainer's side it read as a guardian leaving its school to follow them. Guardians never join the posse:
+only roaming (`role: 'solo'`) predators hunt the trainer.
+
 - **Guardian aggression**: in `intercept`, the guardian now also casts its moves at the predator on
   cooldown while holding position between predator and school. Guardians prefer their utility (Wrap, Flash,
   Supersonic) to *disrupt* hunts, switching to damage when the predator targets them.
@@ -264,6 +411,29 @@ never chains more than twice in 10 s per entity (anti-chaos guard).
 - **At 0 HP**: input locks, screen dims to a soft blue with "Recovering… 5" countdown (5 s cooldown), then
   the player **respawns at a random safe reef position** — mid-depth point ≥30 m from every predator and
   inside the world radius — with 50 % HP and 3 s of predator-disinterest. No ball loss, no mission impact.
+- **A clear start** (`GAME.PLAYER_START_CLEAR` 18 m): nobody spawns within 18 m of the trainer's start point.
+  The reef answers a trainer within `PROXIMITY_R` 7 m + half a body, so a school on the start would attack at
+  once. The generator's last pass pushes whole groups straight out until every member clears the ring (a
+  school stays a school), solos out radially, entourages with their leader, and nudges any straggler. The
+  first mission school is pulled toward the start as before but lands just beyond the ring (~26 m on
+  L1/L2). Respawn spots (`randomSafePlayerSpot`) keep `PLAYER_RESPAWN_CLEAR` 14 m from every wild as well
+  as 30 m from predators. Measured over 40 seeds × 4 levels: nearest spawn 18.0 m.
+- **Hit cap on the trainer** (`COMBAT.PLAYER_HIT_CAP`): the generic clamp lets a hit take 55 % of max HP, and
+  against the trainer's defence rating every predator move and most raider moves reach it — two hits killed.
+  No single hit on the trainer now takes more than 30 % of max HP on Level 1, 33 % on 2, 36 % on 3, 40 % on
+  4 (a shiny or legendary attacker keeps `SHINY_MULT` 1.25× more). Applied in `applyPlayerDamage`, so it
+  covers moves, boss charges and raiders alike. **Tuning note (Nov 2026)**: a headless trainer swimming at
+  3 m/s who never fights back measured a KO every ~20 s on every level before the nerf (raiders 175 dmg/min
+  on L1, predators 187 dmg/min on L3); with the cap, the 4 s shared cast gaps, four dives a minute, 30 %
+  dives at the trainer and the smaller posse it is a KO every 25–40 s for that passive trainer (scratchpad
+  `bloodbath.ts`). A trainer who moves, fights and catches sees far fewer; retune from this baseline.
+- **Lifelines** (`COMBAT.PLAYER_LIVES` 4): four red hearts under the mission label (top-left, their own
+  row beneath the panel or its collapsed pill; smaller on touch). Every KO spends one — toast "Lifeline
+  lost · N of 4 left", then "Last lifeline!" with the one remaining heart pulsing. Spent hearts stay
+  spent across a resume (`CurrentRun.lives`). The fourth KO skips the recovery countdown and ends the
+  run as a **lifelines defeat**: the saved run is cleared, the defeat screen reads "Out of lifelines — the
+  reef claimed you four times" and the level restarts from scratch (every catch made there undone; the
+  collection and other levels are safe). Hearts refill to four on every fresh start of a level.
 
 ---
 
@@ -313,7 +483,56 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
    duo — Tatsugiri buffs/casts from beside Dondozo's head) at **×2 MaxHP and ×2 AtkEff**. Defeat both
    (a successful capture also counts as "defeated"). Boss HP bars at top; level complete on both down.
 
+#### The commander duo — Pokédex lore (`COMBAT.COMMANDER`)
+- **Commander's Order.** Tatsugiri calls every Dondozo charge: an order cue (talk mark, flash, cry, toast
+  "Tatsugiri gives the order!") fires as the wind-up starts, and while the commander lives the charge gap is
+  `ORDER_CHARGE_MULT` 0.5 × `chargeEvery`. KO or catch Tatsugiri first and Dondozo is **lost without its
+  commander**: charge gaps × `DUMB_CHARGE_MULT` 1.6, lunges aimed up to `DUMB_AIM_ERR` (26°) off, brawl speed
+  × `DUMB_SPEED_MULT` 0.75, and every ~`DUMB_WANDER_EVERY` 9 s it swims off toward nothing for
+  `DUMB_WANDER_FOR` 3 s. Measured: every charge called, 16.7 s between charges commanded (10 s gap + the 6.3 s charge) vs 35.9 s leaderless.
+- **Feigned Weakness.** From `BAIT_FIRST` 14 s, then every `BAIT_EVERY` 35 s, Tatsugiri drifts
+  `BAIT_DIST` 10 m out toward the nearest prey and floats limp for `BAIT_FOR` 9 s; its HP bar stays up and
+  LIES (`HealthBars` shows `BAIT_FAKE_HP` 12 %). Dondozo lurks `LURK_BEHIND` 8 m on the far side and holds
+  its charge. A trainer or companion within `BAIT_TRIGGER_R` 6 m springs the ambush: a charge at the biter
+  with the telegraph cut by `AMBUSH_TELEGRAPH_MULT` 0.5 ("It was a trap!"). Nobody bites → it retries sooner.
+- **Mouth Shelter.** Under `SHELTER_HP` 40 % Tatsugiri darts into Dondozo's mouth (`shelterT`): carried
+  inside it every frame in `integrate`, invisible (`PokemonLayer` alpha 0), no HP bar, untargetable
+  (`MoveSystem.targetPos` → null, `applyDamage` ignores it, companion orders and duels on it drop). Dondozo's
+  charge **recovery** flushes it out (`bossShelter` events) for `EXPOSE_FOR` 6 s, then it hides again if
+  still under 40 %. Punish the big fish to reach the small one.
+- **Glutton's Gulp.** Under `GULP_HP` 50 %, every `GULP_EVERY` 25 s, Dondozo inhales for `GULP_FOR` 4 s:
+  reef wilds within `GULP_PULL_R` 12 m are dragged toward its mouth (knockback outside the cruise clamp),
+  anything smaller than 60 % of its size that reaches the mouth is swallowed whole (removed at once, no
+  body) for `GULP_HEAL` 6 % of max HP each, up to `GULP_MAX` 4 per gulp — companions, bosses, mission
+  targets, ferry riders and sky Pokémon are never food. Nothing edible within `GULP_RADIUS` 30 m → "Dondozo
+  snaps at empty water", retry after `HUNGRY_RETRY` 12 s. Lure or scatter the schools and it starves.
+
 ### Level 4 — The Deep Trench (bosses: Wailord, then Kyogre)
+#### Basculegion, the first wave — Pokédex lore (`LEGION` in combatConfig)
+- **Souls of the Fallen.** `Ecosystem.fallen` counts every reef Pokémon KO'd on the dive (swallowed ones too).
+  When the fight opens Basculegion takes `SOULS_PER_KO` 0.5 wisps per fallen, between `SOULS_MIN` 2 and
+  `SOULS_MAX` 8: each is +`SOUL_HP` 4 % max HP at once, and is spent at the end of a charge for an extra Wave
+  Crash — the next charge comes `SOUL_RECHARGE` 2.5 s later instead of the usual 18 s gap. The wisps orbit it
+  (violet halos in `PokemonLayer`, one fewer per soul spent). The posse and the raids feed the boss: a quiet
+  reef means 2 wisps, a slaughtered one 8 (+32 % HP, eight chained charges). Measured: a charge every 8.9 s
+  while souls last, every 25.4 s after.
+- **Last Respects.** A companion downed in the fight is absorbed (`knockOut`, partner): its next attack —
+  move or charge — hits `RESPECT_ATK` +50 % harder per soul absorbed (up to `RESPECT_MAX` 3) within
+  `RESPECT_WINDOW` 30 s; the bonus rides one attack and is spent. The first three companions absorbed in a
+  fight also add a wisp each — capped, because uncapped every downed companion bought another Wave Crash that
+  downed the next one and the souls never ran out (the sim's L4 fight stalemated at 11 wisps). Toast "Last Respects". Send the next
+  companion fast or it snowballs.
+- **Upstream Surge.** From `SURGE_FIRST` 10 s, every `SURGE_EVERY` 22 s, it drives a current down a lane
+  toward its focus (`SURGE_LEN` 45 m long, `SURGE_WIDTH` 9 m to each side) for `SURGE_PUSH_FOR` 3 s. The
+  trainer in the lane is accelerated back at `SURGE_PUSH` 16 m/s² (14.6 m in the 3 s, measured live) and
+  companions are carried back at `SURGE_PARTNER_PUSH` 9 m/s per frame — unless **braced**: a reef rock within
+  `BRACE_REACH` 4.5 m stands between them and the boss (a companion within 8 m of a braced trainer is braced
+  with them). The reef-wide current spikes for the push, then Basculegion rushes down the same lane with no
+  further telegraph — the current was the telegraph.
+- **Bosses run only their own AI**: `maybeRetaliate` now ignores bosses. A predator-type boss used to be thrown
+  into the generic retaliation by every companion hit, which broke its charge mid-lunge so the charge timer
+  never reset — Basculegion charged every ~7 s instead of its tuned 18 s.
+
 1. **Phase 1 — Catch**: "Catch 5 Stage 2 Pokémon" (Kingdra/Gyarados-class spawns, duplicates allowed).
 2. **Phase 2 — Wailord**: a marked site far across the open water. On approach: **strong currents** (a
    radial current field pushes player, companions and fish; particle streams), wilds scatter reef-wide.
@@ -325,6 +544,19 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
    world is coming soon…"* (celebration + roll-up stats).
 
 ### Boss behavior — stay agile
+**Swagger** (`BOSS_FIGHT_SPEED_MULT` 1.5): while the encounter is on (`bossesActive`), every boss moves
+half again as fast — brawl hold speed (species speed × 1.5 × 1.5), the commander's saddle ride, and the
+charge lunge (`chargeSpeed` × 1.9 × 1.5). The charge telegraph and recovery windows are unchanged, so the
+warning stays fair; a dormant boss in its lair keeps its slow hover. **Attack rate** (`BOSS_ATTACK_RATE_MULT`
+1.5): bosses also attack half again as often — their move cooldowns tick at 1.5× in `Ecosystem.update`, and
+every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps and Basculegion's
+soul recharge) is divided by it. Telegraph and recovery stay as they were. The commander now rides Dondozo's
+charge: while Dondozo is in `charging` (and Tatsugiri is neither baiting nor sheltered) it is carried on its
+back every frame in `integrate`, so a faster charge cadence can no longer pull the duo apart. **Shadow in the lair**: until the
+trainer reaches the bosses (the 30 m greeting trigger), each one renders as a black silhouette — sprite
+status 4 in `PokemonLayer`: no light, depth tint or caustics, a faint violet sheen on its brightest markings
+pulsing with `aGlow`, and a deep-violet halo instead of the cyan one. The greeting reveals the true colours.
+
 All bosses periodically **charge violently** at the player or a companion: telegraph (1 s glow + water
 draw-in) → fast lunge along a straight line with wake FX → heavy damage on contact (player 30–40, companion
 formula damage ×1.5) → drift recovery (4 s, the punish window). Charge cadence/speed per boss in config
@@ -334,6 +566,8 @@ formula damage ×1.5) → drift recovery (4 s, the punish window). Charge cadenc
 If a boss KOs **all** party companions: **defeat animation** — screen desaturates and dims, the player
 drifts backward, somber audio sting — then a defeat screen: **"Your team is exhausted."** with
 **[Restart this level] [Choose another level]**. No collection, progression or ball loss.
+The same screen carries the **lifelines defeat** (§8) on every level, with a heart in place of the moon,
+"Out of lifelines" and **[Start Level N over]** — the run's progress is gone, nothing else is.
 
 ---
 

@@ -8,7 +8,8 @@ export type EntityState =
   | 'orbit' | 'passthrough' | 'intercept' | 'watch'
   | 'investigate' | 'observe' | 'leave'
   | 'rest' | 'relocate' | 'ambush'
-  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferry'
+  | 'inflate' | 'support' | 'lured' | 'breach' | 'ferryRise' | 'ferry' | 'ferryVoyage' | 'ferryDisembark'
+  | 'leapRun' | 'leapAir'
   | 'retaliate' | 'duel' | 'faint' | 'charging'
   | 'captureAttempt' | 'ko' | 'caught' | 'removed';
 
@@ -83,12 +84,34 @@ export interface Entity {
   castFrom: number; castAt: number;
   /** Dash shroud (Aqua Jet family): seconds remaining of the water-comet wrap, and its color. */
   jetT: number; jetColor: string;
+  /** Wing Attack: seconds remaining of the white wing blaze (the dive is a ram, like the jet). */
+  wingT: number;
+  /** Ferry wake: seconds remaining of the visual-only comet + bubble train on a rising Lapras. */
+  wakeT: number;
+  /** Aboard the ferry: seconds remaining of the surface-clamp exemption (refreshed every think while riding). */
+  aboardT: number;
+  /** Talk mark: seconds the speech bubble stays up; talkDelay counts down to a reply mark. */
+  talkT: number; talkDelay: number;
+  /** Ferry rider phase: 0 none · 1 waiting beside the hull · 2 hopping on · 3 seated · 4 hopping off. */
+  rideK: number;
+  /** Mantyke joining their Mantine's leap: the leader's id (-1 none) and the seconds until this
+   *  one starts its own run (the pod goes up in a ragged sequence). */
+  leapWith: number; leapDelay: number;
+  /** On a leaping Mantine: how many Mantyke were picked to leap with it this time. */
+  podN: number;
+  /** Scripted hop (integrate step): seconds left / total, arc height, start point, and the
+   *  fixed landing point for a hop-off (a hop-on lands on the live seat instead). */
+  hopT: number; hopDur: number; hopH: number; hx: number; hy: number; hz: number; hx2: number; hy2: number; hz2: number;
   /** Frozen solid (Ice Beam's 10%): seconds remaining encased in ice (stunT runs alongside). */
   frozenT: number;
   /** Hit recoil: a brief knockback shove outside the cruise-speed clamp (decays fast). */
   kbx: number; kby: number; kbz: number; kbT: number;
   /** Anti-chaos retaliation window. */
   retaliateN: number; retaliateWindowT: number;
+  /** Fury vs a sky raider: seconds left, and the HP bonus to take back when it ends. */
+  furyT: number; furyHp: number;
+  /** Trainer-proximity retaliation cooldown. */
+  proxT: number;
   /** Who to retaliate against (entity id or -2 for player). */
   retaliateTarget: number;
 
@@ -110,6 +133,14 @@ export interface Entity {
   isShiny: boolean;
   /** Commander duo: this boss stays glued to its partner boss (Tatsugiri ↔ Dondozo). */
   pairBossId: number;
+  /** Commander duo (COMBAT.COMMANDER): Tatsugiri's bait drift (s left), hidden in the mouth (>0), exposed after a
+   *  stagger (s left), order cue (s left), next bait time; Dondozo's gulp (s left), next gulp time, fish eaten this
+   *  gulp, and the leaderless 'lost the plot' wander (s left). */
+  baitT: number; shelterT: number; exposeT: number; orderT: number; baitAt: number;
+  gulpT: number; gulpAt: number; gulpN: number; dumbT: number;
+  /** Basculegion (COMBAT LEGION): soul wisps orbiting it, souls absorbed for its next attack, the Upstream
+   *  Surge's push (s left) and the next surge time (0 = the fight has not opened yet). */
+  souls: number; respectN: number; surgeT: number; surgeAt: number;
 }
 
 export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
@@ -159,6 +190,14 @@ export type EcoEvent =
   | { type: 'legendary'; entityId: number }
   | { type: 'breach'; entityId: number }
   | { type: 'ferry'; entityId: number }
+  | { type: 'ferrySurface'; entityId: number }
+  | { type: 'ferrySail'; entityId: number; riders: number }
+  | { type: 'ferryCall'; entityId: number; pitch: number }
+  | { type: 'ferryReply'; entityId: number; delay: number }
+  | { type: 'ferryHop'; entityId: number; x: number; y: number; z: number; size: number; off: boolean }
+  | { type: 'familyDefend'; rootId: number; attackerId: number; count: number }
+  | { type: 'fury'; entityId: number; speciesId: string }
+  | { type: 'leap'; entityId: number; phase: 'launch' | 'splash'; x: number; z: number; size: number; height: number; mantyke: number }
   | { type: 'inflate'; entityId: number }
   | { type: 'cast'; casterId: number; moveId: string; style: string }
   | { type: 'moveHit'; casterId: number; targetId: number; moveId: string; damage: number }
@@ -175,6 +214,15 @@ export type EcoEvent =
   | { type: 'partnerDown'; entityId: number; speciesId: string }
   | { type: 'bossSpawn'; entityId: number; speciesId: string }
   | { type: 'bossCharge'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossOrder'; entityId: number; bossId: number }
+  | { type: 'bossAmbush'; entityId: number; targetKind: 'player' | 'partner' }
+  | { type: 'bossShelter'; entityId: number; inside: boolean }
+  | { type: 'bossGulp'; entityId: number; speciesId: string; eaten: string; healed: number }
+  | { type: 'bossHungry'; entityId: number; speciesId: string }
+  | { type: 'bossSouls'; entityId: number; souls: number; fallen: number; hp: number }
+  | { type: 'bossSoulSpent'; entityId: number; left: number }
+  | { type: 'bossRespects'; entityId: number; fallen: string; stacks: number }
+  | { type: 'bossSurge'; entityId: number; phase: 'start' | 'rush' }
   | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught'; shiny: boolean };
 
 export interface PlayerSnapshot {
@@ -182,4 +230,6 @@ export interface PlayerSnapshot {
   vx: number; vy: number; vz: number;
   speed: number;
   lureActive: boolean;
+  /** True while predators may hunt the trainer (playing, not recovering, not in the dojo). */
+  huntable?: boolean;
 }

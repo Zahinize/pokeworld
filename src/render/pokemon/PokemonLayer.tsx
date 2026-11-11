@@ -12,6 +12,7 @@ import { sheetKey } from './sprites';
 import { CAST_FLOURISH, DANCE_PERIOD } from '@/data/personality';
 import { floorY } from '@/engine/world/terrain';
 import { GAME } from '@/data/gameConfig';
+import { skyPartnerScale } from '@/data/sky';
 import type { SpriteSheet } from './sprites';
 import type { Entity } from '@/engine/ai/types';
 
@@ -63,6 +64,20 @@ void main() {
   vec4 tex = texture2D(uMap, vUv);
   if (tex.a < 0.45) discard;
   vec3 col = tex.rgb;
+  // 4 = a dormant boss: a black silhouette wrapped in a slow violet-black glow — its colours are
+  // revealed only when the trainer reaches the lair (no light, no depth tint, no caustics touch it)
+  if (vStatus > 3.5) {
+    float pulse = 0.6 + 0.4 * sin(uTime * 1.7 + vWorldY * 0.5);
+    float lum = dot(tex.rgb, vec3(0.3, 0.59, 0.11));
+    // the body stays black; only its brightest markings catch a faint violet sheen — the aura does the glowing
+    col = vec3(0.01, 0.005, 0.025) + vec3(0.1, 0.02, 0.2) * vGlow * pulse * (0.15 + 0.85 * lum * lum);
+    float fogS = 1.0 - exp(-uFogDensity * uFogDensity * vDepth * vDepth);
+    col = mix(col, uFogColor, fogS * 0.6);
+    gl_FragColor = vec4(col, tex.a * vAlpha);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    return;
+  }
   // status tints: 1=slow (frost), 2=blind (ink veil), 3=stun (white pulse)
   if (vStatus > 2.5) col = mix(col, vec3(1.0), 0.35 + 0.25 * sin(uTime * 14.0));
   else if (vStatus > 1.5) col = mix(col, vec3(0.1, 0.12, 0.2), 0.45);
@@ -234,7 +249,7 @@ export function PokemonShadows() {
         if (h > 15) continue;                       // too high up: no shadow reaches the sand
         const closeness = Math.max(0, 1 - h / 15);
         let alpha = 0.5 * Math.pow(closeness, 1.5); // DARKER the nearer the bottom
-        if (e.role === 'partner') alpha *= 1 - session.partnerHideK;
+        if (e.role === 'partner' && !e.species.skyOnly) alpha *= 1 - session.partnerHideK;
         if (e.state === 'ko') alpha *= Math.max(0, 1 - e.animT / 1.4);
         if (alpha < 0.02) continue;
         // constant footprint, lifted off the sand: a big height-scaled quad gets sliced
@@ -311,7 +326,7 @@ export function PokemonLayer() {
     // catching up from behind — a lagging companion chasing the trainer should look at them, not away.
     // Hysteresis on closing speed + distance keeps the sheet from flickering at the boundary.
     const partnerShowsBack = (e: (typeof eco.alive)[number]) => {
-      if (e.duelWith >= 0) return false;                 // duels always face the opponent
+      if (e.duelWith !== -1) return false;                 // duels always face the opponent
       const p = eco.player;
       const dx = p.x - e.x, dy = p.y - e.y, dz = p.z - e.z;
       const dist = Math.hypot(dx, dy, dz) || 0.001;
@@ -322,8 +337,14 @@ export function PokemonLayer() {
       partnerFrontMemo.set(e.id, front);
       return !front;
     };
+    // The Lapras ferry sails away from the trainer: while it's moving off, show its back.
+    const ferryShowsBack = (e: (typeof eco.alive)[number]) => {
+      if (e.state !== 'ferryVoyage') return false;
+      const p = eco.player;
+      return (e.vx * (e.x - p.x) + e.vz * (e.z - p.z)) > 0;   // heading away from the camera
+    };
     const keyOf = (e: (typeof eco.alive)[number]) => {
-      const back = e.role === 'partner' && partnerShowsBack(e);
+      const back = (e.role === 'partner' && partnerShowsBack(e)) || ferryShowsBack(e);
       if (e.isShiny) {
         if (back && session.sheets.has(sheetKey(e.species.id, 'shinyback'))) return sheetKey(e.species.id, 'shinyback');
         if (session.sheets.has(sheetKey(e.species.id, 'shiny'))) return sheetKey(e.species.id, 'shiny');
@@ -363,12 +384,13 @@ export function PokemonLayer() {
       // the reef giants shrink further as companions so they don't wall off the screen
       const partnerScale = e.role === 'partner' ? 0.62 * (COMBAT.COMPANION_GIANT_SHRINK[e.species.id] ?? 1) : 1;
       let alpha = 1, scale = e.species.size * e.scaleMul * partnerScale, y = e.y;
-      if (e.role === 'partner') scale = Math.min(scale, 2.4); // no companion may wall off the view
+      if (e.shelterT > 0) alpha = 0; // Tatsugiri inside Dondozo's mouth: unseen
+      if (e.role === 'partner') scale = e.species.skyOnly ? skyPartnerScale(e.species.size) * e.scaleMul : Math.min(scale, 2.4); // no companion may wall off the view; flyers draw at flock scale
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
       // companion levels: partners fade out while the trainer is at the surface (catch mode)
-      if (e.role === 'partner' && session.partnerHideK > 0.01) alpha *= 1 - session.partnerHideK;
+      if (e.role === 'partner' && !e.species.skyOnly && session.partnerHideK > 0.01) alpha *= 1 - session.partnerHideK; // a flyer stays in view over a surfaced trainer
       // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
       if (e.concealT > 0) {
         const into = Math.max(e.concealDur, 0.001) - e.concealT;
@@ -390,9 +412,11 @@ export function PokemonLayer() {
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
         : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
 
-      b.aGlow.array[i] = glow;
+      // a boss waiting in its lair is a black glowing shadow until the trainer reaches it
+      const shadow = e.isBoss && !eco.bossesActive;
+      b.aGlow.array[i] = shadow ? 0.7 + 0.3 * Math.sin(time * 1.7 + e.phase * 5) : glow;
       b.aSize.array[i] = scale;
-      b.aStatus.array[i] = e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
+      b.aStatus.array[i] = shadow ? 4 : e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;
       // grazing posture: feeding schools pitch nose-down with a peck bob — but only once
       // they've actually REACHED the bottom (no mid-water somersaults during the descent);
       // passive drifters stay level — their happy surface swirl is the tell
@@ -421,14 +445,34 @@ export function PokemonLayer() {
       } else {
         b.aTilt.array[i] = tNow + castTilt;
       }
-      if (glow > 0.05 && haloN < halo.cap) {
+      if ((glow > 0.05 || shadow) && haloN < halo.cap) {
         tmpM.makeTranslation(e.x + (fl?.dx ?? 0), y + (fl?.dy ?? 0), e.z + (fl?.dz ?? 0));
         halo.mesh.setMatrixAt(haloN, tmpM);
         halo.aSize.array[haloN] = e.species.size * 3.5 + 1.5;
-        halo.aAlpha.array[haloN] = glow * 0.55;
         const c3 = haloN * 3;
-        halo.aColor.array[c3] = 0.45; halo.aColor.array[c3 + 1] = 0.95; halo.aColor.array[c3 + 2] = 1.0;
+        if (shadow) {
+          // the shadow's aura: a deep violet breath around the silhouette
+          halo.aAlpha.array[haloN] = 0.22 + 0.1 * Math.sin(time * 1.7 + e.phase * 5);
+          halo.aColor.array[c3] = 0.3; halo.aColor.array[c3 + 1] = 0.08; halo.aColor.array[c3 + 2] = 0.55;
+        } else {
+          halo.aAlpha.array[haloN] = glow * 0.55;
+          halo.aColor.array[c3] = 0.45; halo.aColor.array[c3 + 1] = 0.95; halo.aColor.array[c3 + 2] = 1.0;
+        }
         haloN++;
+      }
+      // Basculegion's soul wisps: the fallen it wears, circling it — one fewer every time a soul is spent
+      if (e.souls > 0 && !shadow) {
+        const R = e.species.size * 0.75 + 0.9;
+        for (let k = 0; k < e.souls && haloN < halo.cap; k++) {
+          const a = time * 1.25 + (k / e.souls) * Math.PI * 2;
+          tmpM.makeTranslation(e.x + Math.cos(a) * R, y + e.species.size * 0.25 + Math.sin(time * 2.1 + k * 1.7) * 0.5, e.z + Math.sin(a) * R);
+          halo.mesh.setMatrixAt(haloN, tmpM);
+          halo.aSize.array[haloN] = 1.25 + 0.25 * Math.sin(time * 3.3 + k);
+          halo.aAlpha.array[haloN] = 0.75;
+          const c3 = haloN * 3;
+          halo.aColor.array[c3] = 0.72; halo.aColor.array[c3 + 1] = 0.66; halo.aColor.array[c3 + 2] = 1.0;
+          haloN++;
+        }
       }
     }
     halo.mesh.count = haloN;

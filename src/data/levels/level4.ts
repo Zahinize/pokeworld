@@ -13,7 +13,7 @@ export const LEVEL_4: LevelConfig = {
     schools: 1,
     passiveGroups: 1,
     curious: 3,
-    predators: 4,
+    predators: 8, // doubled: the reef's predators are a threat on every level now
     bottom: 3,
     defensive: 2,
     ambient: { schools: 1, drifters: 1, giants: 1, legendaryChance: 0 },
@@ -53,5 +53,6 @@ export const LEVEL_4: LevelConfig = {
     },
   ],
   playerStart: { zone: 'openReef', depth: 18 },
+  ferry: true,
   status: 'playable',
 };

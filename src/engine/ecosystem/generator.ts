@@ -2,6 +2,7 @@
  * Seeded, randomized level ecosystem generation.
  * Mission structure stays fixed per level; species composition, positions and groupings change per seed.
  */
+import { COMBAT } from '@/data/combatConfig';
 import { RNG } from '../rng';
 import { SPECIES, SPECIES_LIST, getSpecies } from '@/data/species';
 import type { SpeciesConfig, ZoneId, Rarity, BehaviorGroup } from '@/data/types';
@@ -9,6 +10,7 @@ import type { LevelConfig } from '@/data/levels';
 import { ZONES, ZONE_LIST } from '../world/zones';
 import { floorY } from '../world/terrain';
 import type { Obstacle } from '../world/terrain';
+import { GAME } from '@/data/gameConfig';
 import type { EntityRole, GroupKind, Vec3 } from '../ai/types';
 
 export interface SpawnSpec {
@@ -19,6 +21,8 @@ export interface SpawnSpec {
   ambient: boolean;
   zone: ZoneId;
   pos: Vec3;
+  /** A shiny predator: 2× HP and Attack, meaner and hungrier (COMBAT.PREDATOR_HUNT). */
+  shiny?: boolean;
 }
 
 export interface GroupSpec {
@@ -133,16 +137,33 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   };
   anchors.push(playerStart);
 
+  // entourage: followers that always spawn with a species — Kingler's Krabby court, the Remoraid
+  // that ride under Mantine's wings — whether that species spawns solo or as a group's guardian
+  const attachEntourage = (s: SpeciesConfig, idx: number) => {
+    if (!s.entourage) return;
+    const cs = getSpecies(s.entourage.speciesId);
+    const { pos, zone } = spawns[idx];
+    const gi = groups.length;
+    groups.push({ kind: 'companions', speciesId: cs.id, zone, anchor: { ...pos }, radius: 3, followsSpawn: idx });
+    const n = rng.int(s.entourage.count[0], s.entourage.count[1]);
+    for (let i = 0; i < n; i++) spawns.push({ speciesId: cs.id, role: 'companion', groupIndex: gi, ambient: true, zone, pos: { x: pos.x + rng.range(-2.5, 2.5), y: pos.y + rng.range(-0.8, 0.8), z: pos.z + rng.range(-2.5, 2.5) } });
+    summary.ambient.push(`${cs.name} ×${n} (with ${s.name})`);
+  };
+
   const addGroup = (kind: GroupKind, member: SpeciesConfig, guardian: SpeciesConfig | undefined, count: number, objectiveId: string | undefined, ambient: boolean, nearPlayer: boolean) => {
     const zone = pickZone(rng, member, nearPlayer ? level.playerStart.zone : undefined);
     const anchor = nearPlayer
       ? farFrom(rng, 12, () => {
           const p = posInZone(rng, zone, member, 0.5);
-          // pull toward the player start so the first target is right there
+          // pull toward the player start so the first target is close — but just beyond the clear ring,
+          // never on top of the trainer (the reef answers anyone within PROXIMITY_R)
           p.x = playerStart.x + (p.x - playerStart.x) * 0.35 + rng.range(-4, 4);
           p.z = playerStart.z + (p.z - playerStart.z) * 0.35 + rng.range(-4, 4);
+          const dx = p.x - playerStart.x, dz = p.z - playerStart.z, d = Math.hypot(dx, dz) || 1;
+          const want = GAME.PLAYER_START_CLEAR + 2.5 + Math.sqrt(count) * 1.2 + 2;
+          if (d < want) { p.x = playerStart.x + (dx / d) * want; p.z = playerStart.z + (dz / d) * want; }
           return p;
-        }, [], 0)
+        }, [playerStart], GAME.PLAYER_START_CLEAR + 2.5 + Math.sqrt(count) * 1.2)
       : farFrom(rng, 16, () => posInZone(rng, zone, member), anchors, 28);
     anchors.push(anchor);
     const gi = groups.length;
@@ -161,6 +182,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
         pos: { x: anchor.x + radius + 2, y: anchor.y + 0.5, z: anchor.z },
       });
       used.add(guardian.id);
+      attachEntourage(guardian, spawns.length - 1);
     }
     used.add(member.id);
     return gi;
@@ -200,15 +222,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     anchors.push(pos);
     spawns.push({ speciesId: s.id, role, groupIndex: -1, objectiveId, ambient, zone, pos });
     const idx = spawns.length - 1;
-    // entourage: followers that always spawn with this species (Kingler's Krabby court, Corsola/Wiglett clusters)
-    if (s.entourage) {
-      const cs = getSpecies(s.entourage.speciesId);
-      const gi = groups.length;
-      groups.push({ kind: 'companions', speciesId: cs.id, zone, anchor: { ...pos }, radius: 3, followsSpawn: idx });
-      const n = rng.int(s.entourage.count[0], s.entourage.count[1]);
-      for (let i = 0; i < n; i++) spawns.push({ speciesId: cs.id, role: 'companion', groupIndex: gi, ambient: true, zone, pos: { x: pos.x + rng.range(-2.5, 2.5), y: pos.y + rng.range(-0.8, 0.8), z: pos.z + rng.range(-2.5, 2.5) } });
-      summary.ambient.push(`${cs.name} \u00d7${n} (with ${s.name})`);
-    }
+    attachEntourage(s, idx);
     return idx;
   };
 
@@ -235,6 +249,18 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     }
   });
 
+  // ---- The ferry: exactly ONE wild Lapras on ferry levels, none anywhere else ----
+  // Never less on a ferry level (a roster without one has no ferry at all) and never more (a
+  // rare roll that repeats when the curious pool runs dry). A surplus or off-level Lapras is
+  // turned into another explorer in place — spawn indices are referenced by groups, so nothing
+  // is ever removed.
+  {
+    let lapras = 0;
+    const allowed = level.ferry ? 1 : 0;
+    for (const sp of spawns) if (sp.speciesId === 'lapras') { lapras++; if (lapras > allowed) sp.speciesId = 'dewgong'; }
+    if (lapras === 0 && allowed > 0) { const s = getSpecies('lapras'); addSolo(s, 'solo', undefined, true); used.add(s.id); summary.curious.push(s.name); }
+  }
+
   // ---- Predators ----
   const predPool = SPAWNABLE.filter((s) => s.primary === 'predator');
   const preds: SpeciesConfig[] = [];
@@ -247,10 +273,12 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   }
   // Predators roam in small packs (Carvanha 2–3, Sharpedo/Barraskewda 1–2, the big ones alone) sharing a territory.
   const PACK: Record<string, [number, number]> = { carvanha: [2, 3], sharpedo: [1, 2], barraskewda: [1, 2], veluza: [1, 2], gyarados: [1, 1], basculegion: [1, 2] };
+  const packLeads: number[] = [];
   preds.forEach((s) => {
     const [lo, hi] = PACK[s.id] ?? [1, 1];
     const n = rng.int(lo, hi);
     const idx = addSolo(s, 'solo', undefined, true);
+    packLeads.push(idx);
     if (n > 1) {
       const base = spawns[idx].pos;
       const gi = groups.length;
@@ -260,6 +288,12 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     }
     summary.predators.push(n > 1 ? `${s.name} ×${n}` : s.name);
   });
+  // two packs get a SHINY lead: twice the HP and Attack, and it hunts anything — the trainer first
+  for (let k = 0; k < Math.min(COMBAT.PREDATOR_HUNT.SHINY_PER_LEVEL, packLeads.length); k++) {
+    const pick = rng.int(k, packLeads.length - 1);
+    [packLeads[k], packLeads[pick]] = [packLeads[pick], packLeads[k]];
+    spawns[packLeads[k]].shiny = true;
+  }
 
   // ---- Bottom dwellers ----
   const bottomPool = SPAWNABLE.filter((s) => s.primary === 'bottom' && !used.has(s.id));
@@ -351,7 +385,90 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     }
   }
 
+  // The Lapras ferry calls within seconds of the dive and comes to the trainer — so a Lapras that
+  // rolled a berth on the far side of the reef is moved (with its little entourage) to within
+  // FERRY_SPAWN_NEAR_START of the start point, keeping its depth and floor clearance.
+  const lapIdx = spawns.findIndex((sp) => sp.speciesId === 'lapras');
+  if (lapIdx >= 0) {
+    const lp = spawns[lapIdx].pos;
+    const lx = lp.x, lz = lp.z; // snapshot: `lp` is the live position and moves mid-loop
+    const far = Math.hypot(lx - playerStart.x, lz - playerStart.z);
+    if (far > GAME.FERRY_SPAWN_NEAR_START) {
+      const a = rng.next() * Math.PI * 2, r = GAME.FERRY_SPAWN_NEAR_START * (0.55 + rng.next() * 0.4);
+      let nx = playerStart.x + Math.cos(a) * r, nz = playerStart.z + Math.sin(a) * r;
+      const rr = Math.hypot(nx, nz), lim = GAME.WORLD_RADIUS - 12;
+      if (rr > lim) { nx *= lim / rr; nz *= lim / rr; }
+      const dx = nx - lx, dz = nz - lz;
+      for (const sp of spawns) {
+        if (sp !== spawns[lapIdx] && Math.hypot(sp.pos.x - lx, sp.pos.z - lz) > 8) continue; // the entourage rides along (measured from the OLD berth)
+        sp.pos.x += dx; sp.pos.z += dz;
+        sp.pos.y = Math.max(sp.pos.y, floorY(sp.pos.x, sp.pos.z) + getSpecies(sp.speciesId).size + 1.5);
+      }
+    }
+  }
+
+  clearPlayerStart(rng, spawns, groups, playerStart);
+
   return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, playerStart, summary };
+}
+
+/**
+ * Nobody within GAME.PLAYER_START_CLEAR of the trainer's start. Groups move as a whole (their anchor is
+ * pushed straight out until every member clears the ring, so a school stays a school), solos are pushed out
+ * radially, and an entourage follows the spawn it is attached to. Depth is re-floored after the move.
+ */
+function clearPlayerStart(rng: RNG, spawns: SpawnSpec[], groups: GroupSpec[], start: Vec3) {
+  const CLEAR = GAME.PLAYER_START_CLEAR;
+  const lim = GAME.WORLD_RADIUS - 12;
+  const clampWorld = (p: { x: number; z: number }) => { const r = Math.hypot(p.x, p.z); if (r > lim) { p.x *= lim / r; p.z *= lim / r; } };
+  const refloor = (sp: SpawnSpec) => { sp.pos.y = Math.max(sp.pos.y, floorY(sp.pos.x, sp.pos.z) + getSpecies(sp.speciesId).size * 0.6 + 1.0); };
+  const moved = new Map<number, { dx: number; dz: number }>(); // spawn index → shift (for entourages)
+  // 1. groups: push the anchor out until the nearest member clears the ring
+  groups.forEach((g, gi) => {
+    if (g.followsSpawn !== undefined) return; // an entourage follows its leader (step 3)
+    const members = spawns.map((sp, i) => [sp, i] as const).filter(([sp]) => sp.groupIndex === gi);
+    if (!members.length) return;
+    let nearest = Infinity;
+    for (const [sp] of members) nearest = Math.min(nearest, Math.hypot(sp.pos.x - start.x, sp.pos.z - start.z));
+    if (nearest >= CLEAR) return;
+    const ax = g.anchor.x - start.x, az = g.anchor.z - start.z;
+    const ad = Math.hypot(ax, az);
+    const dirA = ad > 0.5 ? Math.atan2(az, ax) : rng.next() * Math.PI * 2;
+    const need = CLEAR - nearest + 1.5; // how much further out the whole group must go
+    const nx = start.x + Math.cos(dirA) * (ad + need), nz = start.z + Math.sin(dirA) * (ad + need);
+    const target = { x: nx, z: nz }; clampWorld(target);
+    const dx = target.x - g.anchor.x, dz = target.z - g.anchor.z;
+    g.anchor.x += dx; g.anchor.z += dz;
+    for (const [sp, i] of members) { sp.pos.x += dx; sp.pos.z += dz; refloor(sp); moved.set(i, { dx, dz }); }
+  });
+  // 2. solos: straight out to the ring
+  spawns.forEach((sp, i) => {
+    if (sp.groupIndex >= 0) return;
+    const dx0 = sp.pos.x - start.x, dz0 = sp.pos.z - start.z, d = Math.hypot(dx0, dz0);
+    if (d >= CLEAR) return;
+    const a = d > 0.5 ? Math.atan2(dz0, dx0) : rng.next() * Math.PI * 2;
+    const want = CLEAR + 1.5 + rng.next() * 3;
+    const target = { x: start.x + Math.cos(a) * want, z: start.z + Math.sin(a) * want }; clampWorld(target);
+    moved.set(i, { dx: target.x - sp.pos.x, dz: target.z - sp.pos.z });
+    sp.pos.x = target.x; sp.pos.z = target.z; refloor(sp);
+  });
+  // 3. entourages ride along with the spawn they follow
+  groups.forEach((g, gi) => {
+    if (g.followsSpawn === undefined) return;
+    const m = moved.get(g.followsSpawn);
+    if (!m) return;
+    g.anchor.x += m.dx; g.anchor.z += m.dz;
+    for (const sp of spawns) if (sp.groupIndex === gi) { sp.pos.x += m.dx; sp.pos.z += m.dz; refloor(sp); }
+  });
+  // 4. stragglers: a courtier spread around a leader that sits just past the ring — nudged out on its own
+  for (const sp of spawns) {
+    const dx0 = sp.pos.x - start.x, dz0 = sp.pos.z - start.z, d = Math.hypot(dx0, dz0);
+    if (d >= CLEAR) continue;
+    const a = d > 0.5 ? Math.atan2(dz0, dx0) : rng.next() * Math.PI * 2;
+    const want = CLEAR + 0.5 + rng.next() * 1.5;
+    const target = { x: start.x + Math.cos(a) * want, z: start.z + Math.sin(a) * want }; clampWorld(target);
+    sp.pos.x = target.x; sp.pos.z = target.z; refloor(sp);
+  }
 }
 
 /** Primary behavior a spawned entity should run (guardians use the guardian system). */

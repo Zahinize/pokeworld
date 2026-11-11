@@ -1,6 +1,9 @@
 /**
  * The Move Dojo (DEV, via #arena): pick any rostered Pokémon, it swims at your side in
- * companion mode, and an immortal Dondozo dummy holds still 14m ahead. Left click (or
+ * companion mode, and an immortal Dondozo dummy holds still 14m ahead. Sky Pokémon are on
+ * the roster too: pick one and the stage rises to the waterline — the bird hovers over the
+ * swell beside you and the dummy surfaces to take its moves. The bosses are rostered as
+ * well (their true kits, at companion scale), so a boss move can be rebuilt and reviewed here. Left click (or
  * the move buttons) casts move 1 at the dummy, right click casts move 2 — guaranteed
  * homing, zero stakes — so every move's design, animation and feel can be reviewed fast.
  */
@@ -9,6 +12,7 @@ import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { SPECIES_LIST } from '@/data/species';
 import { SPECIES_MOVES, getMove, TYPE_COLORS } from '@/data/moves';
+import { BOSS_TUNING } from '@/data/combatConfig';
 import { Ic, LogOut, Target } from '../components/icons';
 import { SpriteImg, TypeIcon } from '../components/common';
 
@@ -17,9 +21,10 @@ export function ArenaScreen({ onExit }: { onExit: () => void }) {
   const [species, setSpecies] = useState('corsola');
   const [bossFrac, setBossFrac] = useState(1);
   const roster = useMemo(
-    () => SPECIES_LIST.filter((sp) => SPECIES_MOVES[sp.id] && !sp.skyOnly && !sp.bossOnly).sort((a, b) => a.name.localeCompare(b.name)),
+    () => SPECIES_LIST.filter((sp) => SPECIES_MOVES[sp.id]).sort((a, b) => a.name.localeCompare(b.name)),
     [],
   );
+  const reef = roster.filter((sp) => !sp.skyOnly && !sp.bossOnly), sky = roster.filter((sp) => sp.skyOnly), bosses = roster.filter((sp) => sp.bossOnly || BOSS_TUNING[sp.id]); // every boss, Basculegion included (it is a reef wild too)
   // dummy HP readout (and proof hits land) at a gentle poll
   useEffect(() => {
     const t = setInterval(() => {
@@ -43,7 +48,9 @@ export function ArenaScreen({ onExit }: { onExit: () => void }) {
           onChange={(e) => { setSpecies(e.target.value); session.arenaSelect(e.target.value); }}
           aria-label="Test Pokémon"
         >
-          {roster.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+          <optgroup label="Reef">{reef.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
+          <optgroup label="Sky">{sky.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
+          <optgroup label="Bosses">{bosses.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
         </select>
         <button className="btn ghost" style={{ minHeight: 32 }} onClick={() => session.arenaResetBoss()}><Ic icon={Target} size={14} /> Reset dummy</button>
         <button className="btn ghost" style={{ minHeight: 32 }} onClick={onExit}><Ic icon={LogOut} size={14} /> Exit</button>

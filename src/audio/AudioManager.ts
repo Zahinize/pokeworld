@@ -267,6 +267,13 @@ class AudioManagerImpl {
         this.tone(620, 0.12, 0.09, 'sawtooth', 1500, 0, 0.3); this.tone(150, 0.18, 0.16, 'triangle', 80, 0, 0.37); return;
       case 'mudShot': // a glug of heavy sludge
         this.noiseBurst(0.35, 0.24, 300, 0.8, 0.4); this.tone(150, 0.3, 0.12, 'sine', 75, 0, 0.4); return;
+      case 'wingAttack': // the dive: a hard wing WHOOSH at the strike (0.35s wind-up)
+        this.noiseBurst(0.24, 0.22, 1400, 0.6, 0.3); this.tone(520, 0.12, 0.06, 'sine', 240, 0, 0.36); return;
+      case 'gust': // rushing wind: a broad airy roar rising into a whistle
+        this.noiseBurst(0.55, 0.18, 900, 0.5, 0.4); this.noiseBurst(0.35, 0.12, 1900, 0.9, 0.55); return;
+      case 'airSlash': // spinning blades of air: three rising slicing whistles
+        this.noiseBurst(0.14, 0.16, 2600, 2.2, 0.4); this.noiseBurst(0.14, 0.14, 3000, 2.2, 0.52); this.noiseBurst(0.14, 0.12, 3400, 2.2, 0.64);
+        this.tone(1500, 0.22, 0.05, 'sine', 2600, 0, 0.4); return;
       case 'muddyWater': // the flood: a wide, dirty roar in two breaking layers
         this.noiseBurst(0.8, 0.28, 340, 0.5, 0.4); this.tone(170, 0.6, 0.12, 'sine', 55, 0, 0.4);
         this.noiseBurst(0.5, 0.18, 800, 0.8, 0.75); return;
@@ -279,7 +286,8 @@ class AudioManagerImpl {
       case 'ink': this.tone(220, 0.2, 0.12, 'sine', 110); this.noiseBurst(0.25, 0.12, 400, 0.8); break;
       case 'ring': case 'motes': this.tone(880, 0.25, 0.08, 'sine', 660); this.tone(1320, 0.2, 0.05, 'sine', undefined, 0, 0.08); break;
       case 'crescent': this.noiseBurst(0.18, 0.16, 1800, 1.4); break;
-      case 'dash': case 'melee': this.noiseBurst(0.2, 0.2, 900, 0.8); this.tone(140, 0.15, 0.1, 'triangle', 90, 0, 0.08); break;
+      case 'dash': case 'melee': case 'swoop': this.noiseBurst(0.2, 0.2, 900, 0.8); this.tone(140, 0.15, 0.1, 'triangle', 90, 0, 0.08); break;
+      case 'wind': this.noiseBurst(0.45, 0.16, 1000, 0.5); break;
       case 'burst': this.noiseBurst(0.4, 0.2, 500, 0.6); break;
       case 'lightning': this.noiseBurst(0.3, 0.3, 3000, 0.5); this.tone(90, 0.4, 0.15, 'sawtooth', 45); break;
       default: this.noiseBurst(0.2, 0.15, 800, 1);
@@ -319,12 +327,14 @@ class AudioManagerImpl {
   }
 
   /** Play a Pokémon's cry at the given volume (1 = encounter, 0.5 = caught, 0.25 = defeated). */
-  playCry(dexId: number, volume = 1, delay = 0) {
+  /** `rate` shifts the pitch (and tempo) of the cry: 1 = as recorded. */
+  playCry(dexId: number, volume = 1, delay = 0, rate = 1) {
     if (!this.ctx || !this.enabled) return;
     this.loadCry(dexId).then((buf) => {
       if (!buf || !this.ctx) return;
       const t0 = this.ctx.currentTime + delay;
       const src = this.ctx.createBufferSource(); src.buffer = buf;
+      src.playbackRate.value = Math.max(0.5, Math.min(2, rate));
       const g = this.ctx.createGain(); g.gain.value = Math.max(0.01, Math.min(1, volume)) * 0.9;
       src.connect(g).connect(this.sfxGain!);
       src.start(t0);

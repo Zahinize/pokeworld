@@ -47,7 +47,8 @@ for (const levelId of [1, 2]) {
   const msPerStep = msTotal / steps;
   console.log(`Level ${levelId}: casts/5min ${(casts / n).toFixed(1)} · move hits/5min ${(hits / n).toFixed(1)} · KOs ${(kos / n).toFixed(1)} (predators KO'd by wilds: ${(predKos / n).toFixed(1)}) · retaliation-seconds ${(retaliations / n).toFixed(0)} · effects ${(effects / n).toFixed(1)} · playerHits ${(playerHits / n).toFixed(1)} · ${msPerStep.toFixed(3)} ms/step`);
   if (hits / n < 10) fail(`level ${levelId}: predator pressure too low (${(hits / n).toFixed(1)} hits/5min)`);
-  if (hits / n > 90) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
+  // the hostile reef (doubled predators, shiny leads, fury, raids) lands 100–150 hits/5min by design
+  if (hits / n > 220) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
   if (msPerStep > 0.25) fail(`level ${levelId}: perf budget exceeded (${msPerStep.toFixed(3)} ms/step > 0.25)`);
   if (casts / n < hits / n) fail(`level ${levelId}: fewer casts than hits?`);
   ok(`level ${levelId} within budgets`);
@@ -496,10 +497,10 @@ for (const levelId of [1, 2]) {
   while (!events.includes('autoCaught') && guard++ < 90) {
     step(1);
     if (partner.duelWith === wild.id && wild.duelWith === partner.id && !events.includes('duelStart')) fail('duel linked without event');
-    if (wild.duelWith < 0 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
+    if (wild.duelWith === -1 && guard % 3 === 0 && (wild.state as string) !== 'caught' && (wild.state as string) !== 'removed') {
       // duel broke (fled, regrouped, whatever the species' temperament) — re-engage.
       // A stray school defender may have hit the partner and pulled it into its own duel: break that first.
-      if (partner.duelWith >= 0 && partner.duelWith !== wild.id) (eco as any).endDuel(partner, 'separated');
+      if (partner.duelWith !== -1 && partner.duelWith !== wild.id) (eco as any).endDuel(partner, 'separated');
       stunBystanders();
       wild.hp = wild.maxHp * 0.6; wild.x = partner.x + 5; wild.y = partner.y; wild.z = partner.z;
       partner.orderTarget = wild.id; partner.orderMove = 0; partner.nextThink = eco.time;
@@ -622,7 +623,7 @@ for (const levelId of [1, 2]) {
         if (bothAlive) maxPairSep = Math.max(maxPairSep, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
       }
     }
-    if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s)`);
+    if (defeated === bossEnts.length) ok(`L${levelId}: all bosses defeated in ~${rounds}s (charges seen: ${charges})`); else fail(`L${levelId}: bosses not defeated (${defeated}/${bossEnts.length} after ${rounds}s) — ${bossEnts.map((b) => `${b.species.id} ${Math.round(b.hp)}/${b.maxHp} ${b.state}${b.souls ? ` souls ${b.souls}` : ''}`).join(' · ')} | partners ${[partner1, partner2].map((q) => `${q.species.id} ${q.state} hp ${Math.round(q.hp)} duel ${q.duelWith}`).join(', ')}`);
     if (charges > 0) ok(`L${levelId}: bosses charged ${charges}× (stay agile!)`); else fail(`L${levelId}: bosses never charged`);
     if (bossEnts.length > 1 && bossEnts[1].pairBossId >= 0) {
       if (maxPairSep > 0 && maxPairSep < 16) ok(`L${levelId}: commander duo stayed together (max separation ${maxPairSep.toFixed(1)}m)`); else fail(`L${levelId}: duo separated (${maxPairSep.toFixed(1)}m)`);
@@ -679,13 +680,15 @@ for (const levelId of [1, 2]) {
   let entered = false, vanished = false, minPass = Infinity, passAlt = 0;
   {
     const L = lightingAt(0.4);
-    for (let i = 0; i < 220 * 60 && !vanished; i++) { // roll (≤40s) + slow 130s crossing
+    for (let i = 0; i < 320 * 60 && !vanished; i++) { // roll (≤40s) + three slow passes (~200s), after whatever is already crossing
       sky.update(1 / 60, L, 0.4, 0, 0);
       for (const ev of sky.drainEvents()) {
-        if (ev.type === 'legendaryEnter') entered = true;
-        if (ev.type === 'legendaryVanish') vanished = true;
+        // a natural roll may already have a legendary crossing (bigger flocks draw the rng differently):
+        // only the forced Lugia counts, whatever else is in the sky when it is forced
+        if (ev.type === 'legendaryEnter' && ev.speciesId === 'lugia') entered = true;
+        if (ev.type === 'legendaryVanish' && ev.speciesId === 'lugia') vanished = true;
       }
-      if (sky.legendaryIdx >= 0) {
+      if (sky.legendaryIdx >= 0 && sky.birds[sky.legendaryIdx].speciesId === 'lugia') {
         const b = sky.birds[sky.legendaryIdx];
         const d = Math.hypot(b.x, b.z);
         if (d < minPass) { minPass = d; passAlt = b.y; }

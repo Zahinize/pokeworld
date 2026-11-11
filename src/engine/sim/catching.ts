@@ -24,12 +24,14 @@ export function catchProbabilityFor(species: SpeciesConfig, hpFrac: number, ball
   return skyLegendary ? Math.min(p, SKY.LEGENDARY_CATCH_CAP) : p;
 }
 
-/** Probability (0..1) that a hit with `ball` captures `e`. */
-export function catchProbability(e: Entity, ball: BallId): number {
+/** Probability (0..1) that a hit with `ball` captures `e`. `ferry`: a Lapras ferry is surfaced
+ *  (the reef's truce — catch odds dip while everyone watches). */
+export function catchProbability(e: Entity, ball: BallId, ferry = false): number {
   const hpFrac = e.maxHp > 0 ? e.hp / e.maxHp : 1;
   let p = catchProbabilityFor(e.species, hpFrac, ball, e.state === 'faint');
   // a grazing Pokémon is distracted — reward the patient observer
   if (e.state === 'feed') p = Math.min(GAME.CATCH_MAX, p * GAME.FEED_CATCH_MULT);
+  if (ferry) p = Math.max(GAME.CATCH_MIN, p * GAME.FERRY_CATCH_MULT);
   return p;
 }
 
@@ -39,15 +41,15 @@ function shakesFor(p: number, success: boolean, rand: () => number): number {
 }
 
 /** Resolve a capture attempt on an ecosystem entity. `rand` is injectable for tests. */
-export function rollCatch(e: Entity, ball: BallId, rand: () => number = Math.random): { success: boolean; p: number; shakes: number } {
-  const p = catchProbability(e, ball);
+export function rollCatch(e: Entity, ball: BallId, rand: () => number = Math.random, ferry = false): { success: boolean; p: number; shakes: number } {
+  const p = catchProbability(e, ball, ferry);
   const success = rand() < p;
   return { success, p, shakes: shakesFor(p, success, rand) };
 }
 
 /** Resolve a capture attempt on a sky Pokémon (always at full vigor — no HP up there). */
-export function rollCatchFor(species: SpeciesConfig, ball: BallId, rand: () => number = Math.random): { success: boolean; p: number; shakes: number } {
-  const p = catchProbabilityFor(species, 1, ball);
+export function rollCatchFor(species: SpeciesConfig, ball: BallId, rand: () => number = Math.random, pMult = 1): { success: boolean; p: number; shakes: number } {
+  const p = Math.min(1, catchProbabilityFor(species, 1, ball) * pMult); // pMult: a shiny sky bird is harder to hold
   const success = rand() < p;
   return { success, p, shakes: shakesFor(p, success, rand) };
 }

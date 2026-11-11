@@ -25,6 +25,7 @@ function effectText(fx: MoveEffect): string {
     defUp: `raises Defense ${pct} for ${fx.duration}s`,
     speedUp: `raises Speed ${pct} for ${fx.duration}s`,
     heal: fx.duration > 1 ? `restores ${pct} HP over ${fx.duration}s` : `restores ${pct} HP`,
+    push: 'blows the target back',
   }[fx.type];
   return fx.chance ? `✦ ${Math.round(fx.chance * 100)}% chance: ${base}` : `✦ ${base}`;
 }

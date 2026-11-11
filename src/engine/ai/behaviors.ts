@@ -3,13 +3,14 @@
  * Each think function reads the entity + context, accumulates steering into `acc`, and commits a desired velocity.
  * Nothing here knows about rendering.
  */
-import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3 } from './types';
+import type { Entity, EntityState, Group, EcoEvent, PlayerSnapshot, Vec3 } from './types';
 import { acc, accReset, accAdd, seek, fleeFrom, updateWander, depthPreference, floorAndSurface, containZone, containWorld, avoidObstacles, commit, len3 } from './steering';
 import type { Obstacle } from '../world/terrain';
 import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
 import type { SpatialHash } from '../spatialHash';
 import { GAME } from '@/data/gameConfig';
+import { COMBAT } from '@/data/combatConfig';
 
 import type { MoveTarget } from '../sim/moveSystem';
 
@@ -26,6 +27,12 @@ export interface SimContext {
   hash: SpatialHash<Entity>;
   events: EcoEvent[];
   predatorGraceOver: boolean;
+  /** The trainer's shorter grace (COMBAT.PREDATOR_HUNT.PLAYER_GRACE). */
+  playerGraceOver: boolean;
+  /** How nasty this level's predators are toward the trainer (LEVEL_NASTY). */
+  nasty: number;
+  /** The trainer's living companions (companion levels): hunted exactly like the trainer. */
+  partners: Entity[];
   current: Vec3;
   /** A Lapras currently idling at the surface as the reef's ferry (small species bob alongside). */
   ferry: Entity | null;
@@ -111,6 +118,18 @@ function pickPointInZone(e: Entity, ctx: SimContext, minR: number, maxR: number,
 
 export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const s = e.species;
+  // a Mantyke picked for the pod leap: wait out its delay, then run and leap on its own, along
+  // its Mantine's heading — nothing else matters until it splashes down
+  if (e.leapDelay > 0) {
+    e.leapDelay -= dt;
+    if (e.leapDelay <= 0) {
+      const L = e.leapWith >= 0 ? ctx.byId.get(e.leapWith) : undefined;
+      const vx = L ? L.vx : e.vx, vz = L ? L.vz : e.vz, sp = Math.hypot(vx, vz);
+      const hx = sp > 0.05 ? vx / sp : Math.cos(e.phase), hz = sp > 0.05 ? vz / sp : Math.sin(e.phase);
+      startLeapRun(e, hx, hz, 25);
+    }
+  }
+  if (leapThink(e, ctx, dt, GAME.MANTYKE_LEAP.HEIGHT, GAME.MANTYKE_LEAP.RUN_SPEED_MULT)) return;
   const isSchool = g.kind === 'school' || g.kind === 'ambientSchool';
   const passive = !isSchool;
   accReset();
@@ -142,19 +161,36 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   const full = e.lod === 0;
   const maxN = e.lod === 0 ? 12 : 6;
 
-  // Lapras ferry: calm little surface species paddle over and bob alongside the gentle giant.
-  // While aboard, the depth band and the school anchor both let go — shore leave.
-  const ferrying = !!ctx.ferry && !scattering && !balled && !e.lured && e.state !== 'feed' && s.size <= 1.05
-    && len3(ctx.ferry.x - e.x, ctx.ferry.y - e.y, ctx.ferry.z - e.z) < 22;
+  // Lapras ferry: calm little surface species paddle over and bob alongside the gentle giant,
+  // just under the waterline (amphibious ones climb aboard instead — see ferryRiderThink).
+  // While alongside, the depth band and the school anchor both let go — shore leave.
+  const ferrying = !!ctx.ferry && !scattering && !balled && !e.lured && e.state !== 'feed' && s.size <= 1.05 && !s.amphibious
+    && len3(ctx.ferry.x - e.x, ctx.ferry.y - e.y, ctx.ferry.z - e.z) < GAME.FERRY_FRY_RADIUS;
   if (ferrying) {
     const f = ctx.ferry!;
     const a = e.phase + ctx.time * 0.25;
     const r = f.species.size * 1.1 + s.size + 0.6;
-    seek(e, f.x + Math.cos(a) * r, f.y + 0.35 + Math.sin(ctx.time * 1.6 + e.phase * 5) * 0.18, f.z + Math.sin(a) * r, 2.2, 0.4);
+    const wy = Math.min(f.y + 0.35, GAME.SURFACE_Y - 0.45 - s.size * 0.5) + Math.sin(ctx.time * 1.6 + e.phase * 5) * 0.18;
+    seek(e, f.x + Math.cos(a) * r, wy, f.z + Math.sin(a) * r, 2.2, 0.4);
   }
 
+  // Remoraid under Mantine's wings (lore): the hitchhikers latch onto the underside of the wings
+  // and ride wherever the giant glides — no schooling of their own while aboard. A threat, the
+  // lure or a fight lets go; they re-latch as soon as it's over.
+  const leader = g.followId >= 0 ? ctx.byId.get(g.followId) : undefined;
+  const latched = !!leader && leader.species.id === 'mantine' && s.id === 'remoraid' && !scattering && !e.lured && e.state !== 'feed'
+    && leader.state !== 'ko' && leader.state !== 'caught' && leader.state !== 'removed';
+  const leaderSpeed = leader ? Math.hypot(leader.vx, leader.vz) : 0;
+  if (latched) {
+    wingSlotOf(leader!, e, seatTmp);
+    seek(e, seatTmp.x, seatTmp.y + Math.sin(ctx.time * 2 + e.phase * 3) * 0.05, seatTmp.z, 3.0, 0.2);
+  }
+  // Mantyke trailing their Mantine (lore: it leads them): a giant cruises faster than its young,
+  // and after a leap it is far ahead — the family keeps up at its pace, within their own limits
+  const trailing = !!leader && leader.species.id === 'mantine' && !latched && !scattering && !e.lured && e.state !== 'feed';
+
   // Boids among same group
-  if (e.lod < 2) {
+  if (e.lod < 2 && !latched) {
     let cx = 0, cy = 0, cz = 0, n = 0, ax = 0, ay = 0, az = 0;
     const sepD = (s.size * 1.1 + 0.45) * (balled ? 0.55 : 1); // the ball packs scale to scale
     const R = isSchool ? 6 : 7;
@@ -189,7 +225,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
     seek(e, g.anchor.x + Math.cos(swirl + e.phase) * ringR, g.anchor.y + ay2, g.anchor.z + Math.sin(swirl + e.phase) * ringR, 2.2, 0.3);
     e.atkStage = Math.max(e.atkStage, 1.5); e.atkStageUntil = Math.max(e.atkStageUntil, ctx.time + 1.2);
     e.defStage = Math.max(e.defStage, 1.6); e.defStageUntil = Math.max(e.defStageUntil, ctx.time + 1.2);
-  } else if (!ferrying) {
+  } else if (!ferrying && !latched) {
     const dA = len3(g.anchor.x - e.x, g.anchor.y - e.y, g.anchor.z - e.z);
     const over = Math.max(0, dA - g.radius);
     const w = (isSchool ? 0.5 : 0.35) + over * (e.lod === 2 ? 0.6 : 0.18);
@@ -236,13 +272,13 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   }
 
   // Noise, vertical life, current, habitat
-  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1);
+  const noiseW = (isSchool ? 0.55 : 0.7) * energy * (e.state === 'feed' ? GAME.FEED_WANDER_DAMP : 1) * (latched ? 0.15 : 1);
   accAdd(e.wander.x, e.wander.y * 0.5, e.wander.z, noiseW);
-  acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy;
-  if (passive) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
-  if (e.state !== 'feed' && !ferrying) depthPreference(e, 0.8); // feeding & ferry visits suspend the comfort band entirely
+  acc.y += Math.sin(ctx.time * (1.2 + energy) + e.phase * 5) * 0.25 * energy * (latched ? 0.2 : 1);
+  if (passive && !latched) accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
+  if (e.state !== 'feed' && !ferrying && !latched) depthPreference(e, 0.8); // feeding, ferry visits & a wing ride suspend the comfort band entirely
   floorAndSurface(e, e.state === 'feed' ? s.size * 0.35 : s.size * 0.6 + 0.8); // grazers press right down to the sand
-  if (!e.lured) containZone(e, e.zone, 0.8, 1.05);
+  if (!e.lured && !latched) containZone(e, e.zone, 0.8, 1.05);   // a hitchhiker goes wherever the Mantine goes
   containWorld(e);
   if (full) avoidObstacles(e, ctx.obstacles, 1.8);
 
@@ -250,7 +286,13 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
   // feeding fish hustle TO the table (long climb for deep drifters), then settle into the crawl
   const atTable = Math.abs(g.anchor.y - e.y) < 2.2;
   const feedMult = e.state === 'feed' ? (atTable ? (isSchool ? GAME.FEED_SPEED_MULT : 0.65) : 1.3) : 1;
-  const speed = (balled ? s.burst * 0.85 : scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
+  const speed0 = (balled ? s.burst * 0.85 : scattering || disturb > 0.3 ? s.burst * (0.75 + 0.25 * e.speedMul) : s.speed * e.speedMul * (e.lured ? 1.25 : 1) * feedMult) * act;
+  // alongside a ferry under way the little ones have to keep up with the hull; a Remoraid under
+  // the wing must never fall off the Mantine it rides
+  const behind = trailing && len3(g.anchor.x - e.x, g.anchor.y - e.y, g.anchor.z - e.z) > g.radius;
+  const speed = latched ? Math.max(speed0, leaderSpeed * 1.4 + 0.5)
+    : behind ? Math.max(speed0, Math.min(s.burst * 1.3, leaderSpeed * 1.25 + 0.3))
+    : ferrying ? Math.max(speed0, s.burst * 0.7 * act) : speed0;
   commit(e, speed);
 }
 
@@ -325,8 +367,31 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
 
   // a balled Wishiwashi school stands its ground — the anchor freezes instead of running
   const holdBall = g.speciesId === 'wishiwashi' && g.alarm > 0.05 && g.memberIds.length >= 3;
+  // the Lapras ferry: when this group's members are aboard or alongside, the whole group goes
+  // with it — the anchor tows along a few metres under the hull, so the guardian (which always
+  // orbits the anchor) travels with the ferry below the water
+  let escort = false;
+  if (ctx.ferry && g.alarm <= 0.05 && !lured) {
+    const f = ctx.ferry; let aboard = 0, near = 0;
+    for (const id of g.memberIds) {
+      const m = ctx.byId.get(id);
+      if (!m) continue;
+      if (m.aboardT > 0) aboard++;
+      else if (len3(m.x - f.x, m.y - f.y, m.z - f.z) < f.species.size * 1.1 + 2.5) near++;
+    }
+    // one of ours on the shell is enough to bring the family; alongside it takes a fair share;
+    // and once under way, a group already in station under the hull stays with it to the end
+    escort = aboard >= 1 || near >= Math.max(1, Math.ceil(g.memberIds.length * 0.3))
+      || (f.state === 'ferryVoyage' && Math.hypot(g.anchor.x - f.x, g.anchor.z - f.z) < 10);
+  }
   if (lured) {
     g.anchorTarget.x = ctx.player.x; g.anchorTarget.y = ctx.player.y; g.anchorTarget.z = ctx.player.z;
+  } else if (escort) {
+    const f = ctx.ferry!;
+    const gu = g.guardianId >= 0 ? ctx.byId.get(g.guardianId) : undefined;
+    g.anchorTarget.x = f.x; g.anchorTarget.z = f.z;
+    g.anchorTarget.y = GAME.SURFACE_Y - (3.5 + (gu ? gu.species.size * 0.6 : 1));
+    g.nextAnchorChange = Math.max(g.nextAnchorChange, ctx.time + 3);
   } else if (holdBall) {
     g.anchorTarget.x = g.anchor.x; g.anchorTarget.y = g.anchor.y; g.anchorTarget.z = g.anchor.z;
     g.nextAnchorChange = Math.max(g.nextAnchorChange, ctx.time + 4);
@@ -350,7 +415,9 @@ export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean
   // Move anchor toward target
   const dx = g.anchorTarget.x - g.anchor.x, dy = g.anchorTarget.y - g.anchor.y, dz = g.anchorTarget.z - g.anchor.z;
   const d = len3(dx, dy, dz);
-  const sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1) * (g.feedUntil > ctx.time ? GAME.FEED_ANCHOR_SPEED_MULT : 1);
+  let sp = g.anchorSpeed * (g.alarm > 0.3 ? 2.2 : 1) * (lured ? 2.5 : 1) * (g.feedUntil > ctx.time ? GAME.FEED_ANCHOR_SPEED_MULT : 1) * (escort ? GAME.FERRY_ESCORT_ANCHOR_MULT : 1);
+  // an escorting group must keep station under a ferry under way — never slower than the hull
+  if (escort && ctx.ferry) sp = Math.max(sp, Math.hypot(ctx.ferry.vx, ctx.ferry.vz) * 1.15 + 0.3);
   if (d > 0.5) {
     const step = Math.min(d, sp * dt);
     g.anchor.x += (dx / d) * step; g.anchor.y += (dy / d) * step; g.anchor.z += (dz / d) * step;
@@ -383,17 +450,30 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
   });
   const pd = len3(ctx.player.x - A.x, ctx.player.y - A.y, ctx.player.z - A.z);
   const pdSelf = len3(ctx.player.x - e.x, ctx.player.y - e.y, ctx.player.z - e.z);
+  // the leash: too far from the school (it fled, or the trainer drew this one off) → straight home
+  const dA = Math.hypot(e.x - A.x, e.z - A.z);
+  const strayed = dA > g.radius + GAME.GUARDIAN_LEASH;
+  // Alomomola guards its Wishiwashi AND nurses the reef (lore): between patrols it tends the
+  // most-wounded Pokémon near its school. A threat always outranks the bedside.
+  const support = s.secondary.includes('support');
+  // the school is riding the Lapras ferry (anchor in station under the hull): the guardian
+  // travels with it below the water — no pass-throughs, and never slower than the hull
+  const escorting = !!ctx.ferry && Math.hypot(ctx.ferry.x - A.x, ctx.ferry.z - A.z) < 12;
+  const hullSpeed = escorting ? Math.hypot(ctx.ferry!.vx, ctx.ferry!.vz) * 1.3 : 0;
 
   if (e.lured) e.state = 'lured';
+  else if (strayed) { if (e.state !== 'orbit') { e.state = 'orbit'; e.stateT = 0; } }
   else if (threat >= 0) {
     if (e.state !== 'intercept') { e.state = 'intercept'; e.stateT = 0; }
     if (g.alarm <= 0.05) ctx.events.push({ type: 'alarm', groupId: g.id, threatId: threat });
     g.alarm = 1; g.threatId = threat;
-  } else if (pd < 13 && ctx.player.speed > 0.5 || pdSelf < 7) {
+  } else if (e.state === 'support') {
+    // tending a patient: nothing short of a predator (or the lure) pulls the nurse away
+  } else if (!escorting && (pd < 13 && ctx.player.speed > 0.5 || pdSelf < 7)) {
     if (e.state !== 'watch') { e.state = 'watch'; e.stateT = 0; }
   } else if (e.state === 'passthrough') {
     if (len3(e.target.x - e.x, e.target.y - e.y, e.target.z - e.z) < 1.8 || e.stateT > 12) { e.state = 'orbit'; e.stateT = 0; g.guardianNextPass = ctx.time + 18 + ctx.rng() * 24; }
-  } else if (ctx.time >= g.guardianNextPass && !bottomType) {
+  } else if (ctx.time >= g.guardianNextPass && !bottomType && !escorting) {
     e.state = 'passthrough'; e.stateT = 0;
     const dx = A.x - e.x, dz = A.z - e.z; const d = Math.hypot(dx, dz) || 1;
     e.target.x = A.x + (dx / d) * (g.radius + 3); e.target.y = A.y; e.target.z = A.z + (dz / d) * (g.radius + 3);
@@ -440,7 +520,20 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
       seek(e, ctx.player.x + Math.cos(e.lureOrbit) * r, ctx.player.y + 0.8, ctx.player.z + Math.sin(e.lureOrbit) * r, 1.4, 2);
       break;
     }
+    case 'support': {
+      const sp = nurseTend(e, ctx, 'orbit');
+      if (sp !== null) speed = sp;
+      break;
+    }
     default: {
+      if (strayed) {
+        // home at burst speed, aiming at the anchor's column above the floor so a ridge between them
+        // never turns the swim into a stalled vertical push
+        const ty = Math.max(A.y, floorY(A.x, A.z) + s.size * 0.6 + 1.0);
+        seek(e, A.x, ty, A.z, 3, 4);
+        speed = s.burst * 0.9;
+        break;
+      }
       // orbit
       const orbitSpeed = (bottomType ? 0.12 : 0.28) / Math.max(1, g.radius * 0.4);
       e.lureOrbit += dt * orbitSpeed * (0.8 + 0.4 * e.speedMul);
@@ -451,12 +544,19 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
       speed = s.speed * (bottomType ? 0.6 : 0.85) * e.speedMul;
     }
   }
+  // A calm school is the nurse's cue to look for patients — while orbiting OR while watching the
+  // trainer (whose wounded companions are patients too). Leashed to the anchor, so the guardian
+  // is never lured out of its post; a predator sighting always comes first (handled above).
+  if (support && (e.state === 'orbit' || e.state === 'watch') && g.alarm <= 0.05 && e.lod < 2) {
+    e.t1 -= dt;
+    if (e.t1 <= 0) nurseScan(e, ctx, { x: A.x, y: A.y, z: A.z, r: g.radius + 26 });
+  }
 
   depthPreference(e, 0.4);
   floorAndSurface(e, s.size * 0.6 + 0.8);
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, 1.8);
-  commit(e, speed * activityFactor(e, ctx));
+  commit(e, Math.max(speed * activityFactor(e, ctx), hullSpeed));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -482,18 +582,38 @@ function preyWeight(p: Entity, prey: Entity): number {
   return w;
 }
 
+/** What a hunt needs to know about its quarry — a reef entity, or the trainer. */
+type Prey = Pick<Entity, 'id' | 'x' | 'y' | 'z' | 'vx' | 'vy' | 'vz' | 'hp' | 'maxHp' | 'slowT' | 'defStage' | 'state'>;
+/** The trainer as prey (a scratch mirror of the player snapshot — predators hunt them like a fish). */
+const PLAYER_PREY: Prey = { id: PLAYER_ID, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, hp: 1, maxHp: 1, slowT: 0, defStage: 1, state: 'wander' };
+function playerPrey(ctx: SimContext): Prey {
+  const p = ctx.player;
+  PLAYER_PREY.x = p.x; PLAYER_PREY.y = p.y; PLAYER_PREY.z = p.z; PLAYER_PREY.vx = p.vx; PLAYER_PREY.vy = p.vy; PLAYER_PREY.vz = p.vz;
+  return PLAYER_PREY;
+}
+
 export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   const s = e.species;
+  const H = COMBAT.PREDATOR_HUNT;
+  const shiny = e.isShiny; // meaner and hungrier: no grace, no second thoughts, barely a rest between hunts
+  // escalation: from the trainer's grace onward the hunt for them gets nastier, more so on later levels
+  const esc = (ctx.playerGraceOver ? H.ESCALATE_FLOOR + (1 - H.ESCALATE_FLOOR) * Math.min(1, (ctx.time - H.PLAYER_GRACE) / H.ESCALATE_SECONDS) : 0) * ctx.nasty;
   accReset();
   updateWander(e, ctx.rng, 1.2, dt);
   e.huntCooldown = Math.max(0, e.huntCooldown - dt);
-  const target = e.targetId >= 0 ? ctx.byId.get(e.targetId) : undefined;
-  const targetOk = !!target && target.state !== 'removed' && target.state !== 'ko' && target.state !== 'caught' && target.state !== 'captureAttempt';
+  const huntingPlayer = e.targetId === PLAYER_ID;
+  const target: Prey | undefined = huntingPlayer ? playerPrey(ctx) : e.targetId >= 0 ? ctx.byId.get(e.targetId) : undefined;
+  // the trainer's TEAM is hunted as one: a companion gets the same relentless treatment as the trainer
+  const huntingTeam = huntingPlayer || (!!target && (target as Entity).role === 'partner');
+  const targetOk = huntingPlayer ? ctx.player.huntable === true : (!!target && target.state !== 'removed' && target.state !== 'ko' && target.state !== 'caught' && target.state !== 'captureAttempt');
   const tdist = targetOk ? len3(target!.x - e.x, target!.y - e.y, target!.z - e.z) : Infinity;
+  const targetRef = (): MoveTarget => (huntingPlayer ? { kind: 'player' } : { kind: 'entity', id: target!.id });
+  /** Would pack-mate `o` join this hunt? (the trainer is fair game for every predator) */
+  const joinW = (o: Entity) => (huntingPlayer ? 1 : preyWeight(o, target as Entity));
 
   const endHunt = (cool: number, retreat = true) => {
     ctx.events.push({ type: 'huntEnd', predatorId: e.id });
-    e.targetId = -1; e.huntCooldown = cool;
+    e.targetId = -1; e.huntCooldown = cool * (shiny ? H.SHINY_COOLDOWN_MULT : 1);
     e.state = retreat ? 'retreat' : 'patrol'; e.stateT = 0; e.t1 = 2.5 + ctx.rng() * 2;
   };
 
@@ -501,7 +621,8 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     case 'approach':
     case 'circle':
     case 'rush':
-      if (!targetOk || tdist > 48) { endHunt(3 + ctx.rng() * 3, false); }
+      // a predator on the trainer's trail never gives up for distance — it crosses the reef
+      if (!targetOk || (!huntingTeam && tdist > 48)) { endHunt(3 + ctx.rng() * 3, false); }
       break;
   }
 
@@ -541,28 +662,54 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
         });
         if (n > 0) seek(e, cx / n, cy / n, cz / n, 0.45, 8);
       }
-      // Hunt check
-      if (ctx.predatorGraceOver && e.huntCooldown <= 0) {
-        let best: Entity | null = null, bestW = 0;
+      // Hunt check — reef prey (after the reef's grace), and the trainer, who is hunted exactly like one
+      // (after their own, shorter grace — and ever more keenly from then on)
+      const trainerOpen = ctx.player.huntable === true && ctx.playerGraceOver;
+      if ((ctx.predatorGraceOver || shiny || trainerOpen) && e.huntCooldown <= 0) {
+        let best: Entity | null = null, bestW = 0, bestIsPlayer = false;
         const R = 34;
-        ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
+        if (ctx.predatorGraceOver || shiny) ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
           if (o === e) return;
-          const w = preyWeight(e, o) * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
+          let pw = preyWeight(e, o);
+          // a shiny eats anything that is not its own pack — other predators, giants, guardians, all of it
+          if (shiny && pw <= 0 && o.species.id !== s.id && !o.isBoss && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed' && o.state !== 'captureAttempt') pw = H.SHINY_ANY_W;
+          const w = pw * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
           if (w > bestW) { bestW = w; best = o; }
         });
-        if (best && bestW > 0.05) {
-          if (ctx.rng() < 0.1) { e.huntCooldown = 3 + ctx.rng() * 3; } // predators occasionally ignore prey
+        if (trainerOpen) {
+          const pd = len3(ctx.player.x - e.x, ctx.player.y - e.y, ctx.player.z - e.z);
+          const pr = H.PLAYER_R * (1 + H.ESCALATE_R * esc);
+          if (pd < pr) {
+            const w = H.PLAYER_W * (1 + H.ESCALATE_W * esc) * (shiny ? H.SHINY_PLAYER_MULT : 1) * (1 - pd / pr) * (0.6 + ctx.rng() * 0.8);
+            if (w > bestW) { bestW = w; bestIsPlayer = true; }
+          }
+        }
+        if (trainerOpen) {
+          // …and so is every companion: same weight, same reach, same escalation
+          const pr = H.PLAYER_R * (1 + H.ESCALATE_R * esc);
+          for (const pt of ctx.partners) {
+            const pd = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+            if (pd >= pr) continue;
+            const w = H.PLAYER_W * (1 + H.ESCALATE_W * esc) * (shiny ? H.SHINY_PLAYER_MULT : 1) * (1 - pd / pr) * (0.6 + ctx.rng() * 0.8);
+            if (w > bestW) { bestW = w; best = pt; bestIsPlayer = false; }
+          }
+        }
+        if ((best || bestIsPlayer) && bestW > 0.05) {
+          // predators occasionally ignore prey — more often during the ferry truce; a shiny never does
+          const ignoreP = 1 - 0.9 * (ctx.ferry ? GAME.FERRY_TRUCE_MULT : 1);
+          if (!shiny && ctx.rng() < ignoreP) { e.huntCooldown = 3 + ctx.rng() * 3; }
           else {
-            e.targetId = (best as Entity).id; e.state = 'approach'; e.stateT = 0;
-            ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
+            const preyId = bestIsPlayer ? PLAYER_ID : (best as unknown as Entity).id; // (TS cannot see the closure's assignment)
+            e.targetId = preyId; e.state = 'approach'; e.stateT = 0;
+            ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: preyId });
             if (s.id === 'carvanha') {
               // the whole shoal piles on at once — one Carvanha's hunt is every Carvanha's hunt
-              const preyEnt = best as Entity;
+              const preyEnt = best as unknown as Entity | null;
               ctx.hash.query(e.x, e.y, e.z, 35, (o) => {
                 if (o === e || o.species.id !== 'carvanha' || (o.state !== 'patrol' && o.state !== 'retreat')) return;
-                if (preyWeight(o, preyEnt) <= 0) return;
-                o.targetId = preyEnt.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
-                ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyEnt.id });
+                if (!bestIsPlayer && preyWeight(o, preyEnt!) <= 0) return;
+                o.targetId = preyId; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
+                ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyId });
               });
             }
           }
@@ -598,22 +745,28 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       const wantUtility = target!.slowT <= 0 && target!.defStage >= 1 && ctx.rng() < 0.35;
       // outside a deliberate utility opener, only a damage move ends the hunt — otherwise a ranged
       // Screech would satisfy the rush from 8m and the predator would never close for the kill
-      const slot = ctx.pickMove(e, effDist, wantUtility, !wantUtility);
+      // (stat drops mean nothing to a trainer: damage moves only)
+      const slot = ctx.pickMove(e, effDist, wantUtility && !huntingPlayer, !wantUtility || huntingPlayer);
       if (slot !== -1) {
-        ctx.cast(e, slot, { kind: 'entity', id: target!.id });
+        ctx.cast(e, slot, targetRef());
         const cool = s.id === 'gyarados' ? 8 + ctx.rng() * 5 : 4 + ctx.rng() * 4;
         // Pack up: nearby idle predators join in on the wounded target
         if (target!.state !== 'ko' && target!.hp > 0) {
           ctx.hash.query(e.x, e.y, e.z, 45, (o) => {
             if (o === e || o.behavior !== 'predator' || o.state !== 'patrol' && o.state !== 'retreat') return;
-            if (preyWeight(o, target!) <= 0) return;
+            if (joinW(o) <= 0) return;
             o.targetId = target!.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
             ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: target!.id });
           });
         }
-        endHunt(cool, true);
+        // a predator that has tasted the trainer means to kill: the nastier the level and the longer
+        // the dive has run, the more often it stays on the hunt instead of retreating to rest
+        if (huntingTeam && targetOk && target!.hp > 0 && ctx.rng() < H.PERSIST * esc) { e.state = 'approach'; e.stateT = 0; }
+        else endHunt(cool, true);
       } else if (e.stateT > 6.5) {
-        endHunt(3 + ctx.rng() * 3, true);
+        // no bite yet (the reef-wide gap, a move on cooldown): on the trainer, circle and come again
+        if (huntingTeam) { e.state = 'circle'; e.stateT = 0; e.t1 = 1.5 + ctx.rng() * 1.5; e.lureOrbit = Math.atan2(e.z - target!.z, e.x - target!.x); }
+        else endHunt(3 + ctx.rng() * 3, true);
       }
       break;
     }
@@ -628,7 +781,8 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
   floorAndSurface(e, s.size * 0.6 + 1);
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, e.state === 'rush' ? 0.8 : 2);
-  commit(e, speed * activityFactor(e, ctx));
+  // a predator on the trainer's trail comes at full speed however far from the camera it starts
+  commit(e, speed * (huntingTeam && targetOk ? 1 : activityFactor(e, ctx)));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -647,13 +801,15 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
   if (e.lured) { e.state = 'lured'; }
   else if (e.state === 'lured') { e.state = 'leave'; e.stateT = 0; pickPointInZone(e, ctx, 30, 70, e.target); }
 
-  // Lapras ferry cycle: every few minutes it rises and idles at the waterline, and the reef's
-  // little ones paddle over to ride in its wake (lore: it loves ferrying Pokémon across the sea)
-  if (s.id === 'lapras') {
+  // Lapras ferry cycle: every minute or two it rises and idles at the waterline, and the reef's
+  // little ones paddle over to ride in its wake (lore: it loves ferrying Pokémon across the sea).
+  // The call comes from ANY free-roaming state — only the lure outranks it — and the climb is a
+  // phase of its own, so the full surface window is spent in view.
+  if (s.id === 'lapras' && e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage' && e.state !== 'ferryDisembark') {
     e.t2 -= dt;
-    if (e.t2 <= 0 && e.state === 'wander') {
-      e.state = 'ferry'; e.stateT = 0;
-      e.target.x = e.x; e.target.z = e.z;
+    if (e.t2 <= 0 && !e.lured) {
+      pickFerrySite(e, ctx, ctx.time < 60);   // the dive's first ferry always comes to the trainer
+      e.state = 'ferryRise'; e.stateT = 0;
       ctx.events.push({ type: 'ferry', entityId: e.id });
     }
   }
@@ -682,12 +838,79 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
       speed = s.speed * 1.1;
       break;
     }
+    case 'ferryRise': {
+      // the climb: a swift near-vertical surge at burst×1.4 with a bubble stream boiling off the
+      // body (wakeT drives the bubbles only — no comet, no ram physics), all the way up and OUT
+      const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT;
+      seek(e, e.target.x, top, e.target.z, 2.0, 1.0);
+      speed = s.burst * GAME.FERRY_RISE_SPEED_MULT;
+      e.wakeT = 1.0;
+      ferryCall(e, ctx, dt);
+      const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
+      const riseMax = ctx.time < 100 ? GAME.FERRY_FIRST_RISE_TIMEOUT : GAME.FERRY_RISE_TIMEOUT; // the first crossing may be long
+      if ((e.y > top - 0.9 && dh < 4) || e.stateT > riseMax) {
+        e.state = 'ferry'; e.stateT = 0;
+        e.vy = Math.min(e.vy, 0.3); // kill the surge so it settles onto the water instead of leaping past it
+        ctx.events.push({ type: 'ferrySurface', entityId: e.id }); // breaks the surface: a crown of spray
+      }
+      break;
+    }
     case 'ferry': {
-      // hold at the waterline with a slow drifting circle — shell just breaking the swell
+      // boarding: ride ON the surface — the whole body out of the water — in a slow drifting circle
       const drift = ctx.time * 0.12 + e.phase;
-      seek(e, e.target.x + Math.cos(drift) * 2.5, -s.size * 0.42, e.target.z + Math.sin(drift) * 2.5, 1.6, 0.5);
+      const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT + Math.sin(ctx.time * 0.9 + e.phase) * 0.12;
+      seek(e, e.target.x + Math.cos(drift) * 2.5, top, e.target.z + Math.sin(drift) * 2.5, 1.6, 0.5);
       speed = s.speed * 0.5;
-      if (e.stateT > 26) { e.state = 'wander'; e.stateT = 0; e.t2 = 160 + ctx.rng() * 200; }
+      ferryCall(e, ctx, dt); // sing out for passengers the whole time it waits
+      if (e.stateT > GAME.FERRY_BOARDING) {
+        // anyone aboard? then the ferry sets sail — a long crossing straight AWAY from the
+        // trainer, so it shows them its back as it carries the little ones off to safety.
+        // It waits (within reason) for riders still queueing at the waterline to hop on.
+        const riders = ferryRiders(e, ctx);
+        let queued = 0;
+        ctx.hash.query(e.x, e.y, e.z, s.size + 3, (o) => { if (o !== e && (o.rideK === 1 || o.rideK === 2)) queued++; });
+        if (riders > 0 && (queued === 0 || e.stateT > GAME.FERRY_BOARDING * 2.5)) {
+          pickVoyageTarget(e, ctx);
+          e.state = 'ferryVoyage'; e.stateT = 0;
+          e.wakeT = GAME.FERRY_SAIL_BUBBLES; // cast-off: the water boils under the hull
+          ctx.events.push({ type: 'ferrySail', entityId: e.id, riders });
+          break;
+        }
+      }
+      if (e.stateT > GAME.FERRY_DURATION) { e.state = 'wander'; e.stateT = 0; e.t2 = GAME.FERRY_PERIOD[0] + ctx.rng() * (GAME.FERRY_PERIOD[1] - GAME.FERRY_PERIOD[0]); }
+      break;
+    }
+    case 'ferryVoyage': {
+      // under way: a steady surface cruise to the destination, riders on the shell, the little
+      // ones alongside and their group (guardian included) towing along underneath
+      const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT + Math.sin(ctx.time * 0.9 + e.phase) * 0.12;
+      seek(e, e.target.x, top, e.target.z, 1.6, 2.0);
+      speed = s.speed * GAME.FERRY_VOYAGE_SPEED_MULT;
+      e.wakeT = Math.max(e.wakeT, 1.0); // a steady bubble stream the whole way (the cast-off boil decays into it; outlasts a far-LOD think gap)
+      const dh = Math.hypot(e.target.x - e.x, e.target.z - e.z);
+      if (dh < 3 || e.stateT > GAME.FERRY_VOYAGE_MAX) {
+        // journey's end: hold here while the riders hop off one by one
+        e.state = 'ferryDisembark'; e.stateT = 0;
+        e.target.x = e.x; e.target.z = e.z;
+      }
+      break;
+    }
+    case 'ferryDisembark': {
+      // hold ON the surface, barely drifting, until the last rider has splashed down (or the
+      // patience runs out) — then slip back under with a bubble trail
+      const top = GAME.SURFACE_Y + s.size * GAME.FERRY_SURFACE_LIFT + Math.sin(ctx.time * 0.9 + e.phase) * 0.12;
+      seek(e, e.target.x, top, e.target.z, 1.6, 0.5);
+      speed = s.speed * 0.3;
+      // nobody still seated or mid-air? then the last splash is behind us
+      let left = 0;
+      ctx.hash.query(e.x, e.y, e.z, s.size + 4, (o) => { if (o !== e && (o.rideK === 3 || o.rideK === 4 || (o.rideK === 2 && o.hopT > 0))) left++; });
+      if ((e.stateT > 0.5 && left === 0) || e.stateT > GAME.FERRY_DISEMBARK_MAX) {
+        e.state = 'wander'; e.stateT = 0;
+        e.t2 = GAME.FERRY_PERIOD[0] + ctx.rng() * (GAME.FERRY_PERIOD[1] - GAME.FERRY_PERIOD[0]);
+        pickPointInZone(e, ctx, 20, 40, e.target);
+        e.target.y = Math.min(e.target.y, -(s.depth[0] + 6));   // the dive: well down into its band
+        e.wakeT = 1.4;                                           // bubbles trail the descent
+      }
       break;
     }
     case 'leave':
@@ -707,13 +930,272 @@ export function curiousThink(e: Entity, ctx: SimContext, dt: number) {
     }
   }
 
-  if (e.state !== 'ferry') { // the ferry is ALLOWED at the surface — don't spring it back down
+  if (e.state !== 'ferry' && e.state !== 'ferryRise' && e.state !== 'ferryVoyage' && e.state !== 'ferryDisembark') { // the ferry is ALLOWED at the surface — don't spring it back down
     depthPreference(e, 0.5);
     floorAndSurface(e, s.size * 0.6 + 1);
   }
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, 2);
   commit(e, speed * activityFactor(e, ctx));
+}
+
+const NO_BOARD = new Set<EntityState>(['flee', 'scatter', 'retaliate', 'duel', 'support', 'ko', 'caught', 'captureAttempt', 'inflate', 'faint', 'lured']);
+
+/** The ferry call (lore): Lapras sings out at a varying pitch every few seconds while it rises and
+ *  waits, and a few of the little ones nearby answer back — talk marks over everyone involved. */
+function ferryCall(e: Entity, ctx: SimContext, dt: number) {
+  e.t1 -= dt;
+  if (e.t1 > 0) return;
+  e.t1 = GAME.FERRY_CALL_PERIOD[0] + ctx.rng() * (GAME.FERRY_CALL_PERIOD[1] - GAME.FERRY_CALL_PERIOD[0]);
+  e.talkT = 1.1;
+  ctx.events.push({ type: 'ferryCall', entityId: e.id, pitch: 0.75 + ctx.rng() * 0.6 });
+  // who answers: amphibious riders-to-be and small fry within earshot, a few at random
+  const cands: Entity[] = [];
+  ctx.hash.query(e.x, e.y, e.z, GAME.FERRY_CALL_RADIUS, (o) => {
+    if (o === e || o.isBoss || o.role === 'partner' || o.behavior === 'predator' || NO_BOARD.has(o.state)) return;
+    if (!(o.species.amphibious || o.species.size <= 1.05)) return;
+    cands.push(o);
+  });
+  for (let k = 0; k < GAME.FERRY_CALL_REPLIES && cands.length > 0; k++) {
+    const i = Math.floor(ctx.rng() * cands.length);
+    const o = cands[i]; cands[i] = cands[cands.length - 1]; cands.pop();
+    const delay = 0.35 + ctx.rng() * 0.9;
+    o.talkDelay = delay;
+    ctx.events.push({ type: 'ferryReply', entityId: o.id, delay });
+  }
+}
+
+/** The crossing: 100–150m straight away from the trainer, back to the camera. If the reef's edge
+ *  is in the way, swing the heading — but trade distance for staying away-ish: a course is
+ *  scored by its reach weighted by how much of "away" it keeps (never more than ~60° off). */
+function pickVoyageTarget(e: Entity, ctx: SimContext) {
+  const p = ctx.player;
+  let ax = e.x - p.x, az = e.z - p.z;
+  const al = Math.hypot(ax, az);
+  if (al < 1) { const a = ctx.rng() * Math.PI * 2; ax = Math.cos(a); az = Math.sin(a); } else { ax /= al; az /= al; }
+  const want = GAME.FERRY_VOYAGE_DIST[0] + ctx.rng() * (GAME.FERRY_VOYAGE_DIST[1] - GAME.FERRY_VOYAGE_DIST[0]);
+  const lim = GAME.WORLD_RADIUS - 10;   // a long crossing may run right out to the rim
+  let best = -1, bx = e.x, bz = e.z;
+  for (const off of [0, 0.35, -0.35, 0.7, -0.7, 0.95, -0.95]) {   // never more than ~55° off "away"
+    const c = Math.cos(off), s = Math.sin(off);
+    const dx = ax * c - az * s, dz = ax * s + az * c;
+    // how far along this heading before the edge?
+    let d = want;
+    const rr = Math.hypot(e.x + dx * d, e.z + dz * d);
+    if (rr > lim) {
+      // solve |e + dir·d| = lim for d (largest root)
+      const b = e.x * dx + e.z * dz, cc = e.x * e.x + e.z * e.z - lim * lim;
+      d = Math.max(0, -b + Math.sqrt(Math.max(0, b * b - cc)));
+    }
+    const score = d * (0.35 + 0.65 * c);   // reach, discounted the further the course turns from "away"
+    if (score > best) { best = score; bx = e.x + dx * d; bz = e.z + dz * d; if (off === 0 && d >= want) break; }
+  }
+  // pinned against the rim with the trainer inland: no away-ish water left — then any long
+  // crossing beats a short hop, so take the farthest heading on the whole circle
+  if (Math.hypot(bx - e.x, bz - e.z) < 60) {
+    let bestD = 0;
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+      const b = e.x * dx + e.z * dz, cc = e.x * e.x + e.z * e.z - lim * lim;
+      const d = Math.min(want, Math.max(0, -b + Math.sqrt(Math.max(0, b * b - cc))));
+      if (d > bestD) { bestD = d; bx = e.x + dx * d; bz = e.z + dz * d; }
+    }
+  }
+  e.target.x = bx; e.target.z = bz;
+}
+
+/** Riders currently perched on a ferry's shell. */
+export function ferryRiders(f: Entity, ctx: SimContext): number {
+  let n = 0;
+  ctx.hash.query(f.x, f.y, f.z, f.species.size + 2, (o) => {
+    if (o !== f && o.aboardT > 0 && o.y > f.y - 0.5) n++;
+  });
+  return n;
+}
+
+/** Start a leap: aim the run `dist` metres along (hx, hz), kept inside the reef. */
+export function startLeapRun(e: Entity, hx: number, hz: number, dist: number) {
+  let tx = e.x + hx * dist, tz = e.z + hz * dist;
+  const rr = Math.hypot(tx, tz), lim = GAME.WORLD_RADIUS - 12;
+  if (rr > lim) { tx *= lim / rr; tz *= lim / rr; }
+  e.target.x = tx; e.target.z = tz;
+  e.state = 'leapRun'; e.stateT = 0;
+  e.wakeT = 1.0;   // the bubbles start with the first stroke, not the next think
+}
+
+/** The leap, shared by Mantine and its Mantyke: the run-up (an accelerating dash along the surface,
+ *  bubbles streaming) and the launch (vertical speed solved for an apex `height` ABOVE the
+ *  waterline, from wherever the body leaves it). The integrate step owns the arc and the
+ *  splashdown. Returns true while the entity is mid-leap (the caller's normal behavior waits). */
+export function leapThink(e: Entity, ctx: SimContext, dt: number, height: [number, number], runMult: number): boolean {
+  void dt;
+  const s = e.species;
+  if (e.state === 'leapAir') {
+    e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;   // ballistic: hold course, no steering
+    return true;
+  }
+  if (e.state !== 'leapRun') return false;
+  accReset();
+  seek(e, e.target.x, GAME.SURFACE_Y + 1.0, e.target.z, 2.0, 1.0);
+  const speed = s.burst * (1 + (runMult - 1) * Math.min(1, e.stateT / 3));
+  e.wakeT = 1.0;
+  const atSurface = e.y > -Math.max(0.8, s.size * 0.45) - 0.3;   // pressed up against the clamp
+  const hold = 1.2 + (e.phase % 1) * 0.8;                          // each body's own beat before it commits
+  if ((atSurface && e.stateT > hold) || e.stateT > GAME.MANTINE_LEAP.RUN_MAX) {
+    const h = height[0] + ctx.rng() * (height[1] - height[0]);
+    e.vy = Math.sqrt(2 * GAME.MANTINE_LEAP.GRAVITY * (h + Math.max(0, GAME.SURFACE_Y - e.y)));
+    e.hopH = h; e.state = 'leapAir'; e.stateT = 0;
+    ctx.events.push({ type: 'leap', entityId: e.id, phase: 'launch', x: e.x, z: e.z, size: s.size, height: h, mantyke: s.id === 'mantine' ? e.podN : 0 });
+    e.dx = e.vx; e.dy = e.vy; e.dz = e.vz; e.maxSpeed = 60;
+    return true;
+  }
+  containWorld(e, 4);
+  commit(e, speed);
+  return true;
+}
+
+/** A Remoraid's slot under one of Mantine's wings, fixed per rider: left/right by id, staggered a
+ *  little along and outward, just below the body — in the giant's heading frame. */
+export function wingSlotOf(L: Entity, e: Entity, out: Vec3): Vec3 {
+  const sp = Math.hypot(L.vx, L.vz);
+  const hx = sp > 0.05 ? L.vx / sp : Math.cos(L.phase), hz = sp > 0.05 ? L.vz / sp : Math.sin(L.phase);
+  const side = e.id % 2 === 0 ? 1 : -1, slot = e.id % 3;
+  const lat = L.species.size * (0.3 + slot * 0.06), back = L.species.size * (0.05 + slot * 0.08);
+  out.x = L.x - hz * lat * side - hx * back;
+  out.z = L.z + hx * lat * side - hz * back;
+  out.y = L.y - L.species.size * 0.26;
+  return out;
+}
+
+/** A rider's seat on the shell, fixed per rider: a small ring on the back, perched just above it. */
+export function seatOf(f: Entity, e: Entity, out: Vec3): Vec3 {
+  const a = e.phase * 3.1 + (e.id % 5) * 1.3;
+  const r = f.species.size * (0.16 + 0.16 * ((e.id % 3) / 2));
+  out.x = f.x + Math.cos(a) * r; out.z = f.z + Math.sin(a) * r;
+  out.y = f.y + f.species.size * 0.12 + e.species.size * 0.45;
+  return out;
+}
+
+/** One hop at a time per ferry: the gate opens FERRY_HOP_GAP after the last take-off. */
+const hopGate = new Map<number, number>();
+function hopGateOpen(f: Entity, ctx: SimContext): boolean {
+  const g = hopGate.get(f.id) ?? 0;
+  if (ctx.time < g && g - ctx.time < 10) return false;   // (a stale gate from an older reef can't block)
+  hopGate.set(f.id, ctx.time + GAME.FERRY_HOP_GAP);
+  return true;
+}
+
+function startHop(e: Entity, dur: number) {
+  e.hx = e.x; e.hy = e.y; e.hz = e.z;
+  e.hopDur = dur; e.hopT = dur; e.hopH = GAME.FERRY_HOP_HEIGHT + e.species.size * 0.3;
+  e.aboardT = dur + 0.6;
+}
+
+const seatTmp: Vec3 = { x: 0, y: 0, z: 0 };
+
+/** Ferry riders (lore): amphibious little Pokémon near a surfaced Lapras swim to its side, wait
+ *  their turn at the waterline and JUMP onto its shell one by one; at journey's end they jump off
+ *  into the sea the same way. Returns false when this Pokémon isn't riding right now, so its
+ *  normal behavior runs instead. Runs before any role dispatch (Ecosystem.think). */
+export function ferryRiderThink(e: Entity, ctx: SimContext): boolean {
+  const f = ctx.ferry;
+  if (!f || e === f || e.lured || e.isBoss || e.role === 'partner' || NO_BOARD.has(e.state)) { if (e.hopT <= 0) e.rideK = 0; return false; }
+  const s = e.species;
+  if (!s.amphibious || s.size > GAME.FERRY_RIDER_MAX_SIZE) return false;
+  if (e.hopT > 0) { e.aboardT = Math.max(e.aboardT, 1.0); accReset(); commit(e, 0); return true; }   // mid-air: the hop is scripted
+  const hull = Math.hypot(f.vx, f.vz) * 1.35;
+
+  if (f.state === 'ferryDisembark') {
+    // journey's end: seated riders hop off into the sea one by one; everyone else is already free
+    if (e.rideK !== 3) { e.rideK = 0; return false; }
+    e.aboardT = 1.0;
+    if (hopGateOpen(f, ctx)) {
+      const a = Math.atan2(e.z - f.z, e.x - f.x);
+      const r = f.species.size * 0.9 + s.size + 0.6;
+      e.hx2 = f.x + Math.cos(a) * r; e.hz2 = f.z + Math.sin(a) * r; e.hy2 = GAME.SURFACE_Y - 0.6 - s.size * 0.4;
+      e.rideK = 4; startHop(e, GAME.FERRY_HOP_DUR);
+      return true;
+    }
+    accReset(); seatOf(f, e, seatTmp); seek(e, seatTmp.x, seatTmp.y, seatTmp.z, 2.6, 0.25); commit(e, s.speed * 0.6);
+    return true;
+  }
+
+  if (f.y < GAME.SURFACE_Y - 1.0) return false;                        // the shell is still under way
+  if (len3(f.x - e.x, f.y - e.y, f.z - e.z) > GAME.FERRY_RIDER_RADIUS) { e.rideK = 0; return false; }
+  e.aboardT = 1.0; // lifts the surface clamp while riding (refreshed every think)
+  accReset();
+
+  if (e.rideK === 3) {
+    seatOf(f, e, seatTmp);
+    const ds = len3(seatTmp.x - e.x, seatTmp.y - e.y, seatTmp.z - e.z);
+    if (ds > 3.5) e.rideK = 1;   // "seated" but nowhere near a seat (a ferry that left without you): queue again
+    else {
+      // seated: hold the seat — never slower than the hull, or a voyage leaves you behind
+      seek(e, seatTmp.x, seatTmp.y, seatTmp.z, 2.6, 0.25);
+      containWorld(e);
+      commit(e, Math.max(hull, ds > 1.5 ? s.burst : s.speed * 0.6));
+      return true;
+    }
+  }
+
+  // waiting: swim to a spot beside the hull at the waterline (on your own side of it), then when
+  // the gate opens, jump — a clean arc over the hull's edge onto your seat
+  e.rideK = 1;
+  const a = Math.atan2(e.z - f.z, e.x - f.x);
+  const r = f.species.size * 0.75 + s.size * 0.5;
+  const wx = f.x + Math.cos(a) * r, wz = f.z + Math.sin(a) * r, wy = GAME.SURFACE_Y - 0.5 - s.size * 0.4;
+  const dw = len3(wx - e.x, wy - e.y, wz - e.z);
+  if (dw < 1.3 && hopGateOpen(f, ctx)) {
+    e.rideK = 2; startHop(e, GAME.FERRY_HOP_DUR);
+    ctx.events.push({ type: 'ferryHop', entityId: e.id, x: e.x, y: e.y, z: e.z, size: s.size, off: false });
+    return true;
+  }
+  seek(e, wx, wy, wz, 2.4, 0.3);
+  containWorld(e);
+  commit(e, Math.max(hull, dw > 1.5 ? s.burst : s.speed * 0.6));
+  return true;
+}
+
+/** Where the ferry surfaces: off the trainer's shoulder when they're close (in full view, on the
+ *  Lapras' side so it never swims through them), else beside the nearest calm school so the
+ *  ride-along has company, else right where it is. */
+function pickFerrySite(e: Entity, ctx: SimContext, toTrainer = false) {
+  const p = ctx.player;
+  const pd = toTrainer ? 0 : len3(p.x - e.x, p.y - e.y, p.z - e.z);
+  // nearest calm school (XZ) to a point, within r — the fry that will ride along live there
+  const calmSchoolNear = (x: number, z: number, r: number): Group | null => {
+    let best: Group | null = null, bestD: number = r;
+    for (const g of ctx.groups) {
+      if (g.kind === 'pack' || g.kind === 'companions' || g.alarm > 0.05 || g.memberIds.length < 2) continue;
+      const d = Math.hypot(g.anchor.x - x, g.anchor.z - z);
+      if (d < bestD) { bestD = d; best = g; }
+    }
+    return best;
+  };
+  if (pd < GAME.FERRY_SITE_PLAYER_R) {
+    // in view of the trainer: beside the amphibious little ones near them if there are any (riders
+    // on the shell are the headline), else at the school beside them (ride-along with company),
+    // else a few metres off their shoulder on the Lapras' side. The dive's first ferry keeps all
+    // of that within ~20m so it surfaces right in front of them.
+    const nearR = toTrainer ? 22 : 45;
+    let ax = 0, az = 0, an = 0;
+    ctx.hash.query(p.x, p.y, p.z, nearR, (o) => {
+      if (!o.species.amphibious || o.species.size > GAME.FERRY_RIDER_MAX_SIZE || o.isBoss || o.role === 'partner' || NO_BOARD.has(o.state)) return;
+      ax += o.x; az += o.z; an++;
+    });
+    if (an > 0) {
+      // between the trainer and the riders, so both are in frame
+      e.target.x = (ax / an) * 0.6 + p.x * 0.4; e.target.z = (az / an) * 0.6 + p.z * 0.4; return;
+    }
+    const g = calmSchoolNear(p.x, p.z, toTrainer ? 18 : 40);
+    if (g) { e.target.x = g.anchor.x + 4; e.target.z = g.anchor.z; return; }
+    const dx = e.x - p.x, dz = e.z - p.z; const d = Math.hypot(dx, dz) || 1;
+    e.target.x = p.x + (dx / d) * GAME.FERRY_SITE_OFFSET; e.target.z = p.z + (dz / d) * GAME.FERRY_SITE_OFFSET;
+    return;
+  }
+  const g = calmSchoolNear(e.x, e.z, GAME.FERRY_SITE_SCHOOL_R);
+  if (g) { e.target.x = g.anchor.x + 4; e.target.z = g.anchor.z; }
+  else { e.target.x = e.x; e.target.z = e.z; }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -875,6 +1357,41 @@ export function giantThink(e: Entity, ctx: SimContext, dt: number) {
 
   if (s.id === 'kyogre' && pd < 55 && e.t1 === 0) { e.t1 = 1; ctx.events.push({ type: 'legendary', entityId: e.id }); }
 
+  // Mantine's leap (lore): every ~30s it builds speed in a run at the surface and launches clear
+  // of the water, Remoraid clinging under its wings, then splashes down and carries on. Some of
+  // its Mantyke leap with it — each on its own smaller run and arc, in a ragged sequence.
+  if (s.id === 'mantine') {
+    if (leapThink(e, ctx, dt, GAME.MANTINE_LEAP.HEIGHT, GAME.MANTINE_LEAP.RUN_SPEED_MULT)) return;
+    if (e.t2 <= 0 && e.state !== 'breach') {
+      const sp = Math.hypot(e.vx, e.vz);
+      const hx = sp > 0.05 ? e.vx / sp : Math.cos(e.phase), hz = sp > 0.05 ? e.vz / sp : Math.sin(e.phase);
+      startLeapRun(e, hx, hz, 40);
+      // the pod: usually 2-3 of its Mantyke, sometimes 3-4, sometimes none — each starts its own
+      // run on its own delay
+      const g = ctx.groups.find((gr) => gr.guardianId === e.id);
+      e.podN = 0;
+      if (g) {
+        const r = ctx.rng();
+        const want = r < 0.25 ? 0 : r < 0.7 ? 2 + Math.floor(ctx.rng() * 2) : 3 + Math.floor(ctx.rng() * 2);
+        const cands: Entity[] = [];
+        for (const id of g.memberIds) {
+          const m = ctx.byId.get(id);
+          if (!m || m.species.id !== 'mantyke' || m.state === 'ko' || m.state === 'caught' || m.state === 'captureAttempt' || m.state === 'scatter' || m.state === 'retaliate' || m.lured) continue;
+          if (len3(m.x - e.x, m.y - e.y, m.z - e.z) < 30) cands.push(m);
+        }
+        const ST = GAME.MANTYKE_LEAP.STAGGER;
+        const n = Math.min(want, cands.length), step = n > 1 ? (ST[1] - ST[0]) / n : 0;
+        e.podN = n;
+        for (let k = 0; k < n; k++) {
+          const i = Math.floor(ctx.rng() * cands.length);
+          const m = cands[i]; cands[i] = cands[cands.length - 1]; cands.pop();
+          // evenly spaced slots inside the stagger window, each jittered — one after another, never together
+          m.leapWith = e.id; m.leapDelay = ST[0] + step * k + ctx.rng() * Math.max(0.15, step * 0.6);
+        }
+      }
+    }
+  }
+
   if (e.state === 'breach') {
     seek(e, e.target.x, -Math.max(1.5, s.size * 0.45), e.target.z, 1.2, 3);
     if (e.stateT > 14) { e.state = 'wander'; e.stateT = 0; e.t2 = 180 + ctx.rng() * 160; }
@@ -893,13 +1410,52 @@ export function giantThink(e: Entity, ctx: SimContext, dt: number) {
     const mid = -(dMin + dMax) / 2, amp = (dMax - dMin) / 2.5;
     e.target.y = mid + Math.sin(ctx.time * 0.045 + e.phase * 4) * amp;
     seek(e, e.target.x, e.target.y, e.target.z, 1.0, 12);
-    if (e.t2 <= 0 && s.id !== 'kyogre' && s.id !== 'dondozo' && ctx.rng() < 0.5) { e.state = 'breach'; e.stateT = 0; ctx.events.push({ type: 'breach', entityId: e.id }); }
-    else if (e.t2 <= 0) e.t2 = 60;
+    if (e.t2 <= 0 && s.id !== 'kyogre' && s.id !== 'dondozo' && s.id !== 'mantine' && ctx.rng() < 0.5) { e.state = 'breach'; e.stateT = 0; ctx.events.push({ type: 'breach', entityId: e.id }); }
+    else if (e.t2 <= 0 && s.id !== 'mantine') e.t2 = 60;
   }
   if (pd < s.size * 0.6 + 2) fleeFrom(e, p.x, p.y, p.z, 0.4); // don't swim through the player
   floorAndSurface(e, s.size * 0.6 + 2);
   containWorld(e, 4);
   commit(e, speed);
+}
+
+// ---------------------------------------------------------------------------------------------
+// The nurse (Alomomola, lore): seeks the most-wounded Pokémon nearby — companions very much
+// included — hurries to the bedside and applies its healing membrane until the patient mends.
+// Shared by the solo-drifter path and by support guardians whose school is calm.
+// ---------------------------------------------------------------------------------------------
+
+/** Look for a patient within 30m (optionally leashed to a point). Enters 'support' and returns
+ *  true when one is found; otherwise backs off for 5s so the scan stays cheap. */
+export function nurseScan(e: Entity, ctx: SimContext, leash?: { x: number; y: number; z: number; r: number }): boolean {
+  let best: Entity | null = null, bestR = 0.9;
+  ctx.hash.query(e.x, e.y, e.z, 30, (o) => {
+    if (o === e || o.isBoss || o.behavior === 'predator') return;
+    if (o.state === 'ko' || o.state === 'caught' || o.state === 'captureAttempt') return;
+    if (leash && len3(o.x - leash.x, o.y - leash.y, o.z - leash.z) > leash.r) return;
+    const r = o.hp / o.maxHp;
+    if (r < bestR) { bestR = r; best = o; }
+  });
+  if (best) { e.targetId = (best as Entity).id; e.state = 'support'; e.stateT = 0; return true; }
+  e.t1 = 5;
+  return false;
+}
+
+/** Tend the patient while in 'support'. Returns the swim speed for this frame, or null once the
+ *  patient has mended / is gone — the nurse then rests in `restState` with a 25–50s cooldown. */
+export function nurseTend(e: Entity, ctx: SimContext, restState: EntityState): number | null {
+  const s = e.species;
+  const t = ctx.byId.get(e.targetId);
+  const done = !t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || t.hp >= t.maxHp * 0.98 || e.stateT > 20;
+  if (done) { e.state = restState; e.stateT = 0; e.t1 = 25 + ctx.rng() * 25; return null; }
+  const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
+  seek(e, t.x + 1.2, t.y + 0.4, t.z, 1.4, 1.2);
+  // the nurse's embrace: close enough, its membrane knits the patient's wounds (lore)
+  if (d < 3.5 && t.hotT <= 0.4) {
+    t.hotRate = Math.max(2, t.maxHp * 0.05); t.hotT = 1.6; t.hotAcc = 0;
+    t.veilT = Math.max(t.veilT, 1.2); t.veilDur = Math.max(t.veilDur, 1.2);
+  }
+  return d > 2.5 ? s.burst * 0.8 : s.speed * 1.2; // a nurse HURRIES all the way to the bedside
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -921,19 +1477,8 @@ export function soloDrifterThink(e: Entity, ctx: SimContext, dt: number) {
   else if (e.state === 'lured') e.state = 'drift';
 
   if (e.state === 'support') {
-    const t = ctx.byId.get(e.targetId);
-    const done = !t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || t.hp >= t.maxHp * 0.98 || e.stateT > 20;
-    if (done) { e.state = 'drift'; e.stateT = 0; e.t1 = 25 + ctx.rng() * 25; }
-    else {
-      const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
-      seek(e, t.x + 1.2, t.y + 0.4, t.z, 1.4, 1.2);
-      speed = d > 2.5 ? s.burst * 0.8 : s.speed * 1.2; // a nurse HURRIES all the way to the bedside
-      // the nurse's embrace: close enough, its membrane knits the patient's wounds (lore)
-      if (d < 3.5 && t.hotT <= 0.4) {
-        t.hotRate = Math.max(2, t.maxHp * 0.05); t.hotT = 1.6; t.hotAcc = 0;
-        t.veilT = Math.max(t.veilT, 1.2); t.veilDur = Math.max(t.veilDur, 1.2);
-      }
-    }
+    const sp = nurseTend(e, ctx, 'drift');
+    if (sp !== null) speed = sp;
   } else if (e.state === 'flee') {
     if (threatPos(ctx, e.threatId, tp)) fleeFrom(e, tp.x, tp.y, tp.z, 2);
     speed = s.burst;
@@ -949,18 +1494,7 @@ export function soloDrifterThink(e: Entity, ctx: SimContext, dt: number) {
     accAdd(e.wander.x, e.wander.y * 0.4, e.wander.z, 0.6);
     accAdd(ctx.current.x, 0, ctx.current.z, 0.9);
     acc.y += Math.sin(ctx.time * 0.9 + e.phase) * 0.25;
-    if (support && e.t1 <= 0 && e.lod < 2) {
-      // seek out the most-wounded patient nearby — companions very much included
-      let best: Entity | null = null, bestR = 0.9;
-      ctx.hash.query(e.x, e.y, e.z, 30, (o) => {
-        if (o === e || o.isBoss || o.behavior === 'predator') return;
-        if (o.state === 'ko' || o.state === 'caught' || o.state === 'captureAttempt') return;
-        const r = o.hp / o.maxHp;
-        if (r < bestR) { bestR = r; best = o; }
-      });
-      if (best) { e.targetId = (best as Entity).id; e.state = 'support'; e.stateT = 0; }
-      else e.t1 = 5;
-    }
+    if (support && e.t1 <= 0 && e.lod < 2) nurseScan(e, ctx);
   }
   depthPreference(e, 0.7);
   floorAndSurface(e, s.size * 0.6 + 0.8);

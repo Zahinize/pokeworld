@@ -8,6 +8,7 @@ import { SceneLighting, WaterDome, SeaFloor, Rocks, Corals, Kelp, Particles, Lig
 import { PokemonLayer, PokemonShadows } from './pokemon/PokemonLayer';
 import { PartnerTags } from './pokemon/PartnerTags';
 import { HealthBars } from './fx/HealthBars';
+import { TalkMarks } from './fx/TalkMarks';
 import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
@@ -97,6 +98,7 @@ export function Scene() {
         <PokemonLayer />
         <PartnerTags />
         <HealthBars />
+        <TalkMarks />
         <Balls />
         <CatchConfetti />
         <MoveProjectiles />

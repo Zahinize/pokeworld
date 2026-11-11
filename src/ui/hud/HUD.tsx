@@ -1,6 +1,7 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone, Heart } from '../components/icons';
+import { COMBAT } from '@/data/combatConfig';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
@@ -11,6 +12,7 @@ import { objectiveDone } from '@/engine/sim/mission';
 import { PokeballIcon, SpriteImg, TypeIcon, Panel } from '../components/common';
 import { TYPE_COLORS, type MoveType } from '@/data/moves';
 import { Audio } from '@/audio/AudioManager';
+import { FullscreenButton } from '../components/FullscreenButton';
 import { requestPointerLock } from '@/render/player/CameraRig';
 import { CollectionView } from '../screens/CollectionScreen';
 import { SettingsView } from '../screens/SettingsScreen';
@@ -82,6 +84,17 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
       </div>
       {compact && <div className="expand-hint">Tap for mission</div>}
     </Panel>
+  );
+}
+
+/** Lifelines: four hearts under the mission label. Every KO dims one; losing the last wipes the level. */
+function Lifelines() {
+  const lives = useStore((s) => s.hud.lives);
+  const max = COMBAT.PLAYER_LIVES;
+  return (
+    <div className={`lifelines glass ${lives <= 1 ? 'last' : ''}`} title={`Lifelines: ${lives} of ${max}. Lose them all and the level starts over.`} aria-label={`${lives} of ${max} lifelines left`}>
+      {Array.from({ length: max }, (_, i) => <span key={i} className={`heart ${i < lives ? 'on' : 'off'}`}><Ic icon={Heart} size={16} /></span>)}
+    </div>
   );
 }
 
@@ -365,6 +378,7 @@ function StatusChips() {
     <div className="hud-top-right">
       <div className="row" style={{ gap: 8 }}>
         <span className="chip mono"><span>{timeLabel === 'Night' ? <Ic icon={Moon} size={13} /> : timeLabel === 'Evening' || timeLabel === 'Dawn' ? <Ic icon={Sunset} size={13} /> : <Ic icon={Sun} size={13} />}</span><span>{!isTouch && <><b>{timeLabel}</b> · {hud.zoneLabel} · </>}{hud.depth < 1 ? 'Surface' : `${Math.round(hud.depth)} m`}</span></span>
+        <FullscreenButton variant="icon" className="interactive" />
         <button className="icon-btn interactive" title="Pause (P)" onClick={() => { session.pause(); overlay('pause'); document.exitPointerLock?.(); }}><Ic icon={Pause} size={16} /></button>
       </div>
       {hud.predatorAlert && hud.huntingSpecies && <span className="chip alert"><Ic icon={AlertTriangle} size={13} /> <SpriteImg id={hud.huntingSpecies} size={22} /> {isTouch ? SPECIES[hud.huntingSpecies].name : `${SPECIES[hud.huntingSpecies].name} is hunting nearby`}</span>}
@@ -447,6 +461,7 @@ function PauseOverlay({ onQuit }: { onQuit: () => void }) {
             <button className="btn ghost block" onClick={() => setOverlay('collection')}><Ic icon={BookOpen} size={15} /> Collection</button>
             <button className="btn ghost block" onClick={() => setOverlay('settings')}><Ic icon={Settings} size={15} /> Settings</button>
           </div>
+          <FullscreenButton variant="block" />
           <button className="btn ghost block" onClick={onQuit}>Quit to menu · progress is saved</button>
         </div>
 
@@ -475,6 +490,7 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
       <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
         <div className="hud-top-left">
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
+          <Lifelines />
         </div>
         <StatusChips />
         <TutorialBanner />

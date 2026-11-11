@@ -15,7 +15,7 @@ import { getMove } from '@/data/moves';
 // ------------------------------------------------------------------ per-move visual identity
 
 // Shader style indices (fragment branches)
-const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27, ripple: 28, barb: 29 } as const;
+const ST = { bubbles: 0, jet: 1, iceBeam: 2, aurora: 3, dart: 4, ink: 5, pulse: 6, crescent: 7, motes: 8, bolt: 9, mud: 10, wave: 11, psy: 12, flash: 13, geyser: 14, mudRay: 15, droplet: 16, orb: 17, star: 18, swirl: 19, sound: 20, jaws: 21, lamJet: 22, waterRing: 23, shield: 24, icicle: 25, shard: 26, iceBlock: 27, ripple: 28, barb: 29, wing: 30, gale: 31, vortex: 32, airBlade: 33 } as const;
 
 export interface MoveVis {
   s: number; w: number; c2: string; blend: 0 | 1; impact: string;
@@ -42,6 +42,9 @@ const STYLE_VIS: Record<string, MoveVis> = {
   lightning: { s: ST.bolt, w: 1.6, c2: '#fff7cc', blend: 0, impact: 'zap' },
   melee: { s: ST.flash, w: 1.0, c2: '#ffffff', blend: 0, impact: 'splash' },
   dash: { s: ST.flash, w: 1.0, c2: '#ffffff', blend: 0, impact: 'splash' },
+  // sky: the wing dive leaves a wake of speed lines; the gust flies as a whirl of white strands
+  swoop: { s: ST.gale, w: 1.0, c2: '#ffffff', blend: 0, impact: 'gale' },
+  wind: { s: ST.vortex, w: 1.4, c2: '#ffffff', blend: 0, impact: 'gale' },
 };
 
 /** Signature looks per move (override any fallback field). */
@@ -82,7 +85,10 @@ const MOVE_VIS: Record<string, Partial<MoveVis>> = {
   dragonPulse: { s: ST.aurora, w: 1.5, c2: '#99f6e4', impact: 'spark' },
   round: { s: ST.aurora, w: 1.2, c2: '#fecaca' },
   silverWind: { s: ST.aurora, w: 1.2, c2: '#ffffff' },
-  airSlash: { impact: 'spark' },
+  // Air Slash, per the anime reference: a volley of spinning blue-white discs of compressed
+  // air racing in a line, bursting into a sparkling cyan sphere on the foe
+  airSlash: { s: ST.airBlade, w: 1.1, c2: '#bae6fd', blend: 0, impact: 'slash', volley: [4, 1.7], spread: 0.3 },
+  wingAttack: { impact: 'gale' },
   aquaCutter: { impact: 'splash' },
   octazooka: { s: ST.mudRay, w: 1.4, c2: '#94a3b8', blend: 1, impact: 'ink' },
   smokescreen: { blend: 1, impact: 'ink' },
@@ -115,7 +121,7 @@ export function visFor(moveId: string, style: string): MoveVis {
 /** Styles that render as a continuous span from the caster's mouth to the projectile head. */
 const SPAN = new Set<number>([ST.bubbles, ST.jet, ST.iceBeam, ST.aurora, ST.mudRay, ST.lamJet]);
 /** Camera-facing square billboards. */
-const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws, ST.shard]);
+const BILLBOARD = new Set<number>([ST.ink, ST.pulse, ST.mud, ST.psy, ST.flash, ST.orb, ST.star, ST.swirl, ST.sound, ST.jaws, ST.shard, ST.vortex, ST.airBlade]);
 
 // ------------------------------------------------------------------ the projectile / wave shader
 
@@ -145,7 +151,7 @@ void main(){
     w = c.xyz + sideH * (position.x * aSize) + vec3(0.,1.,0.) * (position.y * aLen);
   } else if (s == 23) { // flat horizontal hoop (Aqua Ring): quad laid in the XZ plane
     w = c.xyz + vec3(position.x * aSize, 0.0, position.y * aSize);
-  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27 || s == 28) { // camera-facing billboard
+  } else if (s == 5 || s == 6 || s == 10 || s == 12 || s == 13 || s == 17 || s == 18 || s == 19 || s == 20 || s == 21 || s == 24 || s == 26 || s == 27 || s == 28 || s == 32 || s == 33) { // camera-facing billboard
     w = c.xyz + camRight * (position.x * aSize) + camUp * (position.y * aSize);
   } else {                  // velocity-oriented ribbon; head-on shots morph to a round bloom
     vec3 axis = normalize(aDir);
@@ -493,6 +499,51 @@ void main(){
     float curl = smoothstep(0.3, 0.1, abs(arm - 0.5)) * smoothstep(1.0, 0.35, r) * smoothstep(0.03, 0.26, r);
     a = curl * 1.15 * (1.0 - smoothstep(0.25, 1.0, vT));
     col = mix(vColor, vec3(1.0), 0.55);
+  } else if (s == 30) { // Wing Attack, per the reference: the wing itself blazes pure white — a feathered
+    // lobe of light from shoulder (along 0) to tip (along 1), brightest down the wing bone, notched into primaries
+    float span = along;
+    float chord = across;
+    float feathers = 0.78 + 0.22 * sin(span * 26.0 + vSeed * 9.0);
+    float tip = smoothstep(1.0, 0.5, span * (chord * 0.4 + 0.8));
+    float body = smoothstep(1.0, 0.0, chord) * tip * feathers;
+    float bone = smoothstep(0.35, 0.0, chord) * tip;
+    a = (body * 1.1 + bone * 1.2) * (1.0 - vT);
+    col = mix(vColor2, vec3(1.0), bone + body * 0.5);
+  } else if (s == 31) { // wind streaks: a sheaf of thin white speed lines rushing along the ribbon
+    float lanes = c.y * 2.0 * 3.5;
+    float lf = abs(fract(lanes) - 0.5) * 2.0;
+    float line = smoothstep(0.55, 0.1, lf);
+    float dash = 0.55 + 0.45 * sin(alongW * 2.4 - uTime * 26.0 + floor(lanes) * 2.3 + vSeed * 9.0);
+    float win = smoothstep(0.0, 0.18, along) * smoothstep(1.0, 0.7, along) * smoothstep(1.0, 0.25, across);
+    a = line * dash * win * 1.3 * (1.0 - vT);
+    col = mix(vColor, vec3(1.0), 0.6);
+  } else if (s == 32) { // Gust, per the Let's Go reference: ragged white wind strands whirling in a spiral
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang2 = atan(p.y, p.x) - uTime * 9.0 - vSeed * 6.2832;
+    float arms = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float ph = float(i) * 2.094;
+      float arm = fract((ang2 + ph) / 6.2832 + r * 1.35);
+      float aw = 0.22 + 0.1 * sin(r * 14.0 + uTime * 5.0 + float(i) * 3.0);
+      arms += smoothstep(aw, aw * 0.25, abs(arm - 0.5)) * (0.7 + 0.3 * sin(r * 9.0 - uTime * 11.0 + ph));
+    }
+    float mask = smoothstep(1.0, 0.55, r) * smoothstep(0.02, 0.2, r);
+    float core = pow(max(0.0, 1.0 - r * 2.2), 2.0) * 0.35;
+    a = (arms * mask * 1.25 + core) * (1.0 - smoothstep(0.75, 1.0, vT));
+    col = mix(vColor, vec3(1.0), 0.65);
+  } else if (s == 33) { // Air Slash, per the anime reference: a spinning disc of compressed air —
+    // white-hot hub, glowing blue rim, saw-toothed edge whirling as it flies
+    vec2 p = c * 2.0;
+    float r = length(p);
+    float ang2 = atan(p.y, p.x) + uTime * 22.0 + vSeed * 6.2832;
+    float teeth = 0.86 + 0.14 * sin(ang2 * 8.0);
+    float rim = smoothstep(0.1, 0.02, abs(r - 0.78 * teeth));
+    float disc = smoothstep(0.85 * teeth, 0.3, r);
+    float hub = pow(max(0.0, 1.0 - r * 2.6), 1.5);
+    float spokes = pow(abs(sin(ang2 * 3.0)), 6.0) * disc * 0.5;
+    a = rim * 1.3 + disc * 0.55 + hub * 1.6 + spokes;
+    col = mix(vColor, vec3(1.0), hub + rim * 0.35 + spokes * 0.5);
   }
   // Fired straight at the camera the tube has no length to show — resolve it into a round blast
   // instead of a flat slab of colour.
@@ -557,6 +608,8 @@ export function MoveProjectiles() {
       counts[blend]++;
     };
     if (eco) {
+      // sky birds cast through stand-in entities (SkyCombat): look them up like any caster
+      const casterOf = (id: number) => eco.byId.get(id) ?? session.skyCombat?.shimById.get(id);
       // ---- projectiles: span styles stretch mouth→head; head styles fly with ghost trails
       for (const pr of eco.moves.projectiles) {
         if (!pr.active) continue;
@@ -564,7 +617,7 @@ export function MoveProjectiles() {
         c1.set(pr.color); c2.set(vis.c2);
         const seed = ((pr.casterId * 13) % 97) / 97;
         if (SPAN.has(vis.s)) {
-          const caster = eco.byId.get(pr.casterId);
+          const caster = casterOf(pr.casterId);
           const ox = caster?.x ?? pr.x - pr.vx * 0.2, oy = caster?.y ?? pr.y, oz = caster?.z ?? pr.z;
           const dx = pr.x - ox, dy = pr.y - oy, dz = pr.z - oz;
           const len = Math.max(0.6, Math.hypot(dx, dy, dz));
@@ -598,7 +651,7 @@ export function MoveProjectiles() {
           }
           if (vis.nova && pr.t < 0.55) {
             // the cast flourish: a rosette of bubbles erupting around the caster into a ring
-            const caster = eco.byId.get(pr.casterId);
+            const caster = casterOf(pr.casterId);
             if (caster) {
               const r = 0.5 + pr.t * 4.2;
               const fade = 1 - pr.t / 0.55;
@@ -614,12 +667,29 @@ export function MoveProjectiles() {
           const dx = pr.vx / vl, dy = pr.vy / vl, dz = pr.vz / vl;
           const grow = Math.min(1, pr.t * 6);
           const baseLen = BILLBOARD.has(vis.s) ? vis.w * 2 : vis.w * 3.2;
-          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard || vis.s === ST.ripple || vis.s === ST.barb ? 1 : TRAIL;
+          const ghosts = vis.s === ST.ink || vis.s === ST.pulse || vis.s === ST.sound || vis.s === ST.shard || vis.s === ST.ripple || vis.s === ST.barb || vis.s === ST.vortex ? 1 : TRAIL;
           for (let k = 0; k < ghosts; k++) {
             const back = k * 0.05;
             put(vis.blend, pr.x - pr.vx * back, pr.y - pr.vy * back, pr.z - pr.vz * back, dx, dy, dz,
               vis.s, vis.w * grow * (1 - k * 0.17) * 2, baseLen * grow * (1 - k * 0.12),
               (k === 0 ? 1 : 0.4 - k * 0.09) * grow, seed + k * 0.07, pr.t);
+          }
+          if (vis.s === ST.vortex && pr.t < 0.4) {
+            // Gust, per the Pidgeotto reference: the wind pours off the beating wings — streaks
+            // rushing from either wing to the whirl for the first beat of its flight
+            const caster = casterOf(pr.casterId);
+            if (caster) {
+              const ddx = pr.x - caster.x, ddy = pr.y - caster.y, ddz = pr.z - caster.z;
+              const len = Math.max(0.8, Math.hypot(ddx, ddy, ddz));
+              const fade = 1 - pr.t / 0.4;
+              const sl = Math.hypot(ddx, ddz) || 1;
+              const sx = ddz / sl, sz = -ddx / sl;
+              for (let k = -1; k <= 1; k++) {
+                const off = k * (caster.species.size * 0.45 + 0.1);
+                put(0, caster.x + ddx / 2 + sx * off, caster.y + ddy / 2 + k * 0.12, caster.z + ddz / 2 + sz * off, ddx / len, ddy / len, ddz / len,
+                  ST.gale, 0.5 + caster.species.size * 0.2, len, fade, seed + (k + 1) * 0.2, 0);
+              }
+            }
           }
         }
       }
@@ -641,6 +711,13 @@ export function MoveProjectiles() {
         if (p >= 1) continue;
         c1.set(v.color); c2.set(vis.impact === 'poison' ? '#c084fc' : '#ffffff');
         put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.star, 0.9 + vis.w * 0.45, 1.2, 1, seed, p);
+        if (vis.impact === 'slash') {
+          // the blades burst into a swelling sphere of cyan air, glittering as it dissolves
+          c1.set('#67e8f9'); c2.set('#ecfeff');
+          const R = 1.0 + p * 2.6 + vis.w * 0.6;
+          put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.flash, R, R, (1 - p) * 0.9, seed + 0.3, p * 0.6);
+          put(0, v.x1, v.y1, v.z1, 0, 1, 0, ST.vortex, R * 0.8, R * 0.8, (1 - p) * 0.6, seed + 0.5, p);
+        }
         if (vis.impact === 'splash' || vis.impact === 'bubble') {
           for (let k = 0; k < 3; k++) {
             const a2 = seed * 6.28 + k * 2.1;
@@ -684,6 +761,9 @@ export function MoveProjectiles() {
             }
             if (p > 0.4) put(1, x, y + 0.4, z, 0, 1, 0, ST.ink, 1.4 + p * 2.2, 1, (1 - p) * 0.7 + 0.1, seed + 0.31, p);
           }
+        } else if (vis.s === ST.vortex) { // the gust lands: the whirl wraps the target, swelling as it unwinds
+          const R = vis.w * (2.2 + ease * 1.3);
+          put(vis.blend, v.x1, v.y1, v.z1, 0, 1, 0, ST.vortex, R, R, 1 - p * p, seed, p);
         } else { // psy rings / discharge flash sit on their target point
           const x = vis.s === ST.flash ? v.x0 : v.x1, y = vis.s === ST.flash ? v.y0 : v.y1, z = vis.s === ST.flash ? v.z0 : v.z1;
           put(vis.blend, x, y, z, 0, 1, 0, vis.s, vis.w, vis.w, 1, seed, p);
@@ -691,7 +771,9 @@ export function MoveProjectiles() {
       }
       // ---- body-anchored auras: Aqua Ring's water veil, Smokescreen's disseminating cloud
       const time = state.clock.elapsedTime;
-      for (const e of eco.alive) {
+      // (second pass: the sky's stand-in casters, so a diving bird's wings blaze too)
+      const shimList = session.skyCombat?.shimList ?? null;
+      for (let pass = 0; pass < (shimList ? 2 : 1); pass++) for (const e of pass === 0 ? eco.alive : shimList!) {
         if (e.veilT > 0) {
           // Aqua Ring, per the reference: three flat hoops of churning, sparkling water
           // stacked around the body, wrapped in a soft aqua glow
@@ -707,6 +789,32 @@ export function MoveProjectiles() {
           }
           // the protection: a translucent water dome sealed over the Pokémon
           put(0, e.x, e.y, e.z, 0, 1, 0, ST.shield, R * 1.3, R * 1.3, 0.9 * fade, (e.id % 11) * 0.09, 0);
+        }
+        if (e.wingT > 0) {
+          // Wing Attack, per the reference (Taillow, Charizard): the wings blaze pure white for the
+          // strike — two feathered lobes of light spread wide either side of the body, with speed
+          // lines streaming off the dive. Lobes lie along the camera's right axis so the sprite's
+          // billboard wings and the light line up from any angle.
+          const fade = Math.min(1, e.wingT / 0.12);
+          const size = e.species.size;
+          const me = state.camera.matrixWorld.elements;
+          const hl = Math.hypot(me[0], me[2]) || 1;
+          const rx = me[0] / hl, rz = me[2] / hl;
+          const span = size * 1.15 + 0.5, chord = size * 0.42 + 0.2;
+          c1.set('#ffffff'); c2.set('#dbeafe');
+          for (let side = -1; side <= 1; side += 2) {
+            put(0, e.x + rx * side * span * 0.5, e.y + size * 0.1, e.z + rz * side * span * 0.5, rx * side, 0, rz * side,
+              ST.wing, chord, span, fade, (e.id % 7) * 0.13 + (side + 1) * 0.2, 1 - fade);
+          }
+          const vl = Math.hypot(e.vx, e.vy, e.vz) || 1;
+          if (vl > 3) {
+            const ddx = e.vx / vl, ddy = e.vy / vl, ddz = e.vz / vl;
+            const len = size * 2.2 + 2.0;
+            put(0, e.x - ddx * len * 0.45, e.y - ddy * len * 0.45, e.z - ddz * len * 0.45, ddx, ddy, ddz,
+              ST.gale, size * 0.9 + 0.5, len, fade * Math.min(1, vl / 8), (e.id % 11) * 0.09, 0);
+            // and a hot bow of light at the leading wingtips: the strike reads at the point of contact
+            put(0, e.x + ddx * size * 0.6, e.y + ddy * size * 0.6, e.z + ddz * size * 0.6, 0, 1, 0, ST.flash, size * 0.7 + 0.4, 1, 0.6 * fade * Math.min(1, vl / 8), (e.id % 13) * 0.07, 0.3);
+          }
         }
         if (e.jetT > 0) {
           // Aqua Jet, per the reference: the Pokémon IS the jet — a churning water comet
@@ -756,7 +864,7 @@ export function MoveProjectiles() {
       }
       // ---- charge-up build-ups at the caster
       for (const ch of eco.moves.charges()) {
-        const e = eco.byId.get(ch.casterId);
+        const e = casterOf(ch.casterId);
         if (!e) continue;
         c1.set(ch.color); c2.set('#ffffff');
         if (ch.moveId === 'iceBeam' || ch.moveId === 'freezeDry') {
@@ -826,6 +934,9 @@ const IMPACTS: Record<string, [number, number, number, number, number, number, s
   ink: [10, 1.2, 0.2, 0.35, 0.42, 1.1],
   jaws: [8, 2.8, 0.6, -0.5, 0.16, 0.4, '#fee2e2'],
   poison: [10, 2.0, 0.5, 0.25, 0.19, 0.65, '#c084fc'],
+  // sky: wind scatters fast and light; the air blades shatter into cyan glitter
+  gale: [12, 4.2, 0.6, -0.3, 0.17, 0.5, '#f0f9ff'],
+  slash: [14, 3.2, 0.5, 0.1, 0.16, 0.65, '#a5f3fc'],
 };
 const MURKY = new Set(['mud', 'ink']);
 
@@ -935,9 +1046,35 @@ function MoteLayer({ murky, cap }: { murky: boolean; cap: number }) {
               0.05 + Math.random() * 0.08, 0.7 + Math.random() * 0.5, '#dff4ff', 1.5);
           }
         }
+        // ferry wake: a bubble stream boils off a Lapras surging up to the surface — the only
+        // effect on the climb, so it's dense enough to read as speed on its own
+        for (const e of eco.alive) {
+          if (e.wakeT <= 0) continue;
+          const sz = e.species.size;
+          // the stream thickens with wakeT: a steady 6/frame under way, up to 3× in the cast-off boil
+          const nb = Math.round(6 * Math.min(3, Math.max(1, e.wakeT / 0.6)));
+          for (let k = 0; k < nb; k++) {
+            spawn(e.x + (Math.random() - 0.5) * sz * 0.8, e.y - sz * 0.3 + (Math.random() - 0.5) * sz * 0.6, e.z + (Math.random() - 0.5) * sz * 0.8,
+              -e.vx * 0.15 + (Math.random() - 0.5) * 0.8, 0.8 + Math.random() * 1.2, -e.vz * 0.15 + (Math.random() - 0.5) * 0.8,
+              0.08 + Math.random() * 0.14, 0.6 + Math.random() * 0.6, '#dff4ff', 1.8);
+          }
+        }
         // catches / generic session fx keep their celebration burst
         for (const f of session.fx) {
-          if (f.t > 0.06 || seenFx.current.has(f) || f.type !== 'catch') continue;
+          if (f.t > 0.06 || seenFx.current.has(f)) continue;
+          if (f.type === 'splash') {
+            // breaking the surface: a crown of spray thrown up and out, falling back as droplets
+            seenFx.current.add(f);
+            const n = 18 + Math.round(f.size * 4);
+            for (let i = 0; i < n; i++) {
+              const a = Math.random() * Math.PI * 2, r = f.size * (0.4 + Math.random() * 0.5);
+              const sp = 1.5 + Math.random() * 2.5;
+              spawn(f.x + Math.cos(a) * r, f.y, f.z + Math.sin(a) * r, Math.cos(a) * sp * 0.6, 3 + Math.random() * 3, Math.sin(a) * sp * 0.6,
+                0.1 + Math.random() * 0.16, 0.7 + Math.random() * 0.5, '#e0f2fe', -9);
+            }
+            continue;
+          }
+          if (f.type !== 'catch') continue;
           seenFx.current.add(f);
           for (let i = 0; i < 14; i++) {
             const a = Math.random() * Math.PI * 2, b = (Math.random() - 0.5) * Math.PI;

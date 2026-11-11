@@ -20,6 +20,8 @@ export interface CurrentRun {
   objectives: RunObjectiveProgress[];
   caught: number;
   total: number;
+  /** Lifelines left in this run (COMBAT.PLAYER_LIVES at the start). */
+  lives: number;
 }
 
 export interface Settings {

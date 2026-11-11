@@ -3,6 +3,7 @@ import { Ic, Lock } from '../components/icons';
 import { useStore } from '@/state/store';
 import { OceanBackdrop, Panel, fmtTime } from '../components/common';
 import { Audio } from '@/audio/AudioManager';
+import { FullscreenButton } from '../components/FullscreenButton';
 
 export function LevelSelect({ onPlay }: { onPlay: (levelId: number) => void }) {
   const save = useStore((s) => s.save);
@@ -19,7 +20,10 @@ export function LevelSelect({ onPlay }: { onPlay: (levelId: number) => void }) {
                 <h1 className="title">Choose a dive</h1>
                 <p className="subtitle">Missions stay the same. The Pokémon you meet never do.</p>
               </div>
-              <button className="btn ghost" onClick={() => { Audio.uiClick(); setScreen('menu'); }}>← Menu</button>
+              <div className="row" style={{ gap: 8 }}>
+                <FullscreenButton />
+                <button className="btn ghost" onClick={() => { Audio.uiClick(); setScreen('menu'); }}>← Menu</button>
+              </div>
             </div>
             <div className="level-grid">
               {LEVELS.map((lv) => {

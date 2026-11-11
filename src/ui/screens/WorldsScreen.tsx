@@ -7,6 +7,7 @@ import { useStore } from '@/state/store';
 import { useAuth } from '@/state/auth';
 import { getTrainer } from '@/data/trainers';
 import { Audio } from '@/audio/AudioManager';
+import { FullscreenButton } from '../components/FullscreenButton';
 import { Ic, Trophy, LogIn, LogOut, Waves, Trees, Flame } from '../components/icons';
 
 const WORLDS = [
@@ -41,6 +42,7 @@ export function WorldsScreen() {
               </div>
             </div>
             <div className="row">
+              <FullscreenButton style={{ minHeight: 38 }} />
               <button className="btn ghost" style={{ minHeight: 38 }} onClick={() => { Audio.uiClick(); setScreen('leaderboard'); }}><Ic icon={Trophy} size={15} /> Leaderboard</button>
               {status === 'authed'
                 ? <button className="btn ghost" style={{ minHeight: 38 }} onClick={() => { Audio.uiClick(); void logout(); setScreen('login'); }}><Ic icon={LogOut} size={15} /> Log out</button>
