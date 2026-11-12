@@ -180,7 +180,7 @@ a { color: var(--aqua); }
 .brief-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: auto; }
 .brief .mission-list { overflow: auto; min-height: 0; flex: none; }
 .brief-flavor { margin-top: 12px; }
-.brief-foot .hr { margin: 16px 0; }
+.brief-foot .hr { margin: 12px 0; }
 /* two-pane (companion levels): mission briefing left, team picker right, launch bar across the bottom */
 .brief.cols { display: grid; grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; column-gap: 28px; height: calc(100vh - 32px - var(--safe-top) - var(--safe-bottom)); height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); }
 .brief.cols .brief-left { grid-row: 1; grid-column: 1; }
@@ -192,9 +192,15 @@ a { color: var(--aqua); }
 .brief-right .party-scroll { flex: 1; min-height: 0; overflow: auto; margin-top: 2px; padding: 2px 6px 6px 2px; }
 .brief .party-grid { max-height: none; overflow: visible; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
 /* the mission is the headline act: bold rows with an accent bar, not a quiet checklist */
-.brief .objective { padding: 12px 14px; background: rgba(53,208,255,.07); border-color: rgba(53,208,255,.22); border-left: 3px solid var(--aqua); }
-.brief .objective .label { font-family: var(--font-display); font-weight: 800; font-size: 15.5px; }
-.brief .objective .count { font-size: 18px; color: var(--aqua); }
+/* compact rows (user feedback): ten objectives on L1/L2 must all show without scrolling — the guardian
+   line sits inline after the label and the rows are tight */
+.brief .mission-list { gap: 5px; }
+.brief .objective { padding: 6px 12px; gap: 8px; border-radius: 10px; background: rgba(53,208,255,.07); border-color: rgba(53,208,255,.22); border-left: 3px solid var(--aqua); }
+.brief .objective > div:nth-child(2) { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.brief .objective .label { font-family: var(--font-display); font-weight: 800; font-size: 14.5px; }
+.brief .objective .guardian { margin-top: 0; font-size: 11px; }
+.brief .objective .count { font-size: 16px; color: var(--aqua); }
+.brief .objective .count img { width: 26px; height: 26px; }
 .brief .objective.boss { background: rgba(244,63,94,.08); border-color: rgba(244,63,94,.35); border-left-color: var(--red); }
 .brief .objective.done { background: rgba(74,222,128,.08); border-color: rgba(74,222,128,.25); border-left-color: var(--green); }
 /* the chosen team, in battle order, under the mission */
@@ -289,6 +295,22 @@ a { color: var(--aqua); }
 .mission-panel .head .tot small { color: var(--muted); font-size: 12px; font-weight: 700; }
 .mission-panel.compact .mission-list { display: none; }
 .mission-panel .expand-hint { font-size: 11px; color: var(--dim); margin-top: 8px; }
+/* compact in-reef list (user feedback): ten objectives with their species must show without scrolling —
+   species and guardian chips flow inline after the label; the list only scrolls on very short windows */
+.hud-top-left { width: min(360px, calc(100vw - 28px)); }
+.hud-top-left .mission-panel { display: flex; flex-direction: column; max-height: calc(100vh - 84px - var(--safe-top) - var(--safe-bottom)); max-height: calc(100dvh - 84px - var(--safe-top) - var(--safe-bottom)); }
+.hud-top-left .mission-panel .head { margin-bottom: 6px; }
+.hud-top-left .mission-panel .mission-list { gap: 4px; overflow: auto; min-height: 0; }
+.hud-top-left .objective { padding: 4px 8px; gap: 7px; grid-template-columns: 18px 1fr auto; border-radius: 9px; }
+.hud-top-left .objective .check { width: 16px; height: 16px; border-radius: 5px; border-width: 1.5px; font-size: 10px; }
+.hud-top-left .objective > div:nth-child(2) { display: flex; flex-wrap: wrap; align-items: center; gap: 1px 8px; }
+.hud-top-left .objective .label { font-size: 12.5px; gap: 6px; }
+.hud-top-left .objective .label img { width: 20px; height: 20px; }
+.hud-top-left .objective .label .species { font-size: 11.5px; gap: 3px; }
+.hud-top-left .objective .guardian { margin-top: 0; font-size: 11px; gap: 4px; }
+.hud-top-left .objective .guardian img { width: 16px; height: 16px; }
+.hud-top-left .objective .count { font-size: 13px; }
+.hud-top-left .objective .count small { margin-left: 4px; }
 .mission-mini { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; font-size: 14px; color: var(--text); }
 .mission-mini b { font-family: var(--font-display); font-weight: 900; }
 /* Lifelines: four hearts under the mission label — red while held, hollow once spent */
