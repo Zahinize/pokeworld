@@ -322,13 +322,41 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     else addSolo(s, 'solo', undefined, true);
     summary.ambient.push(n > 1 ? `${s.name} ×${n}` : s.name);
   }
-  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3]]; // Wailord is boss-only now
+  const giantPool: [string, number][] = [['wailmer', 5], ['mantine', 3], ['milotic', 3]]; // Wailord is boss-only now
   for (let i = 0; i < level.spawn.ambient.giants; i++) {
     const id = rng.weighted(giantPool, (g) => (used.has(g[0]) ? g[1] * 0.2 : g[1]))[0];
     const s = getSpecies(id);
     used.add(id);
     addSolo(s, 'solo', undefined, true);
     summary.ambient.push(s.name);
+  }
+  // ---- Ambient extras: 20 more wild Pokémon per level so the reef feels full (user request). Drawn from
+  // species the level is not already fielding (repeats only when a pool runs dry, e.g. the four defensive
+  // fish); never mission targets, never shiny, no packs. Entourages still ride along (Kabuto, Shellder…).
+  const ex = level.spawn.ambient.extras;
+  if (ex) {
+    const fresh = (pool: SpeciesConfig[]) => { const f = pool.filter((s) => !used.has(s.id)); return f.length ? f : pool; };
+    if (ex.schools > 0) {
+      const s = rng.weighted(fresh(SPAWNABLE.filter((x) => x.primary === 'schooling' && !hasGuardian(x))), (x) => RARITY_W[x.rarity]);
+      addGroup('ambientSchool', s, undefined, ex.schools, undefined, true, false);
+      summary.ambient.push(`${s.name} school ×${ex.schools} (extra)`);
+    }
+    if (ex.drifters > 0) {
+      const s = rng.weighted(fresh(SPAWNABLE.filter((x) => x.primary === 'passive' && !hasGuardian(x) && !x.guards)), (x) => RARITY_W[x.rarity]);
+      if (ex.drifters > 1) addGroup('drifters', s, undefined, ex.drifters, undefined, true, false);
+      else { used.add(s.id); addSolo(s, 'solo', undefined, true); }
+      summary.ambient.push(`${s.name} ×${ex.drifters} (extra)`);
+    }
+    for (const p of preds) used.add(p.id);
+    const extraSolos = (primary: BehaviorGroup, n: number) => {
+      // Lapras is the ferry: exactly one on ferry levels, none elsewhere — never an extra
+      const picks = pickDistinct(rng, SPAWNABLE.filter((x) => x.primary === primary && x.id !== 'lapras'), n, used, (x) => RARITY_W[x.rarity]);
+      for (const s of picks) { used.add(s.id); addSolo(s, 'solo', undefined, true); summary.ambient.push(`${s.name} (extra ${primary})`); }
+    };
+    extraSolos('curious', ex.curious);
+    extraSolos('predator', ex.predators);
+    extraSolos('bottom', ex.bottom);
+    extraSolos('defensive', ex.defensive);
   }
   // Legendary/boss species (Kyogre, Wailord, Dondozo, Tatsugiri) never spawn as ordinary Pokémon —
   // meeting them is reserved for boss fights. Scarcity keeps them special.

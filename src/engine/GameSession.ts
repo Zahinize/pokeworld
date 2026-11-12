@@ -223,6 +223,8 @@ export class GameSession {
     for (const sp of this.gen.spawns) if (sp.shiny && !this.sheets.has(sheetKey(sp.speciesId, 'shiny'))) loadSpriteSheet(sp.speciesId, 'shiny').then((sh) => this.sheets.set(sheetKey(sp.speciesId, 'shiny'), sh));
     // the shiny flocks draw from their shiny sheets
     for (const f of SKY.FLOCKS) if (f.shiny && !this.sheets.has(sheetKey(f.speciesId, 'shiny'))) loadSpriteSheet(f.speciesId, 'shiny').then((sh) => this.sheets.set(sheetKey(f.speciesId, 'shiny'), sh));
+    // Cramorant floats with its catch in its beak: the Gulping form sheet
+    if (!this.sheets.has(sheetKey('cramorant', 'gulping'))) loadSpriteSheet('cramorant', 'gulping').then((sh) => this.sheets.set(sheetKey('cramorant', 'gulping'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     this.lives = COMBAT.PLAYER_LIVES;
@@ -1508,6 +1510,10 @@ export class GameSession {
           }
           break;
         }
+        case 'devour': {
+          this.pushFx('hit', ev.x, ev.y, ev.z, 0.9, '#c084fc'); // a Corsola branch gnawed off — seen, never announced
+          break;
+        }
         case 'bossGulp': {
           const e = eco.byId.get(ev.entityId);
           if (e) { this.pushFx('splash', e.x, e.y, e.z, e.species.size * 0.4); this.pushNumber(`+${ev.healed}`, '#7ff0c9', e.x, e.y + e.species.size * 0.6, e.z, false); }
@@ -1649,6 +1655,12 @@ export class GameSession {
       .map((e) => ({ x: e.x, z: e.z }));
     // …and on the trainer's team: a dive aimed at the trainer may land on a submerged companion instead
     sky.teamSpots = () => eco.alive.filter((e) => e.role === 'partner' && e.state !== 'ko' && e.state !== 'removed' && e.y < -0.5).map((e) => ({ x: e.x, z: e.z }));
+    // Cramorant's fishing: small ambient fish near the surface (Arrokuda first); a snatched fish leaves the reef in its beak
+    const edibleFish = (e: Entity) => e.species.stage === 0 && e.ambient && !e.objectiveId && e.role !== 'partner' && !e.isBoss && e.species.size <= 1.0
+      && e.state !== 'ko' && e.state !== 'caught' && e.state !== 'captureAttempt' && e.state !== 'removed';
+    sky.fishSpots = (_prefer, maxDepth) => eco.alive.filter((e) => edibleFish(e) && e.y > -maxDepth).map((e) => ({ id: e.id, speciesId: e.species.id, x: e.x, y: e.y, z: e.z }));
+    sky.fishAt = (id) => { const e = eco.byId.get(id); return e && edibleFish(e) ? { x: e.x, y: e.y, z: e.z, speciesId: e.species.id } : null; };
+    sky.snatchFish = (id) => eco.snatchFish(id);
     eco.skyHooks = {
       body: (id) => {
         const b = sky.birds.find((x) => x.id === id);
@@ -1845,6 +1857,16 @@ export class GameSession {
           break;
         }
         case 'raidFlee': break; // the bird climbs out on its own; nothing to announce
+        case 'birdSplash': {
+          // Cramorant going under after a fish, or coming back up with it: a plop, a ring of foam, nothing announced
+          if (p.y > -8 && len3(ev.x - p.x, 0 - p.y, ev.z - p.z) < 70) Audio.miss();
+          this.pushFx('hit', ev.x, 0, ev.z, ev.up ? 1.3 : 1.0, '#cfeaff');
+          break;
+        }
+        case 'gulp': {
+          this.pushFx('hit', ev.x, ev.y, ev.z, 0.8, '#cfeaff'); // the bite, seen from below
+          break;
+        }
         case 'skyKo': {
           // a companion KO is a catch — same rule as the reef
           this.onSkyCaught(ev.speciesId, ev, true, ev.shiny);

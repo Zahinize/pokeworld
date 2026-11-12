@@ -38,6 +38,8 @@ export interface SkyBird {
   heading: number;
   /** Dive-hunt: splash target and phase (0 none, 1 plunging, 2 climbing out). */
   dtx: number; dtz: number; divePhase: 0 | 1 | 2;
+  /** Cramorant: seconds until its next fishing dive, the fish it is diving for, and how long it holds the catch in its beak (Gulping form). */
+  diveT: number; preyId: number; gulpT: number;
 }
 
 interface Flock {
@@ -69,7 +71,10 @@ export type SkyEvent =
   | { type: 'dive'; speciesId: string; birdId: number; x: number; y: number; z: number }
   | { type: 'legendaryRampage'; speciesId: string }
   | { type: 'legendaryBlast'; speciesId: string; birdId: number; x: number; y: number; z: number }
-  | { type: 'raidFlee'; speciesId: string; birdId: number; x: number; y: number; z: number };
+  | { type: 'raidFlee'; speciesId: string; birdId: number; x: number; y: number; z: number }
+  // Cramorant fishing: the splash going under (up=false) and coming back up (up=true), and the catch itself
+  | { type: 'birdSplash'; speciesId: string; birdId: number; x: number; z: number; up: boolean }
+  | { type: 'gulp'; speciesId: string; birdId: number; eaten: string; x: number; y: number; z: number };
 
 const LEGENDARY_POOL: Record<string, string[]> = { Day: ['articuno', 'lugia'], Evening: ['hooh'], Night: ['yveltal'], Dawn: [] };
 
@@ -86,6 +91,11 @@ export class SkyLife {
   diveSpots: ((maxDepth: number) => { x: number; z: number }[]) | null = null;
   /** Where the trainer's submerged companions are (companion levels): a dive aimed at the trainer may pick one. */
   teamSpots: (() => { x: number; z: number }[]) | null = null;
+  /** Cramorant's fishing grounds: small ambient fish no deeper than `maxDepth` (the bird prefers `prefer`, Arrokuda). */
+  fishSpots: ((prefer: string[], maxDepth: number) => { id: number; speciesId: string; x: number; y: number; z: number }[]) | null = null;
+  /** Where a fish is right now (null once it is gone), and the bite: true when the reef gave the fish up. */
+  fishAt: ((id: number) => { x: number; y: number; z: number; speciesId: string } | null) | null = null;
+  snatchFish: ((id: number) => boolean) | null = null;
 
   private flocks: Flock[] = [];
   private rng: RNG;
@@ -136,6 +146,16 @@ export class SkyLife {
       b.x = dx + this.rng.range(-6, 6); b.z = dz + this.rng.range(-6, 6); b.y = SKY.DUCKLETT.y;
       b.heading = this.rng.next() * Math.PI * 2;
     }
+    // cramorant: floats on the swell away from the Ducklett, fishing
+    const cn = this.rng.int(SKY.CRAMORANT.count[0], SKY.CRAMORANT.count[1]);
+    for (let i = 0; i < cn; i++) {
+      const idx = this.spawnBird('cramorant', -1, i / cn);
+      const b = this.birds[idx];
+      b.state = 'swimming';
+      b.x = this.rng.range(-50, 50); b.z = this.rng.range(-50, 50); b.y = SKY.CRAMORANT.y;
+      b.heading = this.rng.next() * Math.PI * 2;
+      b.diveT = this.rng.range(SKY.CRAMORANT.FIRST[0], SKY.CRAMORANT.FIRST[1]);
+    }
   }
 
   private spawnBird(speciesId: string, flockId: number, phase01: number, shiny = false): number {
@@ -150,7 +170,7 @@ export class SkyLife {
       x: 0, y: 20, z: 0, vx: 0, vy: 0, vz: 0,
       state: 'flying', stateT: 0, flockId, phase,
       r: rendered * 0.42 + 0.55, vis: rendered, legendary, shiny,
-      fade: 0, heading: 0, dtx: 0, dtz: 0, divePhase: 0,
+      fade: 0, heading: 0, dtx: 0, dtz: 0, divePhase: 0, diveT: 0, preyId: -1, gulpT: 0,
       hp: this.hpOf(speciesId) * (shiny ? SKY.SHINY.HP_MULT : 1), maxHp: this.hpOf(speciesId) * (shiny ? SKY.SHINY.HP_MULT : 1), failedBalls: 0,
     };
     this.birds.push(b);
@@ -164,7 +184,7 @@ export class SkyLife {
         const b = this.birds[i];
         b.flockId = flockId; b.phase = flockId >= 0 ? phase01 * SKY.FLOCK_PHASE_SPREAD : phase01 * Math.PI * 2; b.state = 'flying'; b.stateT = 0; b.fade = 0;
         b.vx = b.vy = b.vz = 0;
-        b.hp = b.maxHp; b.failedBalls = 0; b.divePhase = 0;
+        b.hp = b.maxHp; b.failedBalls = 0; b.divePhase = 0; b.diveT = 0; b.preyId = -1; b.gulpT = 0;
         return i;
       }
     }
@@ -345,6 +365,7 @@ export class SkyLife {
         b.x = this.rng.range(-40, 40); b.z = this.rng.range(-40, 40); b.y = SKY.DUCKLETT.y;
       }
     }
+    this.updateCramorant(dt, dayW);
     // ---- legendaries ----
     if (this.legendaryIdx >= 0) {
       const b = this.birds[this.legendaryIdx];
@@ -431,6 +452,101 @@ export class SkyLife {
     void timeOfDay;
   }
 
+
+  // ------------------------------------------------------------------ Cramorant
+  /** Cramorant floats on the swell like the Ducklett and, three times a minute, folds up and dives after
+   *  a fish: Arrokuda while any swim the reef (Pokédex), any small ambient fish otherwise. It plunges to
+   *  the fish, takes it in its beak, climbs back to the surface and floats there in its Gulping form for a
+   *  few seconds before swallowing. Trainer, companions, mission fish and bosses are never on the menu. */
+  private updateCramorant(dt: number, dayW: number) {
+    const C = SKY.CRAMORANT;
+    const present = dayW > 0.4;
+    for (const b of this.birds) {
+      if (b.speciesId !== 'cramorant') continue;
+      if (b.state === 'swimming') {
+        b.stateT += dt;
+        b.gulpT = Math.max(0, b.gulpT - dt);
+        if (!present) { b.fade = Math.max(0, b.fade - dt * 0.4); if (b.fade <= 0) b.state = 'gone'; continue; }
+        b.fade = Math.min(1, b.fade + dt * 0.7);
+        b.heading += this.rng.range(-1, 1) * dt * 0.7;
+        b.vx = Math.cos(b.heading) * C.speed; b.vz = Math.sin(b.heading) * C.speed; b.vy = 0;
+        b.x += b.vx * dt; b.z += b.vz * dt;
+        if (Math.hypot(b.x, b.z) > C.wanderR) b.heading = Math.atan2(-b.z, -b.x) + this.rng.range(-0.5, 0.5);
+        b.y = C.y + Math.sin(b.stateT * 2.1 + b.phase) * C.bobAmp;
+        // the dive
+        b.diveT -= dt;
+        if (b.diveT <= 0 && b.gulpT <= 0 && b.fade > 0.9) {
+          const prey = this.pickFish(b);
+          if (!prey) { b.diveT = 4; continue; } // nothing in reach: look again shortly, keep the cadence
+          b.preyId = prey.id; b.dtx = prey.x; b.dtz = prey.z;
+          b.diveT = this.cramorantGap(); // the clock to the next dive runs from this one's start, dive time included
+          b.state = 'diving'; b.divePhase = 1; b.stateT = 0;
+          b.vy = -C.PLUNGE_SPEED * 0.6;
+          this.events.push({ type: 'birdSplash', speciesId: b.speciesId, birdId: b.id, x: b.x, z: b.z, up: false });
+        }
+      } else if (b.state === 'diving') {
+        b.stateT += dt;
+        b.diveT -= dt;
+        b.fade = 1;
+        if (b.divePhase === 1) {
+          const p = this.fishAt ? this.fishAt(b.preyId) : null;
+          if (!p || p.y < -(C.MAX_DEPTH + 3) || b.stateT > C.GIVE_UP) { b.divePhase = 2; b.stateT = 0; }
+          else {
+            const dx = p.x - b.x, dy = p.y - b.y, dz = p.z - b.z;
+            const d = Math.hypot(dx, dy, dz) || 1;
+            if (d < C.SNATCH_R) {
+              // the bite — the reef gives the fish up, and the bird carries it to the surface and holds it there
+              if (this.snatchFish && this.snatchFish(b.preyId)) {
+                b.gulpT = C.HOLD + Math.max(0, -b.y) / C.RISE_SPEED;
+                this.events.push({ type: 'gulp', speciesId: b.speciesId, birdId: b.id, eaten: p.speciesId, x: b.x, y: b.y, z: b.z });
+              }
+              b.divePhase = 2; b.stateT = 0;
+            } else {
+              const k = Math.min(1, dt * 4);
+              b.vx += ((dx / d) * C.PLUNGE_SPEED - b.vx) * k; b.vy += ((dy / d) * C.PLUNGE_SPEED - b.vy) * k; b.vz += ((dz / d) * C.PLUNGE_SPEED - b.vz) * k;
+              b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+            }
+          }
+        } else {
+          // climb back to the swell, prize or no prize
+          const k = Math.min(1, dt * 3);
+          b.vx *= 1 - Math.min(0.9, dt * 1.5); b.vz *= 1 - Math.min(0.9, dt * 1.5);
+          b.vy += (C.RISE_SPEED - b.vy) * k;
+          b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+          if (b.y >= C.y) {
+            b.y = C.y; b.vy = 0;
+            b.state = 'swimming'; b.stateT = 0; b.divePhase = 0; b.preyId = -1;
+            b.heading = Math.atan2(b.vz, b.vx);
+            b.diveT = Math.max(b.diveT, 2); // at least a breath on the surface before the next plunge
+            this.events.push({ type: 'birdSplash', speciesId: b.speciesId, birdId: b.id, x: b.x, z: b.z, up: true });
+          }
+        }
+      } else if (b.state === 'gone' && present && this.rng.chance(dt * 0.02)) {
+        b.state = 'swimming'; b.fade = 0; b.stateT = 0; b.gulpT = 0; b.preyId = -1; b.divePhase = 0;
+        b.x = this.rng.range(-40, 40); b.z = this.rng.range(-40, 40); b.y = C.y;
+        b.diveT = this.rng.range(C.FIRST[0], C.FIRST[1]);
+      }
+    }
+  }
+
+  /** Seconds until a Cramorant's next dive: 60 / its dives-per-minute, jittered like the flocks'. */
+  private cramorantGap(): number {
+    return (60 / SKY.CRAMORANT.PER_MINUTE) * this.rng.range(1 - SKY.DIVE.JITTER, 1 + SKY.DIVE.JITTER);
+  }
+
+  /** The fish a Cramorant dives for: the nearest of its preferred prey within reach, else the nearest small fish. */
+  private pickFish(b: SkyBird): { id: number; speciesId: string; x: number; y: number; z: number } | null {
+    if (!this.fishSpots) return null;
+    const C = SKY.CRAMORANT;
+    let best: { id: number; speciesId: string; x: number; y: number; z: number } | null = null, bd = Infinity, bestPref = false;
+    for (const s of this.fishSpots(C.PREY, C.MAX_DEPTH)) {
+      const d = Math.hypot(s.x - b.x, s.z - b.z);
+      if (d > C.HUNT_R) continue;
+      const pref = C.PREY.includes(s.speciesId);
+      if ((pref && !bestPref) || (pref === bestPref && d < bd)) { best = s; bd = d; bestPref = pref; }
+    }
+    return best;
+  }
   /** One crossing: from the bird's current spot, through a catchable window near the player,
    *  out to the horizon. Ho-oh's FINAL exit is toward the sun — it flies home into the sunset. */
   private aimPass(b: SkyBird, px: number, pz: number, L: LightingState, final: boolean) {
@@ -506,7 +622,7 @@ export class SkyLife {
       // regular birds burst free and flee to the horizon; flocks refill on dawn cycles
       b.state = 'fleeing'; b.stateT = 0;
       b.vy = 6; b.fade = 1;
-      if (b.speciesId === 'ducklett') { b.state = 'gone'; b.fade = 0; }
+      if (b.speciesId === 'ducklett' || b.speciesId === 'cramorant') { b.state = 'gone'; b.fade = 0; }
     }
   }
 
@@ -552,7 +668,7 @@ export class SkyLife {
   /** The group a bird belongs to: its flock, every Ducklett for a paddler, itself for a loner. */
   groupOf(b: SkyBird): SkyBird[] {
     if (b.flockId >= 0 && this.flocks[b.flockId]) return this.flocks[b.flockId].members.map((i) => this.birds[i]);
-    if (b.speciesId === 'ducklett') return this.birds.filter((x) => x.speciesId === 'ducklett');
+    if (b.speciesId === 'ducklett' || b.speciesId === 'cramorant') return this.birds.filter((x) => x.speciesId === b.speciesId);
     return [b];
   }
 

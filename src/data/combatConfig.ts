@@ -142,6 +142,11 @@ export const BOSS_FIGHT_SPEED_MULT = 1.5;
  *  and the recovery stagger are untouched: the warning stays fair and the punish window stays open. */
 export const BOSS_ATTACK_RATE_MULT = 1.5;
 
+/** Milotic calms anger (Pokédex): a predator within this many metres of one will not start a hunt on reef
+ *  prey, and one already chasing a fish breaks off. The trainer's posse is unaffected — the hunt for
+ *  them is the game's pressure and never pauses. */
+export const MILOTIC_CALM_R = 16;
+
 /** The Level 3 commander duo (Pokédex lore): Tatsugiri commands, Dondozo obeys.
  *  ORDER: while Tatsugiri lives, every Dondozo charge is called by it — charges come at ORDER_CHARGE_MULT of
  *  the usual gap. Without its commander Dondozo is slow and dumb: charge gaps × DUMB_CHARGE_MULT, lunges aimed

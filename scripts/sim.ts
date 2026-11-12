@@ -305,7 +305,10 @@ for (const levelId of [1, 2]) {
   const gen = generateEcosystem(getLevel(1), 11);
   const eco = new Ecosystem(gen, hp);
   const p = { x: 200, y: -14, z: 200, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false }; // far away: calm reef
-  let feedTicks = 0, feedWindows = 0, wasFeeding = false;
+  // windows are counted PER GROUP: with ~120 wilds some group is nearly always grazing, so a global
+  // "nobody → somebody feeding" edge saturates at 1 (it did when the ambient extras landed)
+  let feedTicks = 0, feedWindows = 0;
+  const feedOpen = new Map<number, boolean>();
   let speedSumFeed = 0, nFeed = 0, speedSumSwim = 0, nSwim = 0;
   let bandViolations = 0;
   let passiveRise = -999; // highest a passive group's anchor climbs during its feed windows
@@ -324,8 +327,7 @@ for (const levelId of [1, 2]) {
     }
     const feeding = eco.alive.some((e) => e.state === 'feed');
     if (feeding) feedTicks++;
-    if (feeding && !wasFeeding) feedWindows++;
-    wasFeeding = feeding;
+    for (const gr of eco.groups) { const open = gr.feedUntil > eco.time; if (open && !feedOpen.get(gr.id)) feedWindows++; feedOpen.set(gr.id, open); }
     for (const e of eco.alive) {
       const sp2 = Math.hypot(e.vx, e.vy, e.vz);
       if (e.state === 'feed') {
@@ -338,7 +340,7 @@ for (const levelId of [1, 2]) {
       } else if (e.state === 'school' || e.state === 'drift') { speedSumSwim += sp2 / Math.max(0.1, e.species.speed); nSwim++; }
     }
   }
-  if (feedWindows >= 2) ok(`feed: ${feedWindows} grazing windows over 4 calm minutes (${feedTicks} sampled ticks)`);
+  if (feedWindows >= 8) ok(`feed: ${feedWindows} group grazing windows over 4 calm minutes (${feedTicks} sampled ticks)`);
   else fail(`feed: only ${feedWindows} windows in 4 minutes`);
   const avgFeed = speedSumFeed / Math.max(1, nFeed), avgSwim = speedSumSwim / Math.max(1, nSwim);
   // schools crawl while pecking; drifters deliberately stay lively (the happy surface swirl)
@@ -422,8 +424,9 @@ for (const levelId of [1, 2]) {
   eco.update(1 / 60, p, 0);
   harass(); step(20); harass(); step(20);
   if (guardianCasts > 0) ok(`guardian cast ${guardianCasts} moves defending its school`); else fail('guardian never cast while intercepting');
-  // Remove the guardian → group avenges
-  eco.capture(guardian); step(1);
+  // Remove the guardian → group avenges (a predator-typed guardian such as Poliwrath can fall to the harasser
+  // and be replaced by a reinforcement in the meantime — capture whoever guards the school now)
+  eco.capture(eco.byId.get(g.guardianId) ?? guardian); step(1);
   if (g.avenging) ok('group entered avenging state after losing its guardian'); else fail('group not avenging after guardian capture');
   predDamage = 0; revenges = 0;
   for (let round = 0; round < 10 && revenges === 0; round++) {

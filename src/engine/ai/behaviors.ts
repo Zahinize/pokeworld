@@ -10,7 +10,7 @@ import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
 import type { SpatialHash } from '../spatialHash';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT } from '@/data/combatConfig';
+import { COMBAT, MILOTIC_CALM_R } from '@/data/combatConfig';
 
 import type { MoveTarget } from '../sim/moveSystem';
 
@@ -37,6 +37,8 @@ export interface SimContext {
   /** A Lapras currently idling at the surface as the reef's ferry (small species bob alongside). */
   ferry: Entity | null;
   damage(target: Entity, fraction: number, by: 'predator' | 'ball', sourceId: number): void;
+  /** A bottom hunter eats a listed prey it has reached (Toxapex and Mareanie on Corsola): gone at once. */
+  devour(predator: Entity, prey: Entity): void;
   /** Cast a move (slot 0/1) at a target. Returns false when not ready/in range. */
   cast(e: Entity, slot: 0 | 1, target: MoveTarget): boolean;
   /** Best ready move slot for a target at `dist`, or -1. */
@@ -63,6 +65,15 @@ function threatPos(ctx: SimContext, id: number, out: Vec3): boolean {
 
 function isHunting(p: Entity) {
   return p.state === 'approach' || p.state === 'circle' || p.state === 'rush';
+}
+
+/** Milotic calms anger (Pokédex): true while a living Milotic is within MILOTIC_CALM_R of `e`. Checked before a
+ *  reef-prey hunt begins, before a pack-mate joins one, and before a bottom hunter ambushes — never for the
+ *  trainer's posse, which is the game's pressure. */
+function calmedBy(ctx: SimContext, e: Entity): boolean {
+  let calm = false;
+  ctx.hash.query(e.x, e.y, e.z, MILOTIC_CALM_R, (o) => { if (o.species.id === 'milotic' && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed') calm = true; });
+  return calm;
 }
 
 function isPredatorLike(p: Entity) {
@@ -566,7 +577,8 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
 const CIRCLERS = new Set(['sharpedo', 'gyarados', 'veluza']);
 
 function preyWeight(p: Entity, prey: Entity): number {
-  if (prey.behavior === 'predator' || prey.behavior === 'giant' || prey.behavior === 'bottom') return 0;
+  if (prey.behavior === 'predator' || prey.behavior === 'giant') return 0;
+  if (prey.behavior === 'bottom' && !p.species.prey?.includes(prey.species.id)) return 0; // the floor is safe unless a hunter names you
   if (prey.role === 'partner') {
     // blood in the water: a wounded companion draws the frenzy despite its scary trainer
     const wound = 1 - prey.hp / prey.maxHp;
@@ -617,12 +629,16 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
     e.state = retreat ? 'retreat' : 'patrol'; e.stateT = 0; e.t1 = 2.5 + ctx.rng() * 2;
   };
 
+  // Milotic calms anger (Pokédex): near one, no hunt on reef prey begins and a chase in progress breaks off.
+  // The trainer's posse is the game's pressure and is never calmed.
+  const calmed = !huntingTeam && (e.huntCooldown <= 0 || isHunting(e)) && calmedBy(ctx, e);
+
   switch (e.state) {
     case 'approach':
     case 'circle':
     case 'rush':
       // a predator on the trainer's trail never gives up for distance — it crosses the reef
-      if (!targetOk || (!huntingTeam && tdist > 48)) { endHunt(3 + ctx.rng() * 3, false); }
+      if (!targetOk || (!huntingTeam && tdist > 48) || (calmed && !huntingTeam && e.state !== 'rush')) { endHunt(3 + ctx.rng() * 3, false); }
       break;
   }
 
@@ -668,7 +684,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
       if ((ctx.predatorGraceOver || shiny || trainerOpen) && e.huntCooldown <= 0) {
         let best: Entity | null = null, bestW = 0, bestIsPlayer = false;
         const R = 34;
-        if (ctx.predatorGraceOver || shiny) ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
+        if ((ctx.predatorGraceOver || shiny) && !calmed) ctx.hash.query(e.x, e.y, e.z, R, (o, d2) => {
           if (o === e) return;
           let pw = preyWeight(e, o);
           // a shiny eats anything that is not its own pack — other predators, giants, guardians, all of it
@@ -708,6 +724,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
               ctx.hash.query(e.x, e.y, e.z, 35, (o) => {
                 if (o === e || o.species.id !== 'carvanha' || (o.state !== 'patrol' && o.state !== 'retreat')) return;
                 if (!bestIsPlayer && preyWeight(o, preyEnt!) <= 0) return;
+                if (!bestIsPlayer && calmedBy(ctx, o)) return;
                 o.targetId = preyId; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
                 ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: preyId });
               });
@@ -755,6 +772,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
           ctx.hash.query(e.x, e.y, e.z, 45, (o) => {
             if (o === e || o.behavior !== 'predator' || o.state !== 'patrol' && o.state !== 'retreat') return;
             if (joinW(o) <= 0) return;
+            if (calmedBy(ctx, o)) return; // a pack-mate beside a Milotic stays out of it
             o.targetId = target!.id; o.state = 'approach'; o.stateT = 0; o.huntCooldown = 0;
             ctx.events.push({ type: 'huntStart', predatorId: o.id, targetId: target!.id });
           });
@@ -1217,10 +1235,21 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
   switch (e.state) {
     case 'rush': {
       const t = ctx.byId.get(e.targetId);
-      if (!t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || e.stateT > 4) { e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 40 + ctx.rng() * 30; break; }
-      seek(e, t.x, t.y, t.z, 2.5);
+      // a named prey is EATEN, not shot: the hunter crawls all the way to it (Toxapex and Mareanie on a Corsola
+      // cluster) and gets longer to close; mission fish are only ever bitten
+      const eats = !!t && !!s.prey?.includes(t.species.id) && !t.objectiveId;
+      if (!t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || e.stateT > (eats ? 9 : 4)) { e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 40 + ctx.rng() * 30; break; }
+      seek(e, t.x, t.y, t.z, eats ? 1.0 : 2.5);
       speed = s.burst;
       const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
+      if (eats) {
+        if (d < s.size * 0.5 + t.species.size * 0.5 + 0.6) {
+          ctx.devour(e, t);
+          ctx.events.push({ type: 'huntEnd', predatorId: e.id });
+          e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 30 + ctx.rng() * 20;
+        }
+        break;
+      }
       const slot = ctx.pickMove(e, d, false);
       if (slot !== -1) {
         ctx.cast(e, slot, { kind: 'entity', id: t.id });
@@ -1256,14 +1285,23 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
       } else if (e.t1 <= 0) {
         const a = ctx.rng() * Math.PI * 2, r = 5 + ctx.rng() * 10;
         e.target.x = e.x + Math.cos(a) * r; e.target.z = e.z + Math.sin(a) * r;
+        // a bottom hunter with named prey crawls toward the nearest cluster of it instead of wandering at random
+        if (hunter && s.prey && ctx.rng() < 0.7) {
+          let best: Entity | null = null, bd = Infinity;
+          ctx.hash.query(e.x, e.y, e.z, 35, (o, d2) => {
+            if (!s.prey!.includes(o.species.id) || o.state === 'ko' || o.state === 'caught' || o.state === 'removed' || d2 < 9) return;
+            if (d2 < bd) { bd = d2; best = o; }
+          });
+          if (best) { const b = best as Entity; e.target.x = b.x + (ctx.rng() - 0.5) * 3; e.target.z = b.z + (ctx.rng() - 0.5) * 3; }
+        }
         const z = ZONES[e.zone];
         if (Math.hypot(e.target.x - z.cx, e.target.z - z.cz) > z.radius) { e.target.x = z.cx + (e.target.x - z.cx) * 0.5; e.target.z = z.cz + (e.target.z - z.cz) * 0.5; }
         e.state = 'relocate'; e.stateT = 0;
-      } else if (hunter && ctx.predatorGraceOver && e.huntCooldown <= 0 && e.lod < 2) {
+      } else if (hunter && ctx.predatorGraceOver && e.huntCooldown <= 0 && e.lod < 2 && !calmedBy(ctx, e)) {
         // ambush prey that wanders above
         let best: Entity | null = null, bestD = Infinity;
         ctx.hash.query(e.x, e.y, e.z, 10, (o, d2) => {
-          if (o === e || o.species.stage !== 0 || o.behavior === 'predator' || o.behavior === 'bottom') return;
+          if (o === e || o.species.stage !== 0 || o.behavior === 'predator' || o.role === 'partner' || (o.behavior === 'bottom' && !s.prey?.includes(o.species.id))) return;
           if (o.state === 'captureAttempt' || o.state === 'ko') return;
           if (!(s.prey?.includes(o.species.id)) && ctx.rng() > 0.3) return;
           if (d2 < bestD) { bestD = d2; best = o; }

@@ -10,13 +10,17 @@ export const LEVEL_4: LevelConfig = {
   timeOfDay: 0.45,
   dayCycleMinutes: 14,
   spawn: {
-    schools: 1,
-    passiveGroups: 1,
-    curious: 3,
-    predators: 8, // doubled: the reef's predators are a threat on every level now
-    bottom: 3,
-    defensive: 2,
-    ambient: { schools: 1, drifters: 1, giants: 1, legendaryChance: 0 },
+    schools: 3,
+    passiveGroups: 3,
+    curious: 4,
+    predators: 8, // the reef's predators are a threat on every level
+    bottom: 5,
+    defensive: 3,
+    ambient: {
+      schools: 1, drifters: 1, giants: 1, legendaryChance: 0,
+      // 20 more wild Pokémon from species the level is not already fielding (not mission targets)
+      extras: { schools: 3, drifters: 3, curious: 3, predators: 4, bottom: 4, defensive: 3 },
+    },
   },
   mission: {
     schoolGroups: [],
@@ -24,7 +28,8 @@ export const LEVEL_4: LevelConfig = {
     curious: 0,
     bottom: 0,
     defensive: 0,
-    stageCatch: { min: 5, max: 5, minStage: 2 },
+    // stage-2 wilds are the scarce ones: 3–9 per seed with the new slot counts (median 6), so this only edges up
+    stageCatch: { min: 6, max: 6, minStage: 2 },
   },
   companions: true,
   restockSeconds: 75,

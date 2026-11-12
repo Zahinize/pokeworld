@@ -66,6 +66,26 @@ export const SKY = {
 
   // ---- ducklett surface paddlers ----
   DUCKLETT: { count: [3, 5] as [number, number], y: 0.16, wanderR: 70, speed: 1.2, bobAmp: 0.08 },
+  // ---- cramorant: floats on the swell and dives for Arrokuda (SkyLife.updateCramorant) ----
+  CRAMORANT: {
+    count: [1, 2] as [number, number], y: 0.18, wanderR: 70, speed: 1.3, bobAmp: 0.1,
+    /** Dives per minute (canon hook: it fishes constantly) — jittered by DIVE.JITTER. */
+    PER_MINUTE: 3,
+    /** The first dive comes this soon after it settles on the water (s). */
+    FIRST: [6, 14] as [number, number],
+    /** Prey it dives for, in order of preference: Arrokuda while any swim the reef, then any small ambient fish. */
+    PREY: ['arrokuda'] as string[],
+    /** A fish deeper than this is out of reach; dives are picked within HUNT_R of the bird. */
+    MAX_DEPTH: 24, HUNT_R: 50,
+    /** Underwater plunge and climb speeds (m/s) — a diving bird, not a torpedo. */
+    PLUNGE_SPEED: 9, RISE_SPEED: 5,
+    /** A dive that has not closed on its fish by then gives up and surfaces (s). */
+    GIVE_UP: 11,
+    /** Seconds it floats with the catch in its beak (the Gulping form) before swallowing. */
+    HOLD: 4.5,
+    /** Snatch radius around the beak (m). */
+    SNATCH_R: 1.1,
+  },
 
   // ---- legendaries ----
   LEGENDARY_ROLL_PERIOD: 40,
@@ -203,4 +223,4 @@ export const skyCruiseSpeed = (speciesId: string, fallback: number): number => {
 export const skyPartnerScale = (size: number) => Math.min(size * SKY.BIRD_RENDER_SCALE, 3.2);
 
 /** Species that live above the waves (derived flag lives on SpeciesConfig.skyOnly). */
-export const SKY_SPECIES_IDS = ['wingull', 'pelipper', 'ducklett', 'swanna', 'articuno', 'lugia', 'hooh', 'yveltal'];
+export const SKY_SPECIES_IDS = ['wingull', 'pelipper', 'ducklett', 'cramorant', 'swanna', 'articuno', 'lugia', 'hooh', 'yveltal'];

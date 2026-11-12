@@ -1,5 +1,11 @@
 # Water & Ice candidates for Levels 1–4
 
+> **Shipped (Nov 2026, `feature/roster-expansion`):** 38 of these joined the roster — Poliwag/Poliwrath, Basculin,
+> Squirtle/Wartortle/Blastoise, Seel, Lombre/Ludicolo, Skrelp/Dragalge, Dewpider/Araquanid, Slowking, Psyduck, Vaporeon,
+> Piplup, Manaphy, Clawitzer, Feraligatr, Crawdaunt, Greninja, Drednaw, Dracovish, Shellder, Staryu, Omanyte/Omastar,
+> Kabuto, Barboach, Clamperl, Relicanth, Mareanie/Toxapex, Wimpod, Sobble, Milotic and Cramorant. See
+> docs/moves-combat-design.md §4 "Roster expansion" for their kits and behaviours.
+
 Every Water- or Ice-type Pokémon on PokeAPI (default forms, regional forms excluded) that is **not** in the current roster: 132 species. Sprites are the Showdown GIFs the game already vendors into `public/sprites/pokemon/` (normal) and `public/sprites/pokemon/shiny/`; both files exist on PokeAPI for every row except Iron Bundle.
 
 **Fit** is how naturally the species lives on an underwater reef: *Great* = drop-in, *Good* = works with a small tweak, *Stretch* = land or ice-field Pokémon that only makes sense for a frozen level or as a boss.
