@@ -22,7 +22,7 @@ export interface SpriteSheet {
   fallback: boolean;
 }
 
-export type SpriteVariant = 'front' | 'back' | 'shiny' | 'shinyback';
+export type SpriteVariant = 'front' | 'back' | 'shiny' | 'shinyback' | 'gulping';
 
 const cache = new Map<string, Promise<SpriteSheet>>();
 /**
@@ -53,6 +53,8 @@ function makeFallback(speciesId: string): SpriteSheet {
 
 const VARIANT_PATH: Record<SpriteVariant, string> = {
   front: '/sprites/pokemon/', back: '/sprites/pokemon/back/', shiny: '/sprites/pokemon/shiny/', shinyback: '/sprites/pokemon/back/shiny/',
+  // Cramorant's Gulping form: the bird with an Arrokuda in its beak (Showdown form sprite)
+  gulping: '/sprites/pokemon/gulping/',
 };
 
 interface Baked { canvas: HTMLCanvasElement; cols: number; rows: number; frames: number; frameTime: number; aspect: number; fill: number }

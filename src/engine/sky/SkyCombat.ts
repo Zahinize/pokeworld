@@ -110,7 +110,7 @@ export class SkyCombat {
       if (existing) { existing.mode = 'sortie'; existing.target = target; existing.until = Math.max(existing.until, until); n++; continue; }
       this.attackers.push({
         birdId: m.id, shim, target, until,
-        returnState: m.speciesId === 'ducklett' ? 'swimming' : 'flying',
+        returnState: m.speciesId === 'ducklett' || m.speciesId === 'cramorant' ? 'swimming' : 'flying',
         angle: m.phase * 7 + n * 1.3, mode: 'sortie', hx: m.x, hz: m.z, retargetAt: 0, nextCastAt: 0,
       });
       m.state = 'attacking'; m.stateT = 0; m.fade = 1; m.divePhase = 0;
@@ -133,7 +133,7 @@ export class SkyCombat {
 
   /** The splash of a dive-hunt: the bird stays under for `dur` seconds and raids the reef. */
   raid(b: SkyBird, dur: number): boolean {
-    if (b.legendary || b.speciesId === 'ducklett' || b.fade < 0.5 || this.attackers.some((a) => a.birdId === b.id)) return false;
+    if (b.legendary || b.speciesId === 'ducklett' || b.speciesId === 'cramorant' || b.fade < 0.5 || this.attackers.some((a) => a.birdId === b.id)) return false;
     const shim = this.shimFor(b);
     this.attackers.push({
       birdId: b.id, shim, target: null, until: this.now + dur, returnState: 'flying',

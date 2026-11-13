@@ -75,7 +75,7 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
           : <button className="collapse-btn" title="Hide mission panel (M)" aria-label="Hide mission panel" onClick={() => { Audio.uiClick(); setSettings({ missionCollapsed: true }); }}>▾</button>}
       </div>
       <div className="progress"><i style={{ width: `${pct}%` }} /></div>
-      <div className="mission-list" style={{ marginTop: 10 }}>
+      <div className="mission-list" style={{ marginTop: 6 }}>
         {mission.objectives.map((o) => {
           const idx = o.kind === 'school' ? si++ : o.kind === 'passive' ? pi++ : 0;
           const sib = o.kind === 'school' ? schools : o.kind === 'passive' ? passives : 1;

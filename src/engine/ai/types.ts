@@ -219,6 +219,7 @@ export type EcoEvent =
   | { type: 'bossShelter'; entityId: number; inside: boolean }
   | { type: 'bossGulp'; entityId: number; speciesId: string; eaten: string; healed: number }
   | { type: 'bossHungry'; entityId: number; speciesId: string }
+  | { type: 'devour'; predatorId: number; speciesId: string; eaten: string; x: number; y: number; z: number }
   | { type: 'bossSouls'; entityId: number; souls: number; fallen: number; hp: number }
   | { type: 'bossSoulSpent'; entityId: number; left: number }
   | { type: 'bossRespects'; entityId: number; fallen: string; stacks: number }

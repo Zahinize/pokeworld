@@ -225,7 +225,9 @@ export function SkyLifeLayer() {
     // ensure batches (the ridden legendary draws from the same batches as wild birds)
     const counts = new Map<string, number>();
     // a shiny draws from its shiny sheet once that has loaded (its ordinary sheet until then)
-    const keyOf = (b: { speciesId: string; shiny: boolean }) => (b.shiny && session.sheets.has(sheetKey(b.speciesId, 'shiny')) ? sheetKey(b.speciesId, 'shiny') : b.speciesId);
+    // …and a Cramorant with a fish in its beak draws its Gulping form while it holds the catch
+    const keyOf = (b: { speciesId: string; shiny: boolean; gulpT?: number }) => (b.gulpT && b.gulpT > 0 && session.sheets.has(sheetKey(b.speciesId, 'gulping')) ? sheetKey(b.speciesId, 'gulping')
+      : b.shiny && session.sheets.has(sheetKey(b.speciesId, 'shiny')) ? sheetKey(b.speciesId, 'shiny') : b.speciesId);
     for (const b of sky.birds) { if (b.state !== 'gone' && b.fade > 0.01) { const k = keyOf(b); counts.set(k, (counts.get(k) ?? 0) + 1); } }
     // the mount uses its BACK sheet (you're on its back); falls back to front while it loads
     const ride = session.ride;

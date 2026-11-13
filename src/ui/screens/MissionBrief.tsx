@@ -97,7 +97,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
             <div className="eyebrow">{level.title}</div>
             <h1 className="title brief-title" style={{ margin: '4px 0 2px' }}>{level.subtitle}</h1>
             <p className="subtitle">Mission · {total} Pokémon required</p>
-            <div className="hr" style={{ margin: '14px 0' }} />
+            <div className="hr" style={{ margin: '10px 0' }} />
             <div className="mission-list">
               {m.schoolGroups.map((g, i) => <BriefRow key={`s${i}`} icon={Fish} label={`Schooling Fish${m.schoolGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `school-${i}`)} />)}
               {m.passiveGroups.map((g, i) => <BriefRow key={`p${i}`} icon={Waves} label={`Passive Drifters${m.passiveGroups.length > 1 ? ` ${String.fromCharCode(65 + i)}` : ''}`} count={g.members} guardian={g.guardian} done={objectives?.find((o) => o.id === `passive-${i}`)} />)}

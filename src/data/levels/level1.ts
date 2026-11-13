@@ -9,24 +9,34 @@ export const LEVEL_1: LevelConfig = {
   timeOfDay: 0.38,
   dayCycleMinutes: 14,
   spawn: {
-    schools: 3,
-    passiveGroups: 1,
-    curious: 3,
-    predators: 6, // doubled: the reef's predators are a threat on every level now
-    bottom: 2,
+    schools: 5,
+    passiveGroups: 2,
+    curious: 5,
+    predators: 7, // the reef's predators are a threat on every level
+    bottom: 4,
     defensive: 1,
-    ambient: { schools: 1, drifters: 1, giants: 1, legendaryChance: 0.03 },
+    ambient: {
+      schools: 1, drifters: 1, giants: 1, legendaryChance: 0.03,
+      // 20 more wild Pokémon from species the level is not already fielding (not mission targets)
+      extras: { schools: 5, drifters: 3, curious: 4, predators: 2, bottom: 4, defensive: 2 },
+    },
   },
   mission: {
+    // every spawned group is a mission group (user ruling: mission requirements match the slot counts)
     schoolGroups: [
       { members: 3, guardian: true },
       { members: 3, guardian: true },
       { members: 3, guardian: true },
+      { members: 3, guardian: true },
+      { members: 3, guardian: true },
     ],
-    passiveGroups: [{ members: 3, guardian: true }],
-    curious: 2,
-    bottom: 1,
-    defensive: 0,
+    passiveGroups: [
+      { members: 3, guardian: true },
+      { members: 3, guardian: true },
+    ],
+    curious: 5,
+    bottom: 4,
+    defensive: 1,
   },
   playerStart: { zone: 'coral', depth: 14 },
   status: 'playable',

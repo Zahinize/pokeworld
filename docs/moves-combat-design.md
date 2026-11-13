@@ -123,7 +123,7 @@ is defending). Companions cast **only on player command** (§8) outside duels; i
 
 ---
 
-## 4. Full move table (all 40 species)
+## 4. Full move table (the original 40 species; content drop 2 and the roster expansion follow)
 
 Legend: **D** damage / **U** utility · **Ph** physical / **Sp** special · power · cooldown · range · style
 · effect. *Comp.* = companion replacement (companions always run two damage moves).
@@ -174,6 +174,70 @@ Legend: **D** damage / **U** utility · **Ph** physical / **Sp** special · powe
 Kit-rule audit: every row has ≥1 **D**; no row is U+U. 25 species carry a utility and therefore have a
 companion replacement; the other 15 kits are used as-is by companions.
 
+
+### Roster expansion (Nov 2026) — 37 reef residents + Cramorant
+
+**Rule: every new kit is drawn from moves already in the database** (user ruling), chosen from each species'
+canon learnset. No new move definitions were added. *Comp.* as above.
+
+| Group | Pokémon — Move 1 / Move 2 (Comp.) |
+|---|---|
+| Schooling | Poliwag Bubble/Bubble Beam · Basculin Crunch/Aqua Jet · Squirtle Water Gun/Withdraw |
+| Schooling guardians | Poliwrath Body Slam/Hydro Pump (predator, guards Poliwag) · Wartortle Water Pulse/Bite · Blastoise Hydro Pump/Withdraw (curious, guard Squirtle) |
+| Passive | Seel Ice Shard/Icy Wind (Aurora Beam) · Lombre Bubble Beam/Flash (Hydro Pump) · Skrelp Water Gun/Smokescreen (Dragon Pulse) · Dewpider Bubble/Aqua Ring |
+| Passive guardians | Ludicolo Surf/Ice Beam (guards Lotad & Lombre) · Dragalge Poison Jab/Dragon Pulse (guards Skrelp) · Araquanid Liquidation/Crunch (guards Dewpider) · Dewgong now guards Seel |
+| Curious | Slowking Psychic/Amnesia · Psyduck Water Gun/Screech (Water Pulse) · Vaporeon Hydro Pump/Aurora Beam · Piplup Bubble Beam/Charm (Brine) · Manaphy Water Pulse/Aqua Ring |
+| Predators | Clawitzer Water Pulse/Dragon Pulse · Feraligatr Crunch/Waterfall · Crawdaunt Crabhammer/Crunch · Greninja Water Pulse/Smokescreen (Hydro Pump) · Drednaw Liquidation/Body Slam · Dracovish Fishious Rend/Crunch |
+| Bottom | Shellder Ice Shard/Withdraw · Staryu Bubble Beam/Harden · Omanyte Mud Shot/Withdraw · Omastar Hydro Pump/Brine · Kabuto Aqua Jet/Harden · Barboach Water Gun/Amnesia · Clamperl Water Gun/Brine · Relicanth Hydro Pump/Harden · Mareanie Poison Sting/Bite · Toxapex Poison Jab/Liquidation |
+| Defensive | Wimpod Aqua Jet/Harden · Sobble Water Gun/Water Pulse |
+| Giant | Milotic Surf/Aqua Ring |
+| Sky | Cramorant Air Slash/Water Gun |
+
+**Families spawn together** (user ruling: keep every stage 0/1 relationship so the reef looks full):
+guarded groups — Poliwag+Poliwrath, Squirtle+Wartortle (Blastoise 20 %), Seel+Dewgong, Lotad+Ludicolo
+(Lombre ride along as Ludicolo's entourage), Skrelp+Dragalge, Dewpider+Araquanid; entourages — Cloyster
+with 2–3 Shellder, Omastar with 1–2 Omanyte, Huntail with 1–2 Clamperl, Whiscash with 2–3 Barboach (it no
+longer guards Lotad), Toxapex with 1–2 Mareanie, Feraligatr with 1–2 Totodile, Manaphy with 1–2 Phione;
+Kabuto, Staryu, Shellder and Barboach rest in clutches of 2–3 like Krabby. Relicanth lives only in Deep
+Water at 45–62 m. Milotic joins Wailmer and Mantine in the ambient giant pool. Basculin is an ambient
+school that bites back (aggression 0.5).
+
+**Slot counts per level** (`spawn` in `src/data/levels/level*.ts`): L1 5 schools · 2 drifter groups · 5 curious ·
+7 predators · 4 bottom · 1 defensive; L2 2 · 4 · 6 · 7 · 5 · 3; L3 3 · 4 · 5 · 7 · 4 · 4; L4 3 · 3 · 4 · 8 · 5 · 3. A level
+now carries ~90 wild spawns (was ~60). **Missions match the slots** (user ruling): on L1 and L2 every spawned
+school and drifter group is a mission group (3 members + guardian) and the curious/bottom/defensive targets equal
+the slot counts — 38 catches on each (were 19 and 21). The L3 stage-1+ catch rose from 5–7 to 8–10 (16–26 such
+wilds per seed now) and the L4 stage-2+ catch from 5 to 6 (stage-2 wilds are scarce: 3–9 per seed, median 6).
+
+**Ambient extras** (user request): on top of the slots every level fields 20 more wild Pokémon
+(`spawn.ambient.extras`), drawn from species the level is not already fielding (a repeat only when a pool runs
+dry — there are four defensive fish) and never mission targets, never shiny, no packs: one guardian-less school,
+one drifter group and curious / predator / bottom / defensive solos — L1 5·3·4·2·4·2, L2 4·4·4·2·3·3,
+L3 4·3·3·3·4·3, L4 3·3·3·4·4·3 (school · drifters · curious · predators · bottom · defensive). Lapras is never
+an extra (the ferry rule). Entourages ride along, so a level carries ~113–120 wild spawns (min ~100, max ~137);
+predators per level are now 9 / 9 / 10 / 12. The L3 stage-1+ supply rose to 25–32 per seed and the L4 stage-2+
+supply to 6–11 (median 8). Measured in-browser on L1: 131 wild + 42 birds, 0.25 ms of simulation per step.
+
+**New lore behaviours**
+- *Toxapex and Mareanie eat Corsola* (Pokédex). Bottom hunters with a named `prey` crawl toward the nearest
+  cluster of it when they relocate (70 %), ambush it from 10 m, and on a named prey they do not fire a move:
+  they close to the beak and **devour** it — the fish is gone at once (no body, no toast), the eater mends
+  20 % (`Ecosystem.devour`, event `devour`). Mission fish are only ever bitten. The same rule now lets
+  Bruxish, Crawdaunt and Drednaw hunt the bottom dwellers they name (`preyWeight`: the floor is safe unless a
+  hunter names you).
+- *Milotic calms anger* (Pokédex). Within `MILOTIC_CALM_R` 16 m of a Milotic no predator starts a hunt on
+  reef prey and a chase in progress breaks off (a rush in flight completes). The trainer's posse is never
+  calmed — the hunt for them is the game's pressure. Harness: 5 hunts started inside the radius with a
+  Wailmer parked on a school vs 0 with a Milotic.
+- *Cramorant fishes* (Pokédex: dives for Arrokuda, surfaces with one in its beak). `SKY.CRAMORANT`: 1–2
+  float on the swell like Ducklett (`On the Waves`), and three times a minute one plunges — through the
+  surface and down to 24 m at 9 m/s — after the nearest Arrokuda while any swim the reef, else the nearest
+  small ambient fish (`SkyLife.updateCramorant`, hooks `fishSpots`/`fishAt`/`snatchFish`). On contact the
+  reef gives the fish up (`Ecosystem.snatchFish`, the catch animation, no body) and the bird climbs back and
+  floats in its **Gulping form** (sprite variant `gulping`, vendored from Showdown form 10182) for 4.5 s before
+  swallowing. The dive clock runs through the dive, so three a minute means three a minute. Mission fish,
+  companions and bosses are never taken; nothing is announced (splash fx and a plop only). Harness: 9 dives
+  in 180 s, 5 fish taken (4 Arrokuda), deepest plunge 26 m.
 ### Sky Pokémon (redesign in progress)
 
 Sky kits fire in companion duels, legendary rampages and retaliation against the trainer's balls. The
@@ -242,7 +306,7 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   when the trainer surfaces, auto-engages sky birds like any surfaced companion, and strikes reef targets
   from above (a Wing Attack over a submerged target connects when the bird is overhead).
 
-Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble ·
+Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble · Cramorant Air Slash/Water Gun ·
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
 Fire/Wing Attack · Yveltal Oblivion Wing/Wing Attack. The Move Dojo (`#arena`) fields sky Pokémon under a
 "Sky" group: the stage rises to the waterline (dummy surfaced, trainer just under the swell, the bird

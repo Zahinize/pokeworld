@@ -83,6 +83,7 @@ export class Ecosystem {
       groups: this.groups, byId: this.byId, hash: this.hash, events: this.events,
       predatorGraceOver: false, playerGraceOver: false, nasty: COMBAT.PREDATOR_HUNT.LEVEL_NASTY[gen.levelId] ?? 1, partners: [], current: this.current, ferry: null,
       damage: (t, f, by, src) => this.damage(t, f, by, src),
+      devour: (p, f) => this.devour(p, f),
       cast: (e, slot, target) => {
         // predators share one cast gap at the trainer (COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP)
         const atTrainer = target.kind === 'player' && e.behavior === 'predator';
@@ -1116,6 +1117,30 @@ export class Ecosystem {
     const l = Math.hypot(fx, fz) || 1;
     out.x = boss.x + (fx / l) * boss.species.size * 0.35; out.y = boss.y - boss.species.size * 0.05; out.z = boss.z + (fz / l) * boss.species.size * 0.35;
     return out;
+  }
+
+  /** A bottom hunter eats a named prey it has reached (Toxapex, Mareanie, Omastar on their shellfish): the
+   *  fish is gone at once — no body, no KO toast — and the eater mends a little. Mission fish are never eaten. */
+  private devour(p: Entity, f: Entity) {
+    if (f.isBoss || f.role === 'partner' || f.objectiveId || f.state === 'ko' || f.state === 'caught' || f.state === 'removed' || f.state === 'captureAttempt') return;
+    if (f.duelWith !== -1) { const d = this.byId.get(f.duelWith); if (d?.role === 'partner') this.endDuel(d, 'gone'); }
+    f.hp = 0;
+    this.remove(f);
+    this.koTimes.push(this.time); this.fallen++; // the reef's loss all the same — pressure brings replacements faster
+    p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.2));
+    p.hpBarT = GAME.HEALTH_BAR_TTL;
+    this.events.push({ type: 'devour', predatorId: p.id, speciesId: p.species.id, eaten: f.species.id, x: f.x, y: f.y, z: f.z });
+  }
+
+  /** A sea bird's catch (Cramorant): a small ambient fish leaves the reef in the bird's beak — the catch
+   *  animation plays, no body is left. Mission fish, companions and bosses are never taken. */
+  snatchFish(id: number): boolean {
+    const f = this.byId.get(id);
+    if (!f || f.isBoss || f.role === 'partner' || f.objectiveId || f.state === 'ko' || f.state === 'caught' || f.state === 'removed' || f.state === 'captureAttempt') return false;
+    if (f.duelWith !== -1) { const d = this.byId.get(f.duelWith); if (d?.role === 'partner') this.endDuel(d, 'gone'); }
+    f.state = 'caught'; f.stateT = 0; f.animT = 0;
+    this.koTimes.push(this.time); this.fallen++;
+    return true;
   }
 
   /** What a gluttonous Dondozo can swallow: a reef wild smaller than itself that is not a companion, a boss, a

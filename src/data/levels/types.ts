@@ -20,6 +20,10 @@ export interface LevelSpawn {
     drifters: number;     // Luvdisc pairs, Gorebyss, Phione, Alomomola
     giants: number;       // Wailmer/Wailord/Mantine
     legendaryChance: number; // 0..1 chance a Kyogre event exists in this ecosystem
+    /** Extra wild Pokémon (individuals) beyond the slot counts, drawn from species the level is not already
+     *  fielding so the reef feels full — never mission targets. `schools` is one guardian-less school of that
+     *  many fish, `drifters` one drifter group; the rest are solos. */
+    extras?: { schools: number; drifters: number; curious: number; predators: number; bottom: number; defensive: number };
   };
 }
 
