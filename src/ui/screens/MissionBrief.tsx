@@ -129,7 +129,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                   ) : (
                     <div key={i} className="lineup-row empty">
                       <b className="ln">{i + 1}</b>
-                      <span className="nm">— pick from your collection —</span>
+                      <span className="nm"><span className="nm-long">— pick from your collection —</span><span className="nm-short">— empty —</span></span>
                     </div>
                   );
                 })}
