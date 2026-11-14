@@ -5,6 +5,10 @@
  *  - right: the SLINGSHOT — touch the Poké Ball, drag toward your target (a dotted
  *    trajectory previews the real flight), release to throw. Drag length = power.
  *    A quick tap throws full-power along the view, exactly like the old button.
+ *  - right, underwater in companion levels (no slingshot there): the ATTACK CIRCLE —
+ *    a joystick-sized button that works like the desktop click: each tap fires the best
+ *    ready companion move at what the crosshair covers, so tapping again and again walks
+ *    through every available move while they go on cooldown.
  * Vertical swim, sprint and ball switching are automatic now (see PlayerController /
  * auto-ball); the up/down/sprint buttons are gone.
  */
@@ -14,6 +18,7 @@ import { useStore } from '@/state/store';
 import { GAME } from '@/data/gameConfig';
 import { slingDir } from '@/engine/sim/ballPreview';
 import { PokeballIcon } from '../components/common';
+import { Ic, Swords } from '../components/icons';
 
 const DEG = Math.PI / 180;
 
@@ -22,15 +27,19 @@ export function TouchControls() {
   const knobRef = useRef<HTMLDivElement>(null);
   const lookRef = useRef<HTMLDivElement>(null);
   const slingRef = useRef<HTMLButtonElement>(null);
+  const attackRef = useRef<HTMLButtonElement>(null);
   const sensitivity = useStore((s) => s.save.settings.sensitivity);
   const ballType = useStore((s) => s.hud.ballType);
   const ballCount = useStore((s) => s.save.inventory[s.hud.ballType]);
   const hot = useStore((s) => s.hud.slingHot); // the drawn shot would HIT a wild: show it
   // companion levels fight underwater and catch at the surface: no slingshot while diving
   const catchMode = useStore((s) => s.hud.catchMode);
+  const attackHot = useStore((s) => s.hud.attackHot); // the attack circle has a target right now
+  // companion moves off cooldown — the badge on the attack circle
+  const readyMoves = useStore((s) => s.hud.party.active.reduce((n, a) => n + (a ? a.cd.filter((c) => c <= 0).length : 0), 0));
 
   useEffect(() => {
-    const joy = joyRef.current!, knob = knobRef.current!, look = lookRef.current!, sling = slingRef.current!;
+    const joy = joyRef.current!, knob = knobRef.current!, look = lookRef.current!, sling = slingRef.current!, attack = attackRef.current!;
     let joyId: number | null = null, jx = 0, jy = 0;
     let lookId: number | null = null, lx = 0, ly = 0;
     let slingId: number | null = null, sx = 0, sy = 0, st = 0;
@@ -97,6 +106,15 @@ export function TouchControls() {
     const onSlingCancel = (e: PointerEvent) => { if (e.pointerId === slingId) clearSling(); };
     // a careful aim is a long-press: the context menu must never steal it (Android)
     const onSlingMenu = (e: Event) => e.preventDefault();
+
+    // ---- the attack circle: fire on touch-down (no click latency), one move per tap ----
+    let pressT: ReturnType<typeof setTimeout> | undefined;
+    const onAttackDown = (e: PointerEvent) => {
+      e.preventDefault();
+      if (session.commandAttack(true)) { navigator.vibrate?.(8); attack.classList.add('fired'); }
+      else attack.classList.add('dud');
+      clearTimeout(pressT); pressT = setTimeout(() => attack.classList.remove('fired', 'dud'), 140);
+    };
     // tell the engine where the Poké Ball sits on screen (NDC) so throws launch FROM it,
     // whatever the orientation or breakpoint
     const measure = () => {
@@ -112,7 +130,9 @@ export function TouchControls() {
     look.addEventListener('pointerdown', onLookDown); look.addEventListener('pointermove', onLookMove); look.addEventListener('pointerup', onLookUp); look.addEventListener('pointercancel', onLookUp);
     sling.addEventListener('pointerdown', onSlingDown); sling.addEventListener('pointermove', onSlingMove); sling.addEventListener('pointerup', onSlingUp); sling.addEventListener('pointercancel', onSlingCancel);
     sling.addEventListener('contextmenu', onSlingMenu);
+    attack.addEventListener('pointerdown', onAttackDown); attack.addEventListener('contextmenu', onSlingMenu);
     return () => {
+      attack.removeEventListener('pointerdown', onAttackDown); attack.removeEventListener('contextmenu', onSlingMenu); clearTimeout(pressT);
       joy.removeEventListener('pointerdown', onJoyDown); joy.removeEventListener('pointermove', onJoyMove); joy.removeEventListener('pointerup', onJoyUp); joy.removeEventListener('pointercancel', onJoyUp);
       look.removeEventListener('pointerdown', onLookDown); look.removeEventListener('pointermove', onLookMove); look.removeEventListener('pointerup', onLookUp); look.removeEventListener('pointercancel', onLookUp);
       sling.removeEventListener('pointerdown', onSlingDown); sling.removeEventListener('pointermove', onSlingMove); sling.removeEventListener('pointerup', onSlingUp); sling.removeEventListener('pointercancel', onSlingCancel);
@@ -131,6 +151,12 @@ export function TouchControls() {
         style={catchMode ? undefined : { display: 'none' }}>
         <PokeballIcon ball={ballType} size={34} />
         <span className="sling-count">{ballCount}</span>
+      </button>
+      <button ref={attackRef} className={`attack-anchor ${attackHot ? 'hot' : ''} ${readyMoves === 0 ? 'spent' : ''}`}
+        aria-label="Attack: fire the best ready companion move at the crosshair"
+        style={catchMode || !session.companionsEnabled ? { display: 'none' } : undefined}>
+        <Ic icon={Swords} size={40} />
+        <span className="ready-count">{readyMoves}</span>
       </button>
     </div>
   );

@@ -969,10 +969,10 @@ export class GameSession {
    * One-button attack (right-click): auto-picks the strongest ready move across the active
    * companions and fires it at whatever the crosshair is on. Zero keybinds to remember.
    */
-  commandAttack(): boolean {
+  commandAttack(forgiving = false): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const eco = this.eco;
-    const target = this.aimedEntity(45);
+    const target = this.attackTarget(forgiving);
     if (!target) return false;
     // companion levels: the click marks the team's quarry — they fight it until it drops
     if (this.companionsEnabled && !this.catchingAllowed) this.focusTargetId = target.id;
@@ -998,6 +998,24 @@ export class GameSession {
     return this.orderCast(best.partner, best.slot, target);
   }
   private swapCooldownT = 0;
+
+  /** The crosshair's wild — or, for the touch attack circle (`forgiving`), the team's current quarry
+   *  while it is still alive and within reach, so repeat taps keep firing without a pixel-perfect aim. */
+  private attackTarget(forgiving: boolean): Entity | null {
+    const aimed = this.aimedEntity(45);
+    if (aimed || !forgiving || !this.eco || this.focusTargetId < 0) return aimed;
+    const t = this.eco.byId.get(this.focusTargetId);
+    if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') return null;
+    const p = this.player;
+    return Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z) <= 45 ? t : null;
+  }
+
+  /** Touch, companion level, underwater: does the attack circle have something to fire at? */
+  private updateAttackHot() {
+    const store = useStore.getState();
+    const hot = store.isTouch && this.playing && !!this.eco && this.companionsEnabled && !this.catchingAllowed && !!this.attackTarget(true);
+    if (hot !== store.hud.attackHot) store.setHud({ attackHot: hot });
+  }
 
   /** 9/0 keys and the low-HP banner: swap `slot` for the healthiest reserve. */
   swapSlotWithBest(slot: 0 | 1): boolean {
@@ -1143,7 +1161,7 @@ export class GameSession {
     this.updateTutorial(dt);
     if (this.arena) this.arenaTick();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); this.updateAttackHot(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2 && !this.arena) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20 && !this.arena) { this.saveAcc = 0; this.persistRun(); }

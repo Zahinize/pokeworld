@@ -10,7 +10,8 @@ import {
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
   AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone, Heart, Maximize, Minimize,
 } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import type { LucideProps } from 'lucide-react';
+import { forwardRef, type CSSProperties } from 'react';
 
 export function Ic({ icon: I, size = 16, color, style }: { icon: LucideIcon; size?: number; color?: string; style?: CSSProperties }) {
   return <I size={size} strokeWidth={2.2} style={{ verticalAlign: '-3px', flexShrink: 0, color, ...style }} aria-hidden />;
@@ -22,6 +23,26 @@ export {
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
   AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone, Heart, Maximize, Minimize,
 };
+
+/**
+ * The shiny mark: a filled four-point sparkle with two satellites — the classic "shiny" glint, drawn
+ * solid so it still reads at 11 px beside a name (lucide's outline Sparkles turned to mush there).
+ * Same props as a lucide icon, so it drops into `Ic`.
+ */
+const star = (cx: number, cy: number, r: number, k = 0.2) => {
+  const i = r * k;
+  return `M${cx} ${cy - r}Q${cx + i} ${cy - i} ${cx + r} ${cy}Q${cx + i} ${cy + i} ${cx} ${cy + r}Q${cx - i} ${cy + i} ${cx - r} ${cy}Q${cx - i} ${cy - i} ${cx} ${cy - r}Z`;
+};
+export const Shiny = forwardRef<SVGSVGElement, LucideProps>(function Shiny({ size = 24, color = 'currentColor', style, className, ...rest }, ref) {
+  return (
+    <svg ref={ref} xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none" style={style} className={className} {...rest}>
+      <path d={star(10, 13.5, 9.5)} />
+      <path d={star(19, 5.5, 4.5)} />
+      <path d={star(20, 16.5, 2.6)} />
+      <path d={star(10, 13.5, 4.2, 0.26)} fill="#fff" fillOpacity={0.45} />
+    </svg>
+  );
+}) as unknown as LucideIcon;
 
 /** Behavior groups → icons (replaces BEHAVIOR_GROUPS[..].icon emojis in the UI). */
 export const GROUP_ICONS: Record<string, LucideIcon> = {

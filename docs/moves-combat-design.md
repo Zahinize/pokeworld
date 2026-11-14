@@ -522,8 +522,15 @@ only roaming (`role: 'solo'`) predators hunt the trainer.
 The crosshair is the aim for everything. Pressing a companion move key/button fires that companion's move
 **along the camera ray**: a projectile that hits the first Pokémon on its path (same collision routine as
 `BallSystem`). No pre-selected targets, no lock-on UI — if you can hit it with a ball, you can hit it with
-Bubble. Bindings: slot 1 `Q`/`F` (moves 1/2), slot 2 `Z`/`V`; touch gets four move buttons around the
-throw button, with cooldown arcs.
+Bubble. Bindings: slot 1 `Q`/`F` (moves 1/2), slot 2 `Z`/`V`. Touch gets one **attack circle** instead
+(joystick-sized, right thumb, where the slingshot sits when surfaced): each tap does what the desktop
+click does — fires the best ready companion move at the crosshair's wild — so tapping again and again
+walks through every available move while they go on cooldown. Wilds attack fast; four separate move
+buttons were too slow to hit on a phone. The circle glows red when it has a target, shows the count of
+ready moves, and forgives aim: once the team has a quarry, taps keep firing at it while it is alive and
+within 45 m even if the crosshair has drifted off. The two companion cards stay as a compact readout
+(move tiles with cooldown arcs, HP, who is dueling); tapping a tile still casts that one move. Desktop
+is untouched.
 
 ### Duel (1v1 lock-in)
 ```
@@ -641,8 +648,9 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
   each showing cooldown arcs and keybinds; reserve chips (tap/click to open swap panel when one is down).
 - **Player HP bar** beside the party bar; boss fights add a **large boss HP bar** top-center (name + HP).
 - **Duel frame**: while dueling, a small enemy plate (sprite, name, HP) docks near the crosshair.
-- Touch layout: move buttons cluster around the throw button; everything obeys the existing `.hud.touch`
-  layout rules and safe areas.
+- Touch layout: the attack circle mirrors the joystick (same size and baseline at every breakpoint) and the
+  compact companion cards sit between them; everything obeys the existing `.hud.touch` layout rules and
+  safe areas.
 
 ---
 
