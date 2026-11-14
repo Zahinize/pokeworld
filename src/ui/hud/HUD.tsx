@@ -1,6 +1,6 @@
 /** In-game heads-up display: mission panel, status chips, crosshair + target pointer, ball tray, lure, toasts, catch card, overlays. */
 import { useEffect, useMemo, useState, useRef } from 'react';
-import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone, Heart } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Target, Sparkles, Shiny, Hourglass, Swords, User, AlertTriangle, LifeBuoy, BookOpen, Settings, Play, Pause, Sun, Moon, Sunset, Smartphone, Heart } from '../components/icons';
 import { COMBAT } from '@/data/combatConfig';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
@@ -172,7 +172,7 @@ function PartyBar() {
             return mi === 0 ? [tile, (
               <div key="mid" className="q-mid">
                 <SpriteImg id={a.speciesId} shiny={a.shiny} size={46} />
-                <span className="q-name">{a.shiny && <Ic icon={Sparkles} size={11} color="var(--gold)" />}{SPECIES[a.speciesId].name}</span>
+                <span className="q-name">{a.shiny && <Ic icon={Shiny} size={11} color="var(--gold)" />}{SPECIES[a.speciesId].name}</span>
                 <span className="q-hp"><i style={{ width: `${(a.hp / a.maxHp) * 100}%`, background: a.hp / a.maxHp > 0.5 ? 'var(--green)' : a.hp / a.maxHp > 0.25 ? 'var(--gold)' : 'var(--red)' }} /></span>
               </div>
             )] : tile;
@@ -346,7 +346,7 @@ function BossIntro() {
         <div className="boss-intro-sprites">
           {intro.bosses.map((b) => <SpriteImg key={b.speciesId} id={b.speciesId} shiny={b.shiny} size={intro.bosses.length > 1 ? 96 : 128} className={b.shiny ? 'shiny-glow' : ''} />)}
         </div>
-        {anyShiny && <div className="shiny-banner"><Ic icon={Sparkles} size={14} /> SHINY <Ic icon={Sparkles} size={14} /></div>}
+        {anyShiny && <div className="shiny-banner"><Ic icon={Shiny} size={14} /> SHINY <Ic icon={Shiny} size={14} /></div>}
         <div className="eyebrow boss-intro-eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)' }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
         <h2 className="title boss-intro-title">{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
         <p className="subtitle boss-intro-text">{intro.text}</p>

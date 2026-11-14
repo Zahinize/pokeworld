@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Ic, OBJECTIVE_ICONS, Fish, Waves, Search, Gem, Shield, Star, Swords, Sparkles } from '../components/icons';
+import { Ic, OBJECTIVE_ICONS, Fish, Waves, Search, Gem, Shield, Star, Swords, Shiny } from '../components/icons';
 import type { LucideIcon } from 'lucide-react';
 import { getLevel, missionTotal } from '@/data/levels';
 import { session } from '@/engine/GameSession';
@@ -173,7 +173,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                         return (
                           <button key={t} className={`card clickable party-cell ${shiny ? 'shiny-cell' : ''} ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
                             <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
-                            <span className="n">{shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
+                            <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
                             <span className="stat">{statOf(t, sortBy)} {STAT_SUFFIX[sortBy]}</span>
                             {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                           </button>
@@ -193,7 +193,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                             return (
                               <button key={t} className={`card clickable party-cell boss-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
                                 <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
-                                <span className="n">{shiny && <Ic icon={Sparkles} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
+                                <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
                                 <span className="stat">{statOf(t, sortBy)} {STAT_SUFFIX[sortBy]}</span>
                                 {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                               </button>
