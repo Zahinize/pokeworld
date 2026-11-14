@@ -392,6 +392,24 @@ a { color: var(--aqua); }
 .boss-intro { background: rgba(2, 8, 18, .7); }
 .boss-intro-sprites { display: flex; justify-content: center; gap: 18px; align-items: flex-end; animation: pop .6s cubic-bezier(.2,.9,.3,1.2) both; }
 .boss-intro-sprites img { filter: drop-shadow(0 0 24px rgba(244,63,94,.55)); }
+.overlay.boss-intro .boss-intro-panel { padding: 30px; max-height: calc(100dvh - 16px - var(--safe-top) - var(--safe-bottom)); overflow: auto; }
+.boss-intro-eyebrow { margin-top: 10px; }
+.boss-intro-title { font-size: clamp(24px, 4vw, 34px); margin: 4px 0 8px; }
+.boss-intro-text { max-width: 420px; margin: 0 auto; }
+.boss-intro-tip { margin: 12px 0 18px; }
+/* phones: the whole encounter card fits a 430 px-tall landscape screen with no scroll */
+@media (max-width: 760px), (max-height: 540px) {
+  .overlay.boss-intro .boss-intro-panel { padding: 12px 16px 14px; width: min(100%, 460px); }
+  .boss-intro-sprites { gap: 12px; }
+  .boss-intro-sprites img { width: 64px; height: 64px; filter: drop-shadow(0 0 14px rgba(244,63,94,.55)); }
+  .boss-intro-panel.duo .boss-intro-sprites img { width: 56px; height: 56px; }
+  .boss-intro-panel .shiny-banner { font-size: 10px; margin-top: 2px; }
+  .boss-intro-eyebrow { margin-top: 4px; font-size: 9.5px; }
+  .boss-intro-title { font-size: 19px; margin: 2px 0 4px; }
+  .boss-intro-text { font-size: 12px; line-height: 1.35; max-width: 400px; }
+  .boss-intro-tip { font-size: 10.5px; line-height: 1.35; margin: 6px 0 10px; }
+  .boss-intro-panel .btn.big { min-height: 38px; font-size: 13.5px; padding: 0 16px; border-radius: 11px; }
+}
 
 .shiny-glow { filter: drop-shadow(0 0 18px rgba(255,209,102,.85)) !important; animation: pulse 1.6s ease-in-out infinite; }
 .shiny-banner { font-family: var(--font-display); font-weight: 900; letter-spacing: .3em; color: var(--gold); text-shadow: 0 0 18px rgba(255,209,102,.8); margin-top: 8px; animation: pulse 1.2s ease-in-out infinite; }

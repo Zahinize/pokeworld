@@ -342,15 +342,15 @@ function BossIntro() {
   const anyShiny = intro.bosses.some((b) => b.shiny);
   return (
     <div className="overlay boss-intro" style={{ zIndex: 45 }}>
-      <Panel className="panel strong center" style={{ padding: 30, borderColor: anyShiny ? 'rgba(255,209,102,.6)' : 'rgba(244,63,94,.45)' }}>
+      <Panel className={`panel strong center boss-intro-panel ${intro.bosses.length > 1 ? 'duo' : ''}`} style={{ borderColor: anyShiny ? 'rgba(255,209,102,.6)' : 'rgba(244,63,94,.45)' }}>
         <div className="boss-intro-sprites">
           {intro.bosses.map((b) => <SpriteImg key={b.speciesId} id={b.speciesId} shiny={b.shiny} size={intro.bosses.length > 1 ? 96 : 128} className={b.shiny ? 'shiny-glow' : ''} />)}
         </div>
         {anyShiny && <div className="shiny-banner"><Ic icon={Sparkles} size={14} /> SHINY <Ic icon={Sparkles} size={14} /></div>}
-        <div className="eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)', marginTop: 10 }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
-        <h2 className="title" style={{ fontSize: 'clamp(24px,4vw,34px)', margin: '4px 0 8px' }}>{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
-        <p className="subtitle" style={{ maxWidth: 420, margin: '0 auto' }}>{intro.text}</p>
-        <p className="muted small" style={{ margin: '12px 0 18px' }}>{anyShiny ? 'A shiny ruler — three times the power, three times the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
+        <div className="eyebrow boss-intro-eyebrow" style={{ color: intro.final ? 'var(--gold)' : 'var(--red)' }}>{intro.final ? 'Final Boss Encounter' : 'Boss Encounter'}</div>
+        <h2 className="title boss-intro-title">{intro.bosses.map((b) => (b.shiny ? `Shiny ${SPECIES[b.speciesId].name}` : SPECIES[b.speciesId].name)).join(' & ')}</h2>
+        <p className="subtitle boss-intro-text">{intro.text}</p>
+        <p className="muted small boss-intro-tip">{anyShiny ? 'A shiny ruler — three times the power, three times the glory. Defeat it and its shiny form joins your collection forever.' : 'They hit hard and charge without mercy. Keep moving, command your companions, and swap reserves when they fall.'}</p>
         <button className="btn primary big block" autoFocus onClick={() => { Audio.uiConfirm(); session.startBossBattle(); requestPointerLock(); }}><Ic icon={Swords} size={16} /> I'm ready — battle!</button>
       </Panel>
     </div>
