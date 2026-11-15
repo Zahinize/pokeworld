@@ -74,6 +74,8 @@ export const COMBAT = {
   /** Lifelines: hearts under the mission label. Every KO costs one; the fourth wipes the level's
    *  progress — the trainer starts that level from scratch (collection and other levels are safe). */
   PLAYER_LIVES: 4,
+  /** The blue heart (treasure chest loot) can raise lifelines past the starting four, up to this. */
+  PLAYER_LIVES_MAX: 6,
 
   /** Projectile/beam range multiplier by caster stage — evolved Pokémon strike from further away. */
   RANGE_STAGE_MULT: [1, 1.35, 1.7] as const,

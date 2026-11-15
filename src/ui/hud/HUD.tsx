@@ -6,6 +6,7 @@ import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
 import { BERRIES, BERRY_KEYS } from '@/data/berries';
+import { CHEST, CHEST_ICONS, LOOT, LOOT_KEYS, LOOT_ORDER } from '@/data/chest';
 import { GAME } from '@/data/gameConfig';
 import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
@@ -91,7 +92,7 @@ export function MissionPanel({ compact, onToggle }: { compact: boolean; onToggle
 /** Lifelines: four hearts under the mission label. Every KO dims one; losing the last wipes the level. */
 function Lifelines() {
   const lives = useStore((s) => s.hud.lives);
-  const max = COMBAT.PLAYER_LIVES;
+  const max = Math.max(COMBAT.PLAYER_LIVES, lives); // a blue heart can push the row past four
   return (
     <div className={`lifelines glass ${lives <= 1 ? 'last' : ''}`} title={`Lifelines: ${lives} of ${max}. Lose them all and the level starts over.`} aria-label={`${lives} of ${max} lifelines left`}>
       {Array.from({ length: max }, (_, i) => <span key={i} className={`heart ${i < lives ? 'on' : 'off'}`}><Ic icon={Heart} size={16} /></span>)}
@@ -104,16 +105,19 @@ function BallChip() {
   const ballType = useStore((s) => s.hud.ballType);
   const ballMode = useStore((s) => s.hud.ballMode);
   const isTouch = useStore((s) => s.isTouch);
+  // with the chest's Ball Launcher in hand the chip counts its magazine, not the bag
+  const magCount = useStore((s) => (s.hud.chest?.weapon === 'ballGun' && s.hud.chest.gunAmmo ? s.hud.chest.gunAmmo[s.hud.ballType] : null));
+  const count = magCount ?? inv[ballType];
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // tap cycles (and pins) the ball; holding half a second hands control back to AUTO
   const down = () => { holdTimer.current = setTimeout(() => { holdTimer.current = null; session.clearBallPin(); }, 500); };
   const up = () => { if (holdTimer.current) { clearTimeout(holdTimer.current); holdTimer.current = null; session.cycleBall(1); } };
   return (
     <button className="glass ball-chip interactive" onPointerDown={down} onPointerUp={up} onPointerCancel={up}
-      aria-label={`${BALLS[ballType].name}, ${inv[ballType]} left — ${ballMode === 'auto' ? 'picked automatically' : 'pinned'}`}
+      aria-label={`${BALLS[ballType].name}, ${count} left${magCount !== null ? ' in the launcher' : ''} — ${ballMode === 'auto' ? 'picked automatically' : 'pinned'}`}
       title={isTouch ? undefined : 'Auto-picked for your target · 1–4 or Q to pin · hold to return to auto'}>
       <PokeballIcon ball={ballType} size={26} />
-      <span className="count">{inv[ballType]}</span>
+      <span className="count">{count}</span>
       <span className={`mode ${ballMode === 'pinned' ? 'pinned' : ''}`}>{ballMode === 'auto' ? 'AUTO' : BALLS[ballType].short}</span>
     </button>
   );
@@ -149,11 +153,60 @@ function BerryBar() {
   );
 }
 
+/** The treasure chest's loot: four fixed slots (G H J K) — Ball Launcher, Catch Laser, Restock Timer, Blue Heart. Hidden until something is found. */
+function LootBar() {
+  const c = useStore((s) => s.hud.chest);
+  const isTouch = useStore((s) => s.isTouch);
+  if (!c || !c.active) return null;
+  return (
+    <div className="berry-bar loot-bar glass interactive" role="toolbar" aria-label="Chest loot">
+      {c.slots.map((s, i) => {
+        const L = LOOT[s.id];
+        const owned = s.count !== null;
+        const equipped = c.weapon === s.id;
+        const armed = s.id === 'timer' && c.timerArmed;
+        return (
+          <button key={s.id} className={`berry-slot loot-slot ${owned ? '' : 'empty'} ${equipped ? 'equipped' : ''} ${armed ? 'held' : ''}`} disabled={!owned}
+            title={isTouch ? undefined : `${L.name} · ${L.blurb} · press ${LOOT_KEYS[i]}`}
+            aria-label={`${L.name}${owned ? `: ${s.count} left` : ': not found yet'}${equipped ? ', equipped' : ''}${armed ? ', armed' : ''}`}
+            onClick={() => session.useLoot(i)}>
+            <img src={L.icon} alt="" draggable={false} />
+            {owned && <span className="cnt">{s.count}</span>}
+            {armed && <span className="held-dot" aria-hidden />}
+            {!isTouch && <span className="kbd">{LOOT_KEYS[i]}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Desktop: what is in hand, to the right of the ball chip — the launcher's magazine or the laser's rounds. */
+function WeaponPanel() {
+  const c = useStore((s) => s.hud.chest);
+  const isTouch = useStore((s) => s.isTouch);
+  const catchMode = useStore((s) => s.hud.catchMode);
+  if (isTouch || !catchMode || !c || c.weapon === 'hands') return null;
+  const L = LOOT[c.weapon];
+  return (
+    <div className={`weapon-panel glass ${c.weapon}`}>
+      <img src={L.icon} alt="" draggable={false} />
+      <div className="txt">
+        <div className="name">{L.name}</div>
+        {c.weapon === 'ballGun' && c.gunAmmo
+          ? <div className="ammo">{BALL_ORDER.map((b) => <span key={b} title={BALLS[b].name}><PokeballIcon ball={b} size={12} />{c.gunAmmo![b]}</span>)}</div>
+          : <div className="ammo"><b>{c.laser}</b> rounds</div>}
+        <div className="hint">Left click fires · <span className="kbd">{LOOT_KEYS[LOOT_ORDER.indexOf(c.weapon)]}</span> puts it away</div>
+      </div>
+    </div>
+  );
+}
+
 /** Ball controls live at bottom-centre — except underwater in companion levels, where the team fights. */
 function BallCatchControls() {
   const catchMode = useStore((s) => s.hud.catchMode);
   if (!catchMode) return null;
-  return <><BerryBar /><BallChip /></>;
+  return <><LootBar /><BerryBar /><BallChip /></>;
 }
 
 /** First-run tutorial: one instruction at a time, progress dots, always skippable. */
@@ -364,9 +417,11 @@ function headingOf(dx: number, dz: number) {
 function TargetPointer() {
   const t = useStore((s) => s.hud.nearestTarget);
   const berry = useStore((s) => s.hud.berries?.nearest ?? null);
+  const chest = useStore((s) => s.hud.chest);
   const [, force] = useState(0);
   useEffect(() => { const id = setInterval(() => force((n) => n + 1), 100); return () => clearInterval(id); }, []);
-  if (!t && !berry) return null;
+  const dwelling = !!chest && chest.state === 'unlocked' && chest.dwell01 > 0;
+  if (!t && !berry && !chest?.nearest && !dwelling) return null;
   let target: React.ReactNode = null;
   if (t) {
     const h = headingOf(t.dx, t.dz);
@@ -390,7 +445,24 @@ function TargetPointer() {
       </>
     );
   }
-  return <>{target}{pick}</>;
+  let loot: React.ReactNode = null;
+  if (chest?.nearest) {
+    const n = chest.nearest;
+    const h = headingOf(n.dx, n.dz);
+    const inView = h.ahead > 0.94 && n.distance < 40;
+    loot = (
+      <>
+        {!inView && <div className="chest-ring"><div className="chest-arrow" style={{ transform: `rotate(${h.deg}deg)` }}><i /></div></div>}
+        <div className="chest-label"><img src={chest.state === 'unlocked' ? CHEST_ICONS.closed : CHEST_ICONS.open} alt="" />{chest.state === 'unlocked' ? 'Treasure chest' : 'Open chest'} · {Math.round(n.distance)} m</div>
+      </>
+    );
+  }
+  const dwell = dwelling && chest ? (
+    <div className="dwell-ring" style={{ background: `conic-gradient(var(--gold) ${chest.dwell01 * 360}deg, rgba(255,255,255,.14) 0deg)` }} aria-label="Opening the chest">
+      <span>{Math.ceil((1 - chest.dwell01) * CHEST.DWELL_SECONDS)}</span>
+    </div>
+  ) : null;
+  return <>{target}{pick}{loot}{dwell}</>;
 }
 
 function BossIntro() {
@@ -457,12 +529,13 @@ function StatusChips() {
 
 function RestoreBanner() {
   const endsAt = useStore((s) => s.save.restoration.endsAt);
+  const boosted = useStore((s) => !!s.hud.chest?.restockBoosted);
   const [, tick] = useState(0);
   useEffect(() => { if (!endsAt) return; const id = setInterval(() => tick((n) => n + 1), 250); return () => clearInterval(id); }, [endsAt]);
   if (!endsAt) return null;
   const rem = Math.max(0, endsAt - Date.now());
   const s = Math.ceil(rem / 1000);
-  return <Panel className="restore-banner strong"><div className="eyebrow">Restocking Poké Balls</div><b>{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</b><div className="muted small">Observe the reef while you wait</div></Panel>;
+  return <Panel className="restore-banner strong"><div className="eyebrow">Restocking Poké Balls{boosted && <span className="boost">×2 faster</span>}</div><b>{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</b><div className="muted small">Observe the reef while you wait</div></Panel>;
 }
 
 export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
@@ -478,6 +551,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<b>Drag anywhere</b>}>look around</Row>
       <Row keys={<b>Poké Ball</b>}><b>drag to aim, release to throw</b> · tap = quick throw</Row>
       <Row keys={<b>Berry bar</b>}>tap a berry to eat it — they wash onto the sea floor each lifeline</Row>
+      <Row keys={<b>Loot bar</b>}>tap to equip or use what the treasure chest gave you — the launcher and laser take the Poké Ball's place</Row>
     </div>
   ) : (
     <>
@@ -494,6 +568,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
           <Row keys={<><K k="1" />–<K k="4" /> · <K k="Q" /></>}>pin a ball — otherwise they pick themselves</Row>
           <Row keys={<K k="E" />}>lure nearby Pokémon · once every 5 min</Row>
           <Row keys={<><K k="R" /><K k="T" /><K k="Y" /><K k="U" /><K k="I" /></>}>eat a berry · held berries wait until HP drops</Row>
+          <Row keys={<><K k="G" /><K k="H" /><K k="J" /><K k="K" /></>}>chest loot · launcher · laser · restock timer · blue heart</Row>
           <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
           <Row keys={<K k="C" />}>collection</Row>
           {session.companionsEnabled && <Row keys={<b>Right click</b>}>quick attack — best ready companion move at your crosshair</Row>}
@@ -559,7 +634,8 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
         {!paused && <div className={`crosshair ${lureRem > 0 ? 'lure' : ''}`} />}
         {!paused && <TargetPointer />}
         <div className="hud-bottom">
-          <BallCatchControls />
+          <div className="hud-bottom-col"><BallCatchControls /></div>
+          <WeaponPanel />
         </div>
         <PlayerVitals />
         <PartyBar />

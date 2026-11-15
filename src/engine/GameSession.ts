@@ -20,6 +20,8 @@ import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDo
 import { randomSeed, RNG } from './rng';
 import { BerrySystem } from './sim/berries';
 import { BERRIES, BERRY_KEYS, berrySetKindFor, type BerryId } from '@/data/berries';
+import { ChestSystem } from './sim/chest';
+import { CHEST, CHEST_ICONS, LOOT, LOOT_KEYS, LOOT_ORDER, laserFraction, restockFor, type LootId } from '@/data/chest';
 import { maxHpOf, combatStatsOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
 import { useStore } from '@/state/store';
@@ -47,7 +49,7 @@ function releasePointer() {
 
 export type SessionPhase = 'idle' | 'preparing' | 'ready' | 'playing' | 'paused' | 'completing' | 'complete' | 'defeated';
 
-export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure' | 'splash'; x: number; y: number; z: number; t: number; size: number; color?: string }
+export interface FxEvent { type: 'catch' | 'escape' | 'hit' | 'ko' | 'lure' | 'splash' | 'laser'; x: number; y: number; z: number; t: number; size: number; color?: string; /** laser: where the beam ends. */ to?: { x: number; y: number; z: number } }
 
 /** Floating combat number consumed by the renderer. */
 export interface DamageNumber { text: string; color: string; x: number; y: number; z: number; t: number; big: boolean }
@@ -109,6 +111,11 @@ export class GameSession {
   /** This heart's berries: floor drops, the bag, held berries and running effects (see sim/berries.ts). */
   berries = new BerrySystem('solo', new RNG(randomSeed()));
   private berryHudKey = '';
+  /** The treasure chest (L1/L2): its state machine and loot bag. Its defence lives in the ecosystem. */
+  chest = new ChestSystem(null, new RNG(randomSeed()));
+  private chestHudKey = '';
+  private chestToastT = 0;
+  private chestSwarmToastT = 0;
   /** Companion party for this level: up to 6 species; slots 0/1 are active in the reef. */
   party: string[] = [];
   /** Entity ids of the active companions (index = formation slot), -1 = empty/downed. */
@@ -184,7 +191,7 @@ export class GameSession {
   camYaw = 0;
   /** Visual effects queue consumed by the renderer. */
   fx: FxEvent[] = [];
-  private pushFx(type: FxEvent['type'], x: number, y: number, z: number, size = 1, color?: string) { this.fx.push({ type, x, y, z, t: 0, size, color }); if (this.fx.length > 24) this.fx.shift(); }
+  private pushFx(type: FxEvent['type'], x: number, y: number, z: number, size = 1, color?: string, to?: FxEvent['to']) { this.fx.push({ type, x, y, z, t: 0, size, color, to }); if (this.fx.length > 24) this.fx.shift(); }
   /** Floating combat numbers (design §6). */
   numbers: DamageNumber[] = [];
   pushNumber(text: string, color: string, x: number, y: number, z: number, big = false) {
@@ -231,6 +238,8 @@ export class GameSession {
     // Cramorant floats with its catch in its beak: the Gulping form sheet
     if (!this.sheets.has(sheetKey('cramorant', 'gulping'))) loadSpriteSheet('cramorant', 'gulping').then((sh) => this.sheets.set(sheetKey('cramorant', 'gulping'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
+    this.chest = new ChestSystem(this.gen.chest ? { x: this.gen.chest.x, y: this.gen.chest.y, z: this.gen.chest.z } : null, new RNG(randomSeed()));
+    this.chestHudKey = ''; this.chestToastT = 0; this.chestSwarmToastT = 0;
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     this.lives = COMBAT.PLAYER_LIVES;
     if (resume && resume.seed === this.seed) this.applyResume(resume);
@@ -254,7 +263,12 @@ export class GameSession {
       // elite = a shiny (reef or sky) or a legendary: it keeps a harder hit under the level's cap
       const bird = this.skyCombat && casterId <= -1000 ? this.sky?.birds.find((b) => b.id === this.skyCombat!.birdIdOf(casterId)) : undefined;
       const elite = !!attacker && (attacker.isShiny || !!bird?.shiny || attacker.species.rarity === 'legendary');
-      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: !!attacker.species.skyOnly && attacker.species.secondary.includes('legendary'), elite } : undefined);
+      // the chest fight has its own, lower per-hit cap (CHEST.HIT_CAP) for anyone fighting around the chest
+      const ch = this.eco?.chest;
+      const pl = this.player;
+      const chestFight = ch && attacker && !attacker.isBoss && (attacker.chestGuard || len3(pl.x - ch.x, pl.y - ch.y, pl.z - ch.z) < CHEST.SWARM_R)
+        ? (this.eco!.chestGuardiansAlive() > 0 ? 'guard' : 'swarm') : undefined;
+      this.applyPlayerDamage(amount, attacker ? { name: attacker.species.name, sky: !!attacker.species.skyOnly && attacker.species.secondary.includes('legendary'), elite, chestFight } : undefined);
     };
     this.prepareProgress = 1;
     this.phase = 'ready';
@@ -265,7 +279,7 @@ export class GameSession {
     this.tutorial = levelId === 1 && !store.save.settings.tutorialDone ? createTutorial() : null;
     this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
     this.tutScan.wildNearDist = Infinity; this.tutScan.skyBirdNear = false; this.tutScanAcc = 0; this.tutDoneT = 0;
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines(), lives: this.lives, recovering: 0, koBy: null, berries: this.berries.hudSnapshot(this.player) });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines(), lives: this.lives, recovering: 0, koBy: null, berries: this.berries.hudSnapshot(this.player), chest: this.chest.hudSnapshot(this.player, this.eco.chestGuardiansAlive()) });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -299,7 +313,12 @@ export class GameSession {
     }
     this.mission.caught = this.mission.objectives.reduce((n, o) => n + o.caught + (o.guardianCaught ? 1 : 0), 0);
     this.mission.complete = this.mission.caught >= this.mission.total;
-    this.lives = Math.max(1, Math.min(COMBAT.PLAYER_LIVES, run.lives ?? COMBAT.PLAYER_LIVES)); // lost hearts stay lost across a resume
+    this.lives = Math.max(1, Math.min(COMBAT.PLAYER_LIVES_MAX, run.lives ?? COMBAT.PLAYER_LIVES)); // lost hearts stay lost across a resume (blue hearts too)
+    if (run.chestLooted && this.eco.chest) {
+      // the chest was emptied before the break: it stays open and bare, its guardians long gone — no farming it
+      for (const id of this.eco.chest.guardIds) { const g = this.eco.byId.get(id); if (g) { g.state = 'caught'; g.animT = 10; } }
+      this.chest.markLooted(); this.eco.chestMode = 'off';
+    }
     this.eco.update(0.016, this.eco.player, 0); // flush removals
   }
 
@@ -330,7 +349,7 @@ export class GameSession {
     this.sheets.clear();
     this.ride = null;
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
-    this.tutorial = null; useStore.getState().setHud({ tutorial: null, berries: null });
+    this.tutorial = null; useStore.getState().setHud({ tutorial: null, berries: null, chest: null });
     this.berries.endHeart([]);
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
@@ -470,7 +489,7 @@ export class GameSession {
     const store = useStore.getState();
     store.setLevel(99, this.seed);
     store.setMission(null);
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null, berries: null });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null, berries: null, chest: null });
     this.arena = true;
     this.phase = 'playing';
     this.arenaSelect('corsola');
@@ -585,49 +604,220 @@ export class GameSession {
     eco.drainEvents(); this.sky?.drainEvents(); this.balls.drainEvents();
   }
 
-  /** Throw the selected ball along the look direction. Returns false if nothing could be thrown. */
-  throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED): boolean {
+  /** Fire whatever is in hand along `dir`: Poké Balls by hand (at `power`), the chest's Ball Launcher, or the Catch Laser. */
+  fire(dirX: number, dirY: number, dirZ: number, power = 1): boolean {
+    const w = this.chest.weapon;
+    if (w === 'laserGun') return this.fireLaser(dirX, dirY, dirZ);
+    if (w === 'ballGun') return this.throwBall(dirX, dirY, dirZ, GAME.THROW_SPEED * CHEST.GUN.SPEED_MUL, 'launcher');
+    return this.throwBall(dirX, dirY, dirZ, GAME.THROW_SPEED * power);
+  }
+
+  /** The launcher throws faster and connects wider: the slingshot preview and lock-on follow these. */
+  get throwSpeedMul(): number { return this.chest.weapon === 'ballGun' ? CHEST.GUN.SPEED_MUL : 1; }
+  get throwHitMul(): number { return this.chest.weapon === 'ballGun' ? CHEST.GUN.HIT_MUL : 1; }
+
+  /** Throw the selected ball along the look direction — from the bag, or from the Ball Launcher's own magazine
+   *  (which never touches the bag and never starts the restock). Returns false if nothing could be thrown. */
+  throwBall(dirX: number, dirY: number, dirZ: number, speed: number = GAME.THROW_SPEED, source: 'hands' | 'launcher' = 'hands'): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     // companion levels catch at the SURFACE only — underwater, the team does the fighting
     if (!this.catchingAllowed) return false;
     const store = useStore.getState();
     let type = store.hud.ballType;
-    const inv = { ...store.save.inventory };
-    if (inv[type] <= 0) {
-      const alt = BALL_ORDER.find((b) => inv[b] > 0);
-      if (!alt) return false;
-      type = alt; store.setHud({ ballType: alt });
+    const launcher = source === 'launcher';
+    let inv: Record<BallId, number> | null = null;
+    if (launcher) {
+      const mag = this.chest.loot.ballGun;
+      if (!mag) return false;
+      if (mag[type] <= 0 || store.hud.ballMode === 'auto') type = pickBall(this.aimSpecies, mag);
+      if (mag[type] <= 0) { const alt = BALL_ORDER.find((b) => mag[b] > 0); if (!alt) return false; type = alt; }
+      this.chest.consumeGunBall(type);
+      if (type !== store.hud.ballType) store.setHud({ ballType: type });
+    } else {
+      inv = { ...store.save.inventory };
+      if (inv[type] <= 0) {
+        const alt = BALL_ORDER.find((b) => inv![b] > 0);
+        if (!alt) return false;
+        type = alt; store.setHud({ ballType: alt });
+      }
+      inv[type] -= 1;
+      store.setInventory(inv);
     }
-    inv[type] -= 1;
-    store.setInventory(inv);
     store.incBallsThrown();
     this.ballsUsed++;
     const p = this.player;
     // touch throws fly out of the on-screen Poké Ball (low-right) and converge onto the aim ray
     const { origin: [ox, oy, oz], dir: [tdx, tdy, tdz] } = computeThrow(p, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
-    this.balls.throw(type, ox, oy, oz, tdx, tdy + THROW_LIFT, tdz, speed);
-    Audio.throwBall();
+    this.balls.throw(type, ox, oy, oz, tdx, tdy + THROW_LIFT, tdz, speed, launcher ? CHEST.GUN.HIT_MUL : 1);
+    if (launcher) Audio.launcher(); else Audio.throwBall();
     if (store.hud.ballMode === 'pinned') store.setHud({ ballMode: 'auto' }); // a pin lasts one throw
     if (this.tutorial) { if (dirY > 0.3) this.tutObs.threwSky = true; else this.tutObs.threwWater = true; }
     if (this.hintStep === 0) { this.hintStep = 1; this.hintTimer = 0; }
-    const total = BALL_ORDER.reduce((n, b) => n + inv[b], 0);
-    if (total === 0 && !store.save.restoration.endsAt) {
-      const secs = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
-      store.setRestoration(Date.now() + secs * 1000);
-      // No duration in the copy — players discover the longer L3/L4 wait from the countdown itself
-      store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: 'Your supply is being restored — watch the countdown.', ttl: 5 });
+    if (inv) {
+      const total = BALL_ORDER.reduce((n, b) => n + inv![b], 0);
+      if (total === 0 && !store.save.restoration.endsAt) {
+        const base = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
+        const boosted = this.chest.takeTimerCharge(); // an armed Restock Timer pays for this one
+        store.setRestoration(Date.now() + restockFor(base, boosted) * 1000);
+        // No duration in the copy — players discover the longer L3/L4 wait from the countdown itself
+        store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: boosted ? 'Your supply is being restored — the Restock Timer halves the wait.' : 'Your supply is being restored — watch the countdown.', ttl: 5 });
+        if (boosted) this.syncChestHud(); // the banner's ×2 badge reads the snapshot
+      }
     }
+    if (launcher) { this.handleChestEvents(); this.syncChestHud(); }
     return true;
+  }
+
+  /** The first wild the laser's ray crosses within range (bosses, companions and the ferry are never targets). */
+  private laserTarget(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): Entity | null {
+    const eco = this.eco; if (!eco) return null;
+    const L = CHEST.LASER;
+    let hit: Entity | null = null, hitT: number = L.RANGE;
+    for (const e of eco.alive) {
+      if (e.isBoss || e.role === 'partner') continue;
+      const st = e.state;
+      if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark') continue;
+      const ex = e.x - ox, ey = e.y - oy, ez = e.z - oz;
+      const t = ex * dx + ey * dy + ez * dz;
+      if (t <= 0 || t > hitT) continue;
+      const r = e.species.size * 0.5 + L.HIT_PAD;
+      const px = ox + dx * t - e.x, py = oy + dy * t - e.y, pz = oz + dz * t - e.z;
+      if (px * px + py * py + pz * pz <= r * r) { hit = e; hitT = t; }
+    }
+    return hit;
+  }
+
+  /** The chest's Catch Laser: a hitscan along `dir`. Each shot takes 1/N of a wild's HP by its stage, and the
+   *  shot that empties it CAPTURES it (Ecosystem.autoCapture) — collection, mission credit, the works. */
+  private fireLaser(dirX: number, dirY: number, dirZ: number): boolean {
+    const eco = this.eco;
+    if (!this.playing || !eco || this.recoveringT > 0 || !this.catchingAllowed) return false;
+    if (!this.chest.consumeLaser()) { this.handleChestEvents(); return false; }
+    const store = useStore.getState();
+    const { origin: [ox, oy, oz], dir: [dx, dy, dz] } = computeThrow(this.player, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
+    const hit = this.laserTarget(ox, oy, oz, dx, dy, dz);
+    const R = CHEST.LASER.RANGE;
+    const end = hit ? { x: hit.x, y: hit.y, z: hit.z } : { x: ox + dx * R, y: oy + dy * R, z: oz + dz * R };
+    this.pushFx('laser', ox, oy, oz, 1, LOOT.laserGun.color, end);
+    Audio.laser();
+    this.ballsUsed++;
+    if (hit) {
+      const before = hit.hp;
+      eco.damage(hit, laserFraction(hit.species.stage, hit.maxHp), 'laser', -2);
+      this.pushFx('hit', hit.x, hit.y, hit.z, hit.species.size, LOOT.laserGun.color);
+      if (hit.state !== 'caught') this.pushNumber(`-${Math.round(before - hit.hp)}`, LOOT.laserGun.color, hit.x, hit.y + hit.species.size * 0.5, hit.z, false);
+      this.handleEcoEvents(); // the catch, if this was the finishing shot, lands right away
+    }
+    this.handleChestEvents(); this.syncChestHud();
+    return true;
+  }
+
+  /** Loot bar slot `slot` (keys G H J K, or a tap): equip the launcher or the laser, arm the timer, eat a blue heart. */
+  useLoot(slot: number): boolean {
+    if (!this.playing || this.recoveringT > 0 || this.arena || !this.eco) return false;
+    const store = useStore.getState();
+    const id = LOOT_ORDER[slot];
+    const wasArmed = this.chest.timerArmed;
+    const ok = this.chest.use(slot, { lives: this.lives, maxLives: COMBAT.PLAYER_LIVES_MAX, setLives: (n) => { this.lives = n; store.setHud({ lives: n }); this.persistRun(); } });
+    // arming the timer while a restock is already running halves what is left of it — and that is one of its uses
+    if (ok && id === 'timer' && !wasArmed) {
+      const endsAt = store.save.restoration.endsAt;
+      if (endsAt && endsAt > Date.now() && this.chest.takeTimerCharge()) store.setRestoration(Date.now() + (endsAt - Date.now()) * CHEST.TIMER_MUL);
+    }
+    this.handleChestEvents(); this.syncChestHud();
+    return ok;
+  }
+
+  private handleChestEvents() {
+    const evs = this.chest.drainEvents();
+    if (!evs.length) return;
+    const store = useStore.getState(); const c = this.chest.pos;
+    const keyOf = (id: LootId) => LOOT_KEYS[LOOT_ORDER.indexOf(id)];
+    const how = (id: LootId) => (store.isTouch ? 'Tap it in the loot bar' : `Press ${keyOf(id)}`);
+    const p = this.player; const [fx, fy, fz] = p.forward();
+    for (const ev of evs) {
+      switch (ev.type) {
+        case 'unlocked':
+          Audio.uiConfirm();
+          store.pushToast({ kind: 'event', title: 'The treasure chest is unguarded!', body: `Stay on top of it for ${CHEST.DWELL_SECONDS} s, or land ${CHEST.MASTER_HITS} Master Balls on it — the reef will defend it.`, icon: CHEST_ICONS.closed, ttl: 7 });
+          break;
+        case 'hit':
+          Audio.chestHit();
+          if (c) this.pushNumber(`${ev.n} / ${ev.needed}`, '#ffd166', c.x, c.y + 1.2, c.z, false);
+          break;
+        case 'rejected':
+          if (ev.reason === 'open' || this.chestToastT > 0) break;
+          this.chestToastT = 6;
+          store.pushToast(ev.reason === 'locked'
+            ? { kind: 'warn', title: 'The chest is guarded', body: 'Catch the shiny Blastoise and the shiny Feraligatr first.', icon: CHEST_ICONS.closed, ttl: 4 }
+            : { kind: 'info', title: 'Only Master Balls open it', body: `${CHEST.MASTER_HITS} of them — or stay on the chest for ${CHEST.DWELL_SECONDS} s.`, icon: CHEST_ICONS.closed, ttl: 4 });
+          break;
+        case 'opening':
+          Audio.chestOpen();
+          if (c) this.pushFx('catch', c.x, c.y + 0.8, c.z, 1.6);
+          store.pushToast({ kind: 'event', title: ev.how === 'master' ? `${CHEST.MASTER_HITS} Master Balls — the chest opens!` : 'The chest opens!', body: 'Swim to it to take what is inside.', icon: CHEST_ICONS.open, ttl: 5 });
+          break;
+        case 'open': break;
+        case 'looted':
+          Audio.lootPickup();
+          for (const id of ev.loot) store.pushToast({ kind: 'catch', title: `${LOOT[id].name} acquired`, body: `${how(id)} · ${LOOT[id].blurb}`, icon: LOOT[id].icon, ttl: 7 });
+          break;
+        case 'equip':
+          Audio.uiClick();
+          if (ev.weapon === 'hands') store.pushToast({ kind: 'info', title: 'Back to throwing by hand', ttl: 2.5 });
+          else store.pushToast({ kind: 'info', title: `${LOOT[ev.weapon].name} equipped`, icon: LOOT[ev.weapon].icon, ttl: 4,
+            body: ev.weapon === 'ballGun' ? (store.isTouch ? 'Drag the launcher to aim, release to fire' : 'Left click fires · 1–4 still pick the ball') : (store.isTouch ? 'Tap the laser to fire at the crosshair' : 'Left click fires at the crosshair') });
+          break;
+        case 'use':
+          if (ev.id === 'blueHeart') {
+            Audio.restore();
+            this.pushNumber(`+${CHEST.HEART_LIVES} ♥`, '#60a5fa', p.x + fx * 2, p.y + fy * 2 - 0.2, p.z + fz * 2, true);
+            store.pushToast({ kind: 'catch', title: 'Blue Heart', body: `${ev.lives} lifelines now`, icon: LOOT.blueHeart.icon, ttl: 4 });
+          } else if (ev.id === 'timer') {
+            Audio.uiConfirm();
+            store.pushToast({ kind: 'info', title: 'Restock Timer armed', body: `Your next ${CHEST.TIMER_USES} Poké Ball restocks take half as long.`, icon: LOOT.timer.icon, ttl: 4 });
+          }
+          break;
+        case 'blocked':
+          Audio.uiClick();
+          store.pushToast(ev.reason === 'empty'
+            ? { kind: 'warn', title: `No ${LOOT[ev.id].name}`, body: 'Open the treasure chest at the heart of the reef.', icon: LOOT[ev.id].icon, ttl: 3 }
+            : ev.reason === 'maxLives'
+              ? { kind: 'warn', title: 'Lifelines are full', body: `You already have ${COMBAT.PLAYER_LIVES_MAX} — the heart keeps.`, icon: LOOT.blueHeart.icon, ttl: 3 }
+              : { kind: 'info', title: 'Restock Timer already armed', icon: LOOT.timer.icon, ttl: 2.5 });
+          break;
+        case 'weaponEmpty':
+          Audio.uiClick();
+          store.pushToast({ kind: 'info', title: `${LOOT[ev.weapon as LootId].name} is empty`, body: 'Back to throwing by hand.', icon: LOOT[ev.weapon as LootId].icon, ttl: 3 });
+          break;
+      }
+    }
+  }
+
+  /** Publish the chest + loot bar when something about it changed (hud tick, and right after a key press). */
+  private syncChestHud() {
+    const store = useStore.getState();
+    if (this.arena || !this.eco || !this.chest.present) { if (store.hud.chest) store.setHud({ chest: null }); return; }
+    const snap = this.chest.hudSnapshot(this.player, this.eco.chestGuardiansAlive());
+    if (!snap) return;
+    if (snap.nearest) snap.nearest = { distance: Math.round(snap.nearest.distance * 2) / 2, dx: Math.round(snap.nearest.dx * 10) / 10, dz: Math.round(snap.nearest.dz * 10) / 10 };
+    snap.dwell01 = Math.round(snap.dwell01 * 50) / 50;
+    const key = JSON.stringify(snap);
+    if (key === this.chestHudKey) return;
+    this.chestHudKey = key;
+    store.setHud({ chest: snap });
   }
 
   /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. No single hit
    *  takes more than the level's PLAYER_HIT_CAP (a shiny or legendary attacker gets SHINY_MULT× more). */
-  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean; elite?: boolean }) {
+  applyPlayerDamage(amount: number, by?: { name: string; sky: boolean; elite?: boolean; chestFight?: 'guard' | 'swarm' }) {
     if (this.recoveringT > 0 || this.calmT > 0 || this.phase !== 'playing') return;
     const C = COMBAT.PLAYER_HIT_CAP;
-    const cap = Math.round(COMBAT.PLAYER_MAX_HP * (C.FRAC[this.level.id] ?? C.DEFAULT) * (by?.elite ? C.SHINY_MULT : 1));
+    let cap = Math.round(COMBAT.PLAYER_MAX_HP * (C.FRAC[this.level.id] ?? C.DEFAULT) * (by?.elite ? C.SHINY_MULT : 1));
+    if (by?.chestFight) cap = Math.min(cap, Math.round(COMBAT.PLAYER_MAX_HP * CHEST.HIT_CAP[by.chestFight]));
     amount = Math.min(amount, cap);
     this.playerHp = Math.max(0, this.playerHp - amount);
+    { const [fx, fy, fz] = this.player.forward(); this.pushNumber(`-${Math.round(amount)}`, '#ff5a6e', this.player.x + fx * 2, this.player.y + fy * 2 - 0.4, this.player.z + fz * 2, true); } // the number is what actually landed (post-cap)
     // a held Sitrus/Figy is eaten the instant a hit lands under its threshold — including the hit that would have KO'd
     const pinch = this.berries.trainerPinch(this.playerHp, COMBAT.PLAYER_MAX_HP);
     if (pinch > 0) this.playerHp = Math.min(COMBAT.PLAYER_MAX_HP, this.playerHp + pinch);
@@ -654,7 +844,7 @@ export class GameSession {
     this.persistRun();
     store0.pushToast(this.lives === 1
       ? { kind: 'alert', title: 'Last lifeline!', body: `One more fall and Level ${this.level.id} starts over — every catch here undone.`, ttl: 7 }
-      : { kind: 'warn', title: 'Lifeline lost', body: `${this.lives} of ${COMBAT.PLAYER_LIVES} left. Lose them all and this level resets.`, ttl: 6 });
+      : { kind: 'warn', title: 'Lifeline lost', body: `${this.lives} left. Lose them all and this level resets.`, ttl: 6 });
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
@@ -1270,10 +1460,17 @@ export class GameSession {
     this.handleBallEvents();
     this.handleSkyEvents();
     if (!this.arena) { this.berries.update(dt, p, eco, this.activePartnerEntities()); this.handleBerryEvents(); }
+    if (!this.arena && this.chest.present) {
+      this.chest.update(dt, p, eco.chestGuardiansAlive());
+      eco.chestMode = this.chest.state === 'looted' ? 'off' : eco.chestGuardiansAlive() > 0 ? 'guard' : 'swarm';
+      this.handleChestEvents();
+    }
+    if (this.chestToastT > 0) this.chestToastT -= dt;
+    if (this.chestSwarmToastT > 0) this.chestSwarmToastT -= dt;
     this.updateTutorial(dt);
     if (this.arena) this.arenaTick();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); this.updateAttackHot(); this.syncBerryHud(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); this.updateAttackHot(); this.syncBerryHud(); this.syncChestHud(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2 && !this.arena) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20 && !this.arena) { this.saveAcc = 0; this.persistRun(); }
@@ -1368,9 +1565,14 @@ export class GameSession {
     if (!store.isTouch || !aim.active || !eco) { if (store.hud.slingHot) store.setHud({ slingHot: false }); return; }
     const p = this.player;
     const [adx, ady, adz] = aim.armed ? slingDir(p, aim) : p.forward();
-    const power = aim.armed ? aim.power : 1;
+    const power = aim.armed && this.throwSpeedMul === 1 ? aim.power : 1; // the launcher always fires flat out
     const { origin, dir } = computeThrow(p, adx, ady, adz, true, this.handOffsets());
-    const { pts, n } = previewBallPath(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2], GAME.THROW_SPEED * power, { steps: 64, dt: 1 / 30, obstacles: eco.obstacles });
+    if (this.chest.weapon === 'laserGun') { // the laser is a straight line: hot when its ray crosses a wild
+      const hotL = !!this.laserTarget(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2]);
+      if (hotL !== store.hud.slingHot) store.setHud({ slingHot: hotL });
+      return;
+    }
+    const { pts, n } = previewBallPath(origin[0], origin[1], origin[2], dir[0], dir[1], dir[2], GAME.THROW_SPEED * power * this.throwSpeedMul, { steps: 64, dt: 1 / 30, obstacles: eco.obstacles });
     let hot = false;
     for (let i = 0; i < n && !hot; i++) {
       const x = pts[i * 3], y = pts[i * 3 + 1], z = pts[i * 3 + 2];
@@ -1378,7 +1580,7 @@ export class GameSession {
         if (hot) return;
         if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
         if (e.role === 'partner' || e.isBoss) return; // bosses deflect balls: no false confidence
-        const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
+        const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS * this.throwHitMul;
         if (d2 < r * r) hot = true;
       });
       if (!hot && this.sky?.hitTest(x, y, z)) hot = true;
@@ -1412,7 +1614,7 @@ export class GameSession {
     }
     this.aimSpecies = best;
     if (store.hud.ballMode === 'auto') {
-      const desired = pickBall(best, store.save.inventory);
+      const desired = pickBall(best, this.chest.weapon === 'ballGun' && this.chest.loot.ballGun ? this.chest.loot.ballGun : store.save.inventory);
       if (desired !== store.hud.ballType) store.setHud({ ballType: desired }); // silent — no click
     }
   }
@@ -1452,8 +1654,7 @@ export class GameSession {
         }
         case 'playerHit': {
           Audio.playerHurt();
-          const p2 = this.player; const [fx2, fy2, fz2] = p2.forward();
-          this.pushNumber(`-${ev.damage}`, '#ff5a6e', p2.x + fx2 * 2, p2.y + fy2 * 2 - 0.4, p2.z + fz2 * 2, true);
+          const p2 = this.player; const [fx2, fy2, fz2] = p2.forward(); // the damage number itself is pushed by applyPlayerDamage, post-cap
           this.pushFx('hit', p2.x + fx2 * 1.5, p2.y + fy2 * 1.5, p2.z + fz2 * 1.5, 1);
           break;
         }
@@ -1597,8 +1798,16 @@ export class GameSession {
         case 'faint': break;
         case 'autoCaught': {
           const e = eco.byId.get(ev.entityId);
-          this.creditTakedown(ev.entityId);
-          if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, true); }
+          if (ev.by === 'partner') this.creditTakedown(ev.entityId);
+          if (e) { this.pushFx('catch', e.x, e.y, e.z, e.species.size); this.onCaught(e, ev.by === 'partner', ev.by === 'laser'); }
+          break;
+        }
+        case 'chestSwarm': {
+          if (ev.count >= 3 && this.chestSwarmToastT <= 0) {
+            this.chestSwarmToastT = 12;
+            Audio.alarm();
+            store.pushToast({ kind: 'alert', title: 'The reef defends the chest!', body: `${ev.count} Pokémon turn on you — open it fast, or back off.`, icon: CHEST_ICONS.closed, ttl: 5 });
+          }
           break;
         }
         case 'guardianDefends': break;
@@ -1730,6 +1939,7 @@ export class GameSession {
         }
         case 'caught': this.onCaught(ev.entity); break;
         case 'thrown': break;
+        case 'chestHit': this.chest.onChestHit(ev.ballType); this.handleChestEvents(); this.syncChestHud(); break;
         case 'splash': if (ev.entering) Audio.miss(); break; // soft plop on water entry
         case 'skyHit': {
           Audio.ballHit();
@@ -2018,7 +2228,7 @@ export class GameSession {
     }
   }
 
-  private onCaught(e: Entity, byCompanion = false) {
+  private onCaught(e: Entity, byCompanion = false, byLaser = false) {
     const store = useStore.getState();
     this.tutObs.caughtWater++;
     Audio.catchSuccess();
@@ -2038,7 +2248,7 @@ export class GameSession {
       store.setMission(this.mission);
     }
     store.setLastCatch({ speciesId: e.species.id, shiny: e.isShiny, missionTarget, objectiveLabel: label });
-    store.pushToast({ kind: 'catch', title: byCompanion ? `KO! ${tokenLabel(token)} joins your collection` : e.isShiny ? `SHINY! Caught ${e.species.name}!` : `Caught ${e.species.name}!`, body: missionTarget ? label : e.isShiny ? 'A SHINY trophy — it fights for you at double strength' : 'Added to collection · not a mission target', speciesId: e.species.id, shiny: e.isShiny, missionTarget, ttl: e.isShiny ? 6 : 4 });
+    store.pushToast({ kind: 'catch', title: byLaser ? `Lasered! Caught ${e.isShiny ? 'SHINY ' : ''}${e.species.name}!` : byCompanion ? `KO! ${tokenLabel(token)} joins your collection` : e.isShiny ? `SHINY! Caught ${e.species.name}!` : `Caught ${e.species.name}!`, body: missionTarget ? label : e.isShiny ? 'A SHINY trophy — it fights for you at double strength' : 'Added to collection · not a mission target', speciesId: e.species.id, shiny: e.isShiny, missionTarget, ttl: e.isShiny ? 6 : 4 });
     this.persistRun();
     if (this.mission?.complete && this.phase === 'playing') {
       this.phase = 'completing'; this.completeTimer = 1.6;
@@ -2069,6 +2279,7 @@ export class GameSession {
       levelId: this.level.id, seed: this.seed, startedAt: Date.now() - this.elapsed * 1000,
       objectives: this.mission.objectives.map((o) => ({ id: o.id, caught: o.caught, guardianCaught: o.guardianCaught })),
       caught: this.mission.caught, total: this.mission.total, lives: this.lives,
+      chestLooted: this.chest.state === 'looted',
     });
   }
 

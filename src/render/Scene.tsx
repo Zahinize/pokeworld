@@ -17,6 +17,8 @@ import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
 import { FeedCrumbs } from './env/FeedCrumbs';
 import { BerryLayer } from './env/BerryLayer';
+import { ChestLayer } from './env/ChestLayer';
+import { LaserFx } from './fx/LaserFx';
 import { ThrowArc } from './fx/ThrowArc';
 import { CatchConfetti } from './fx/CatchConfetti';
 import { SKY } from '@/data/sky';
@@ -95,7 +97,9 @@ export function Scene() {
         <SkyLifeLayer />
         <FeedCrumbs />
         <BerryLayer />
+        <ChestLayer />
         <ThrowArc />
+        <LaserFx />
         <PokemonShadows />
         <PokemonLayer />
         <PartnerTags />

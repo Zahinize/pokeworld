@@ -193,6 +193,16 @@ class AudioManagerImpl {
   restore() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.3, 0.12, 'triangle', undefined, 0, i * 0.08)); }
   /** Berry pickup: a bright two-note chirp. */
   berryPickup() { this.tone(880, 0.12, 0.1, 'triangle', 1320); this.tone(1320, 0.18, 0.1, 'triangle', 1760, 0, 0.09); }
+  /** The Ball Launcher: a pneumatic thump with a bright release. */
+  launcher() { this.noiseBurst(0.06, 0.22, 500, 0.8); this.tone(180, 0.14, 0.14, 'square', 90); this.tone(1200, 0.08, 0.06, 'triangle', 1800, 0, 0.03); }
+  /** The Catch Laser: a falling zap. */
+  laser() { this.tone(1800, 0.16, 0.12, 'square', 420); this.tone(2600, 0.08, 0.05, 'sawtooth', 900, 0, 0.01); this.noiseBurst(0.05, 0.08, 3200, 2); }
+  /** A ball clanks off the treasure chest. */
+  chestHit() { this.noiseBurst(0.04, 0.18, 2600, 3); this.tone(520, 0.18, 0.1, 'triangle', 300); }
+  /** The chest's lid swings open: a creak under a rising arpeggio. */
+  chestOpen() { this.noiseBurst(0.35, 0.08, 320, 4); [392, 494, 587, 784, 988].forEach((f, i) => this.tone(f, 0.28, 0.1, 'triangle', undefined, 0, 0.12 + i * 0.07)); }
+  /** Loot taken: two bright chimes. */
+  lootPickup() { this.tone(1046, 0.16, 0.1, 'triangle', 1318); this.tone(1568, 0.26, 0.1, 'triangle', 2093, 0, 0.1); }
   /** Eating a berry: two soft crunches over a low munch. */
   berryEat() { this.noiseBurst(0.07, 0.14, 1400, 1.2); this.noiseBurst(0.08, 0.12, 900, 1.0, 0.11); this.tone(260, 0.22, 0.08, 'sine', 180, 0, 0.02); }
 

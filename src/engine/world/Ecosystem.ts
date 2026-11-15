@@ -26,8 +26,9 @@ import { ZONES, zoneAt } from './zones';
 
 function zoneAtSafe(x: number, z: number) { return zoneAt(x, z).id; }
 import { len3 } from '../ai/steering';
+import { CHEST } from '@/data/chest';
 
-export interface DamageInfo { entity: Entity; amount: number; by: 'predator' | 'ball'; sourceId: number }
+export interface DamageInfo { entity: Entity; amount: number; by: 'predator' | 'ball' | 'laser'; sourceId: number }
 
 export class Ecosystem {
   entities: Entity[] = [];
@@ -36,6 +37,12 @@ export class Ecosystem {
   groups: Group[] = [];
   obstacles: Obstacle[];
   events: EcoEvent[] = [];
+  /** The treasure chest (L1/L2, src/data/chest.ts) and its two shiny guardians. */
+  chest: { x: number; y: number; z: number; guardIds: number[] } | null = null;
+  /** guard: the guardians answer anyone near the chest · swarm: guardians gone, the reef defends it · off: looted. */
+  chestMode: 'guard' | 'swarm' | 'off' = 'guard';
+  private chestAcc = 0;
+  private swarmAcc = 0;
   hash = new SpatialHash<Entity>(10);
   time = 0;
   nightness = 0;
@@ -50,6 +57,7 @@ export class Ecosystem {
   /** Sim times of recent wild KOs — the reef's losses drive how fast it refills (COMBAT.KO_PRESSURE). */
   private koTimes: number[] = [];
   private nextPredatorPlayerCastAt = 0;
+  private nextChestPlayerCastAt = 0;
   /** The posse (COMBAT.PREDATOR_HUNT.HUNTERS_MIN): how many predators this level keeps on the trainer. */
   private hunterQuota: number;
   private hpOf: (speciesId: string) => number;
@@ -76,6 +84,7 @@ export class Ecosystem {
     this.hpOf = hpOf;
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
+    if (gen.chest) this.chest = { x: gen.chest.x, y: gen.chest.y, z: gen.chest.z, guardIds: [] };
     this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
     const rngFn = () => this.rng.next();
     this.ctx = {
@@ -86,6 +95,16 @@ export class Ecosystem {
       devour: (p, f) => this.devour(p, f),
       cast: (e, slot, target) => {
         // predators share one cast gap at the trainer (COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP)
+        // the chest's defence has its own, shorter shared gap at the trainer — for EVERY caster around the chest,
+        // schools included (the predators' gap never covered them): a swarm the trainer can still survive
+        // The rule is the TRAINER's: anyone casting at a trainer within SWARM_R of the chest shares it (a hunter sniping
+        // from outside the ring included), and it outlives the loot — a looted chest stops recruiting, nothing more.
+        if (target.kind === 'player' && this.chest && (e.chestGuard || len3(this.player.x - this.chest.x, this.player.y - this.chest.y, this.player.z - this.chest.z) < CHEST.SWARM_R)) {
+          if (this.time < this.nextChestPlayerCastAt) return false;
+          const okC = this.moves.cast(e, slot, target);
+          if (okC) this.nextChestPlayerCastAt = this.time + (this.chestMode === 'guard' ? CHEST.GUARD_CAST_GAP : CHEST.SWARM_CAST_GAP);
+          return okC;
+        }
         const atTrainer = target.kind === 'player' && e.behavior === 'predator';
         if (atTrainer && this.time < this.nextPredatorPlayerCastAt) return false;
         const ok = this.moves.cast(e, slot, target);
@@ -126,6 +145,7 @@ export class Ecosystem {
     // Entities
     const spawnIdToEntity: number[] = [];
     gen.spawns.forEach((sp, i) => { spawnIdToEntity[i] = this.spawn(sp).id; });
+    if (gen.chest && this.chest) this.chest.guardIds = gen.chest.guardSpawnIdx.map((i) => spawnIdToEntity[i]);
     gen.groups.forEach((gs, i) => { if (gs.followsSpawn !== undefined) this.groups[i].followId = spawnIdToEntity[gs.followsSpawn]; });
     for (const g of this.groups) g.initialSize = g.memberIds.length;
   }
@@ -165,7 +185,7 @@ export class Ecosystem {
         : s.id === 'mantine' ? 10 + this.rng.next() * 15   // the first leap comes early
         : 120 + this.rng.next() * 200,
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
-      atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1,
+      atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1, chestGuard: !!sp.chestGuard,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
@@ -195,7 +215,7 @@ export class Ecosystem {
   // Damage / HP
   // ---------------------------------------------------------------------------------------------
 
-  damage(t: Entity, fraction: number, by: 'predator' | 'ball', sourceId: number) {
+  damage(t: Entity, fraction: number, by: 'predator' | 'ball' | 'laser', sourceId: number) {
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed') return;
     const amount = Math.max(1, Math.round(t.maxHp * fraction));
     this.applyDamage(t, amount, by, sourceId);
@@ -285,14 +305,14 @@ export class Ecosystem {
     }
   }
 
-  private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball', sourceId: number) {
+  private applyDamage(t: Entity, amount: number, by: 'predator' | 'ball' | 'laser', sourceId: number) {
     if (t.isBoss && !this.bossesActive) return; // dormant bosses cannot be harmed — challenge them first
     if (t.shelterT > 0) return; // Tatsugiri in Dondozo's mouth: nothing reaches it
     t.hp = Math.max(t.id === this.immortalId ? 1 : 0, t.hp - amount);
     t.hpBarT = GAME.HEALTH_BAR_TTL;
     t.flashT = 0.35;
     // hit recoil: shoved away from whatever hurt it — pain the player can SEE
-    const shover = this.byId.get(sourceId) ?? (by === 'ball' ? this.player : null);
+    const shover = this.byId.get(sourceId) ?? (by !== 'predator' ? this.player : null);
     if (shover && amount > 0 && t.state !== 'caught' && t.state !== 'removed') {
       const dx = t.x - shover.x, dy = t.y - shover.y, dz = t.z - shover.z;
       const d = len3(dx, dy, dz) || 1;
@@ -304,7 +324,8 @@ export class Ecosystem {
     if (amount > 0 && t.hp > 0) this.familyDefend(t, sourceId);   // the Mantine family fights as one
     if (t.hp <= 0) {
       const src = this.byId.get(sourceId);
-      if (src?.role === 'partner' && t.role !== 'partner' && !t.isBoss) { this.autoCapture(t); return; } // a KO by your team is a catch — straight into the roster
+      // a KO by your team is a catch — straight into the roster; the chest's catch laser finishes the same way
+      if ((src?.role === 'partner' || by === 'laser') && t.role !== 'partner' && !t.isBoss) { this.autoCapture(t, by === 'laser' ? 'laser' : 'partner'); return; }
       else this.knockOut(t, by === 'predator' ? sourceId : -1);
     }
     else if (by === 'predator' && t.groupId >= 0) { const g = this.groups[t.groupId]; g.alarm = 1; g.threatId = sourceId; }
@@ -364,7 +385,7 @@ export class Ecosystem {
     if (t.role !== 'partner') { this.koTimes.push(this.time); this.fallen++; } // the reef's losses: the faster they fall, the faster they come back
     const mul = this.respawnMul();
     // Predators KO'd by wild Pokémon (or companions) return to the reef after 2 minutes (less under pressure)
-    if (t.behavior === 'predator') this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone, shiny: t.isShiny });
+    if (t.behavior === 'predator' && !t.chestGuard) this.pendingRespawn.push({ at: this.time + (GAME.PREDATOR_RESPAWN_MS / 1000) * mul, speciesId: t.species.id, zone: t.zone, shiny: t.isShiny });
     // Solo wilds with no school or objective to refill them come back too (never the ferry Lapras)
     else if (t.role !== 'partner' && t.groupId < 0 && !t.objectiveId && t.species.id !== 'lapras') this.pendingRespawn.push({ at: this.time + COMBAT.KO_PRESSURE.SOLO_RESPAWN * mul, speciesId: t.species.id, zone: t.zone });
   }
@@ -405,7 +426,7 @@ export class Ecosystem {
   /** Capture succeeded. */
   capture(e: Entity) {
     e.state = 'caught'; e.stateT = 0; e.animT = 0;
-    if (e.behavior === 'predator') this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: e.species.id, zone: e.zone, shiny: e.isShiny });
+    if (e.behavior === 'predator' && !e.chestGuard) this.pendingRespawn.push({ at: this.time + GAME.PREDATOR_RESPAWN_MS / 1000, speciesId: e.species.id, zone: e.zone, shiny: e.isShiny }); // the chest guardians never return
   }
 
   private remove(e: Entity) {
@@ -481,6 +502,8 @@ export class Ecosystem {
         groupThink(g, ctx, gdt, anyLured);
       }
     }
+
+    this.chestAggro(dt);
 
     // Per-entity think (LOD throttled) + integration
     const px = player.x, py = player.y, pz = player.z;
@@ -777,6 +800,54 @@ export class Ecosystem {
       || st === 'feed' || st === 'lured' || st === 'support' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapRun' || st === 'leapAir') return false;
     const p = this.player;
     return len3(p.x - e.x, p.y - e.y, p.z - e.z) < COMBAT.TRAINER_HOSTILITY.PROXIMITY_R + e.species.size * 0.5;
+  }
+
+  /** The chest's guardians still standing (caught or KO'd ones are gone for good). */
+  chestGuardiansAlive(): number {
+    if (!this.chest) return 0;
+    let n = 0;
+    for (const id of this.chest.guardIds) { const g = this.byId.get(id); if (g && g.state !== 'ko' && g.state !== 'caught' && g.state !== 'removed') n++; }
+    return n;
+  }
+
+  /** The treasure chest's defence (src/data/chest.ts). guard: its guardians answer anyone inside AGGRO_R,
+   *  re-armed every tick so the fight lasts as long as the trainer stays (retaliateThink lunges, casts and
+   *  leashes them back to the chest). swarm: the guardians are gone — every wild within SWARM_R of the chest
+   *  turns on a trainer within SWARM_TRIGGER_R, a staggered ripple every SWARM_PERIOD. off: looted. */
+  private chestAggro(dt: number) {
+    const c = this.chest;
+    if (!c || this.chestMode === 'off') return;
+    this.chestAcc += dt;
+    if (this.chestAcc < 0.5) return;
+    const tick = this.chestAcc; this.chestAcc = 0;
+    const p = this.player;
+    const d = len3(p.x - c.x, p.y - c.y, p.z - c.z);
+    if (this.chestMode === 'guard') {
+      if (d > CHEST.AGGRO_R) return;
+      for (const id of c.guardIds) {
+        const g = this.byId.get(id);
+        if (!g || g.lured) continue;
+        const st = g.state;
+        if (st === 'retaliate' || st === 'captureAttempt' || st === 'ko' || st === 'caught' || st === 'removed' || st === 'duel') continue;
+        g.state = 'retaliate'; g.stateT = 0; g.retaliateTarget = -2; g.nextThink = this.time;
+      }
+      return;
+    }
+    this.swarmAcc += tick;
+    if (d > CHEST.SWARM_TRIGGER_R || this.swarmAcc < CHEST.SWARM_PERIOD) return;
+    this.swarmAcc = 0;
+    let n = 0;
+    const R2 = CHEST.SWARM_R * CHEST.SWARM_R;
+    this.hash.query(c.x, c.y, c.z, CHEST.SWARM_R, (m, d2) => {
+      if (d2 > R2 || m.role === 'partner' || m.isBoss || m === this.ctx.ferry || m.id === this.immortalId || m.lured || m.rideK > 0 || m.aboardT > 0 || m.leapWith >= 0) return;
+      const st = m.state;
+      if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'retaliate' || st === 'duel' || st === 'faint'
+        || st === 'leapRun' || st === 'leapAir' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark') return;
+      m.state = 'retaliate'; m.stateT = 0; m.retaliateTarget = -2; m.nextThink = this.time + n * CHEST.SWARM_STAGGER;
+      m.vx *= 0.3; m.vy *= 0.3; m.vz *= 0.3;
+      n++;
+    });
+    if (n > 0) this.events.push({ type: 'chestSwarm', count: n });
   }
 
   /** How far the reef's recent losses have pushed it: 0 calm … 1 under siege (COMBAT.KO_PRESSURE). */
@@ -1561,11 +1632,11 @@ export class Ecosystem {
   }
 
   /** Wild KO'd by a companion: automatically caught — joins the roster (and the mission, if a target). */
-  private autoCapture(t: Entity) {
+  private autoCapture(t: Entity, by: 'partner' | 'laser' = 'partner') {
     if (t.duelWith !== -1) { const partner = this.byId.get(t.duelWith); if (partner) this.endDuel(partner, 'faint'); }
     t.hp = 1;
     this.capture(t); // handles removal + predator respawn scheduling
-    this.events.push({ type: 'autoCaught', entityId: t.id, speciesId: t.species.id });
+    this.events.push({ type: 'autoCaught', entityId: t.id, speciesId: t.species.id, by });
   }
 
   /** Random safe spot for a downed player: mid-depth, in bounds, ≥ minDist from every predator. */

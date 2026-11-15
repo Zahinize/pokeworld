@@ -557,6 +557,71 @@ follows the respawn. Nothing is persisted; a resumed run starts a fresh batch.
 
 ---
 
+## 8b. The treasure chest — a guarded loot cache at the heart of the reef (L1/L2)
+
+Berries buy time once the Poké Balls run out; the chest buys *catches*. One chest per solo dive rests at
+the coral centre (the world origin: the "heart of the reef"), jittered a few metres, never within 24 m of
+the trainer's start (L1 starts in that zone; L2 starts 80 m away in the open reef). Two of the level's
+schools are re-anchored 12–16 m from it on the far side from the start (just past the 7 m proximity rule for
+a trainer on the chest), so the chest is always in company.
+No chest in L3/L4.
+
+### Guardians
+- A **shiny Blastoise and a shiny Feraligatr** (`CHEST.GUARDIANS`) patrol the chest, each in its own
+  memberless `chestGuard` group anchored on it (so `guardianThink` gives them orbit, leash and watch for
+  free). No entourage — Feraligatr's Totodile court would muddle "catch both". They never respawn
+  (`Entity.chestGuard` skips the predator respawn queue in `knockOut`/`capture`), do not count toward
+  the level's two shiny pack leads, and do not intercept passing predators (they guard the chest, not the
+  reef — otherwise two shinies thinned the posse and blew the sim's predator-pressure budget).
+- **Aggro**: while either guardian stands, a trainer within `AGGRO_R` (15 m) of the chest is attacked —
+  `Ecosystem.chestAggro` re-arms both into `retaliate` every half second, so the fight lasts as long as
+  the trainer stays; `retaliateThink` lunges, casts and leashes them back. The leash is
+  `GUARD_RADIUS + GUARDIAN_LEASH = AGGRO_R` (a check enforces it) so they do not ping-pong at the edge.
+- **Unlock**: both guardians caught (solo levels catch anywhere, so a Master Ball or a patient Ultra Ball
+  does it; the laser is inside the chest, so it cannot help here). Then the reef takes over: while the trainer is within `SWARM_TRIGGER_R` (12 m), every non-boss wild within `SWARM_R`
+  (25 m) of the chest turns on them in a staggered ripple every 2.5 s (`chestSwarm` event → "The reef
+  defends the chest!"). The swarm stops recruiting once the chest is looted.
+- **Pacing — the chest's own rules** (`CHEST.GUARD_CAST_GAP` 2.5 s, `SWARM_CAST_GAP` 1.5 s, `HIT_CAP`
+  guard 15 % / swarm 12 %): whoever casts at a trainer within `SWARM_R` of the chest — guardians, schools,
+  a hunter sniping from outside the ring — shares ONE gap and a lower per-hit cap, keyed off the *trainer's*
+  distance to the chest, and it outlives the loot. Without it two shinies at 38 a hit killed in six seconds
+  and the schools (which the predators' 4 s gap never covered) landed 17 hits in four. Measured: the guarded
+  approach costs ~15 HP per 2.5 s; an 8 s dwell under the swarm costs ~60 HP from full — a fight, not a wall.
+  The floating damage number now shows the post-cap amount.
+
+### Opening (`ChestSystem`, store-free, covered in `npm run sim`)
+`locked → unlocked → opening → open → looted`. Two ways to open an unlocked chest:
+1. **Dwell**: stay inside a column 3 m wide and 4 m tall above the chest for **8 s** (a gold ring with a
+   countdown sits on the crosshair). Drifting off drains progress at 0.5 s/s rather than resetting it.
+2. **Five Master Balls**: the chest is an obstacle sphere, so balls bounce off it; `BallSystem` emits
+   `chestHit` once per ball and only Master Balls on an unlocked chest count ("3 / 5" floats up). Other
+   balls and a locked chest are rejected with a toast. Hits persist for the dive.
+Opening plays the lid animation (`ChestLayer`, 0.8 s, hinged at the back) with a sparkle burst, a gold
+pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everything at once**.
+
+### Loot (random **two of four**, keys **G H J K**, loot bar above the berry bar)
+| Key | Item | Effect |
+|---|---|---|
+| G | **Ball Launcher** | Its own magazine 10 Poké · 5 Great · 4 Ultra · 3 Master. Fires at **2× speed** (≈ 2× range under the exponential drag) with a **2× hit radius**. Never touches the bag, never starts the restock. Auto/pinned ball choice reads the magazine while equipped. |
+| H | **Catch Laser** | 15 hitscan rounds, 45 m. Each shot takes 1/N of max HP by evolution stage (N = 1/2/3, `laserFraction` rounds up so N shots always finish). The finishing shot **captures** (`Ecosystem.autoCapture`, `by: 'laser'`): collection, mission credit, "Lasered! Caught X". Bosses, companions and the ferry are immune. |
+| J | **Restock Timer** | Arms; the next **two** restocks take half as long (60 → 30 s, 75 → 37.5 s). Arming during a restock halves what is left and counts as one use. |
+| K | **Blue Heart** | **+2 lifelines**, up to `PLAYER_LIVES_MAX` (6); refused (and kept) at the cap. The hearts row grows past four. |
+
+- G/H **toggle** the weapon (`session.fire` dispatches hands / launcher / laser); pressing the equipped
+  key puts it away, and an empty weapon drops back to hands on its own. Desktop: left click fires; a
+  **weapon panel** to the right of the ball chip shows the magazine or rounds. Touch: the launcher takes
+  the slingshot's place (same drag-to-aim, always full power); the laser fires at the crosshair the
+  moment it is touched. The lock-on (`slingHot`) follows the launcher's speed/radius or the laser's ray.
+- Loot **survives heart losses** within the dive (unlike berries). Only `chestLooted` is persisted on
+  the run, so a resumed run finds the chest open and bare with its guardians gone; the loot itself is not.
+- Code: `data/chest.ts` (rules, loot table, keys), `engine/ecosystem/generator.ts` (placement, near-chest
+  schools, guardians, the obstacle clearing), `engine/world/Ecosystem.ts` (`chestAggro`, cast-gap bypass,
+  laser capture), `engine/sim/chest.ts` (`ChestSystem`), `engine/sim/balls.ts` (`chestHit`, `hitMul`),
+  `GameSession.fire/throwBall/fireLaser/useLoot/handleChestEvents/syncChestHud`, `render/env/ChestLayer.tsx`,
+  `render/fx/LaserFx.tsx`, `scripts/lootIcons.mjs` (the 32×32 icons, `npm run icons:loot`).
+
+---
+
 
 ## 9. Companions, duels, and the L3/L4 boss arc
 
@@ -710,6 +775,10 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
   safe areas.
 - **Berry bar + berry pointer** (§8a): the five-slot bar sits in the same bottom-centre column as the ball
   chip / companion cards; the smaller green pointer to a berry lives above the crosshair.
+- **Loot bar, weapon panel, chest pointer** (§8b): the four-slot loot bar stacks above the berry bar;
+  the equipped weapon's panel hangs off the right of the ball chip (desktop); a gold chest pointer lives
+  above the berry label and the 8 s dwell ring counts down on the crosshair. On touch the launcher/laser
+  replace the slingshot button. The lifelines row grows to six for blue hearts.
 
 ---
 

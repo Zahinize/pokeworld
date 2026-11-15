@@ -43,4 +43,4 @@ export function floorY(x: number, z: number): number {
 }
 
 /** Static obstacle spheres (rock outcrops, cave walls) that both AI and balls avoid. */
-export interface Obstacle { x: number; y: number; z: number; r: number; kind: 'rock' | 'coral' | 'cave' }
+export interface Obstacle { x: number; y: number; z: number; r: number; kind: 'rock' | 'coral' | 'cave' | 'chest' }

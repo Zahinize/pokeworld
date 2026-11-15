@@ -22,6 +22,8 @@ export interface CurrentRun {
   total: number;
   /** Lifelines left in this run (COMBAT.PLAYER_LIVES at the start). */
   lives: number;
+  /** The treasure chest was emptied (L1/L2): a resumed run finds it open and bare. */
+  chestLooted?: boolean;
 }
 
 export interface Settings {

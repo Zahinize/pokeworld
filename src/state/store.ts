@@ -8,6 +8,7 @@ import { BALLS, BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import { loadGame, saveGame, resetGame, type SaveData, type CollectionEntry, type Settings, type CurrentRun } from '@/persistence';
 import type { MissionState } from '@/engine/sim/mission';
 import type { BerryHudSnapshot } from '@/engine/sim/berries';
+import type { ChestHudSnapshot } from '@/engine/sim/chest';
 import { SPECIES } from '@/data/species';
 
 export type Screen = 'loading' | 'start' | 'login' | 'worlds' | 'leaderboard' | 'trainer' | 'defeat' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings' | 'arena';
@@ -73,6 +74,8 @@ export interface HudState {
   ecoSummary: string[];
   /** The berry bar: this heart's bag, held berries, running effects and the nearest floor berry (null outside a dive). */
   berries: BerryHudSnapshot | null;
+  /** The treasure chest (L1/L2): state, dwell progress, Master Ball hits, pointer, the loot bar and the equipped weapon. */
+  chest: ChestHudSnapshot | null;
 }
 
 interface AppState {
@@ -131,7 +134,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [], berries: null },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [], berries: null, chest: null },
   toasts: [],
   lastCatch: null,
   completeStats: null,

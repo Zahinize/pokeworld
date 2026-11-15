@@ -1029,6 +1029,245 @@ for (const levelId of [1, 2]) {
   }
 }
 
+// ---- Treasure chest: placement, guardians, swarm, opening, loot, launcher, laser, timer, hearts ----
+{
+  const { ChestSystem } = await import('@/engine/sim/chest');
+  const { CHEST, LOOT_ORDER, laserFraction, laserShotsFor, restockFor, heartLives } = await import('@/data/chest');
+  const { ZONES } = await import('@/engine/world/zones');
+  const { COMBAT } = await import('@/data/combatConfig');
+  const { GAME } = await import('@/data/gameConfig');
+  const { BallSystem } = await import('@/engine/sim/balls');
+  const { createMission, applyCatch } = await import('@/engine/sim/mission');
+  const step = (eco: Ecosystem, p: any, secs: number, each?: () => void) => { for (let i = 0; i < Math.round(secs * 60); i++) { eco.update(1 / 60, p, 0); each?.(); } };
+  const mkP = (x: number, y: number, z: number) => ({ x, y, z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false });
+
+  // 1. placement over 12 seeds × L1/L2
+  {
+    const bad: string[] = [];
+    let n = 0;
+    for (const lid of [1, 2]) for (let seed = 1; seed <= 12; seed++) {
+      const gen = generateEcosystem(getLevel(lid), seed);
+      const c = gen.chest;
+      if (!c) { bad.push(`L${lid} s${seed}: no chest`); continue; }
+      n++;
+      const ds = Math.hypot(c.x - gen.playerStart.x, c.z - gen.playerStart.z);
+      if (ds < CHEST.MIN_FROM_START - 0.01) bad.push(`L${lid} s${seed}: chest ${ds.toFixed(1)}m from the start`);
+      if (Math.hypot(c.x - ZONES.coral.cx, c.z - ZONES.coral.cz) > ZONES.coral.radius * 0.8 + 0.01) bad.push(`L${lid} s${seed}: chest outside the coral heart`);
+      const lift = c.y - floorY(c.x, c.z); if (lift < 0.3 || lift > 1) bad.push(`L${lid} s${seed}: chest ${lift.toFixed(2)}m off the sand`);
+      if (c.schoolGroupIdx.length !== 2) bad.push(`L${lid} s${seed}: ${c.schoolGroupIdx.length} groups around the chest`);
+      for (const gi of c.schoolGroupIdx) { const g = gen.groups[gi]; const d = Math.hypot(g.anchor.x - c.x, g.anchor.z - c.z); if (d > CHEST.SCHOOL_RING[1] + 2) bad.push(`L${lid} s${seed}: group ${gi} ${d.toFixed(1)}m from the chest`); }
+      const guards = gen.spawns.filter((s) => s.chestGuard);
+      if (guards.length !== 2 || c.guardSpawnIdx.length !== 2) bad.push(`L${lid} s${seed}: ${guards.length} guardians`);
+      for (const g of guards) {
+        if (!g.shiny || g.role !== 'guardian') bad.push(`L${lid} s${seed}: ${g.speciesId} guardian not a shiny guardian`);
+        const d = Math.hypot(g.pos.x - c.x, g.pos.z - c.z); if (d > CHEST.GUARD_RADIUS + 3) bad.push(`L${lid} s${seed}: ${g.speciesId} ${d.toFixed(1)}m from the chest`);
+        if (Math.hypot(g.pos.x - gen.playerStart.x, g.pos.z - gen.playerStart.z) < GAME.PLAYER_START_CLEAR) bad.push(`L${lid} s${seed}: ${g.speciesId} inside the start clearing`);
+      }
+      if (new Set(guards.map((g) => g.speciesId)).size !== 2 || !guards.every((g) => CHEST.GUARDIANS.includes(g.speciesId))) bad.push(`L${lid} s${seed}: guardians are ${guards.map((g) => g.speciesId).join('+')}`);
+      const chests = gen.obstacles.filter((o) => o.kind === 'chest');
+      if (chests.length !== 1) bad.push(`L${lid} s${seed}: ${chests.length} chest obstacles`);
+      for (const o of gen.obstacles) if (o.kind !== 'chest' && Math.hypot(o.x - c.x, o.z - c.z) < CHEST.OBSTACLE_CLEAR_R) bad.push(`L${lid} s${seed}: a ${o.kind} ${Math.hypot(o.x - c.x, o.z - c.z).toFixed(1)}m from the chest`);
+      const packShinies = gen.spawns.filter((s) => s.shiny && !s.chestGuard).length;
+      if (packShinies !== COMBAT.PREDATOR_HUNT.SHINY_PER_LEVEL) bad.push(`L${lid} s${seed}: ${packShinies} shiny pack leads`);
+    }
+    for (const lid of [3, 4]) { const gen = generateEcosystem(getLevel(lid), 5); if (gen.chest || gen.obstacles.some((o) => o.kind === 'chest') || gen.spawns.some((s) => s.chestGuard)) bad.push(`L${lid}: has a chest`); }
+    if (bad.length === 0) ok(`chest: ${n} dives — the chest sits in the coral heart ≥ ${CHEST.MIN_FROM_START}m from the start, two schools and two shiny guardians around it, a clearing in the rocks; none in L3/L4`);
+    else fail(`chest: placement problems — ${bad.slice(0, 4).join('; ')}${bad.length > 4 ? ` (+${bad.length - 4})` : ''}`);
+  }
+
+  // 2. the guardians answer a trainer inside AGGRO_R, continuously, and leash back; nothing at 30 m; dwell does nothing while they live
+  {
+    const gen = generateEcosystem(getLevel(1), 3);
+    const eco = new Ecosystem(gen, hp);
+    const c = eco.chest!;
+    const guards = c.guardIds.map((id) => eco.byId.get(id)!);
+    const near = mkP(c.x + 10, c.y + 1, c.z);
+    let seenRetaliate = new Set<number>(), casts = 0, maxLeash = 0;
+    step(eco, near, 6, () => {
+      for (const ev of eco.drainEvents()) if (ev.type === 'cast' && c.guardIds.includes(ev.casterId)) casts++;
+      for (const g of guards) { if (g.state === 'retaliate' && g.retaliateTarget === -2) seenRetaliate.add(g.id); maxLeash = Math.max(maxLeash, Math.hypot(g.x - c.x, g.z - c.z)); }
+    });
+    if (seenRetaliate.size === 2 && casts >= 1) ok(`chest: both guardians turn on a trainer 10 m from the chest (${casts} casts in 6 s, furthest ${maxLeash.toFixed(1)}m from the chest)`);
+    else fail(`chest: guardians did not defend (retaliating ${seenRetaliate.size}/2, casts ${casts})`);
+    if (maxLeash <= CHEST.AGGRO_R + 6) ok('chest: the guardians stay leashed to the chest'); else fail(`chest: a guardian strayed ${maxLeash.toFixed(1)}m from the chest`);
+    // far away: nothing
+    const eco2 = new Ecosystem(generateEcosystem(getLevel(1), 3), hp);
+    const c2 = eco2.chest!;
+    const far = mkP(c2.x + 30, c2.y + 1, c2.z);
+    let farRetaliate = 0;
+    step(eco2, far, 10, () => { for (const id of c2.guardIds) { const g = eco2.byId.get(id)!; if (g.state === 'retaliate' && g.retaliateTarget === -2) farRetaliate++; } });
+    if (farRetaliate === 0) ok('chest: at 30 m the guardians leave the trainer alone'); else fail(`chest: guardians retaliated at 30 m (${farRetaliate} samples)`);
+    // dwelling while a guardian lives: locked, no progress
+    const cs = new ChestSystem({ x: c.x, y: c.y, z: c.z }, new RNG(7));
+    const onTop = mkP(c.x, c.y + 1, c.z);
+    for (let i = 0; i < 60 * 9; i++) cs.update(1 / 60, onTop, 2);
+    if (cs.state === 'locked' && cs.dwell === 0) ok('chest: dwelling on a guarded chest does nothing'); else fail(`chest: guarded chest state ${cs.state}, dwell ${cs.dwell.toFixed(1)}`);
+  }
+
+  // 3. the laser finishes both guardians → caught (not KO), no respawn queued, the chest unlocks
+  // 4. the swarm: guardians gone, every wild around the chest turns on a trainer who comes close
+  {
+    const gen = generateEcosystem(getLevel(1), 4);
+    const eco = new Ecosystem(gen, hp);
+    const c = eco.chest!;
+    const p = mkP(c.x + 5, c.y + 1, c.z);
+    eco.update(1 / 60, p, 0); eco.drainEvents();
+    let autoLaser = 0, kos = 0;
+    for (const id of c.guardIds) {
+      const g = eco.byId.get(id)!;
+      let shots = 0;
+      while (g.state !== 'caught' && shots < 10) { eco.damage(g, laserFraction(g.species.stage, g.maxHp), 'laser', -2); shots++; }
+      if (shots !== laserShotsFor(g.species.stage)) fail(`chest: ${g.species.name} (stage ${g.species.stage}) took ${shots} laser shots`);
+    }
+    for (const ev of eco.drainEvents()) { if (ev.type === 'autoCaught' && ev.by === 'laser') autoLaser++; if (ev.type === 'ko') kos++; }
+    const pend = (eco as any).pendingRespawn as { speciesId: string }[];
+    const guardRespawns = pend.filter((r) => CHEST.GUARDIANS.includes(r.speciesId)).length;
+    if (autoLaser === 2 && kos === 0 && guardRespawns === 0 && eco.chestGuardiansAlive() === 0) ok('chest: the laser CATCHES both shiny guardians (no KO, no respawn) and the chest counts them gone');
+    else fail(`chest: guardian finish wrong (autoCaught ${autoLaser}, ko ${kos}, respawns ${guardRespawns}, alive ${eco.chestGuardiansAlive()})`);
+    const cs = new ChestSystem({ x: c.x, y: c.y, z: c.z }, new RNG(1));
+    cs.update(1 / 60, p, eco.chestGuardiansAlive());
+    if (cs.state === 'unlocked' && cs.drainEvents().some((e) => e.type === 'unlocked')) ok('chest: unlocks once both guardians are gone'); else fail(`chest: state after guardians gone ${cs.state}`);
+    // swarm
+    eco.chestMode = 'swarm';
+    const swarmers = new Set<number>(); let swarmEvents = 0, biggest = 0; const hitters = new Set<number>(); const hitTimes: number[] = []; let t = 0;
+    step(eco, p, 10, () => {
+      t += 1 / 60;
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'chestSwarm') { swarmEvents++; biggest = Math.max(biggest, ev.count); }
+        if (ev.type === 'playerHit') { hitters.add(ev.casterId); hitTimes.push(t); }
+      }
+      for (const e of eco.alive) if (e.state === 'retaliate' && e.retaliateTarget === -2 && !e.chestGuard) swarmers.add(e.id);
+    });
+    let burst = 0; for (let i = 0; i < hitTimes.length; i++) { let n = 0; for (let j = i; j < hitTimes.length && hitTimes[j] - hitTimes[i] <= 4; j++) n++; burst = Math.max(burst, n); }
+    if (swarmEvents >= 1 && biggest >= 3 && swarmers.size >= 3) ok(`chest: the reef swarms a trainer at the unguarded chest (${swarmers.size} wilds turned, biggest ripple ${biggest}, ${swarmEvents} ripples in 10 s)`);
+    else fail(`chest: swarm weak (ripples ${swarmEvents}, biggest ${biggest}, wilds ${swarmers.size})`);
+    if (hitters.size >= 2 && burst >= 2) ok(`chest: ${hitters.size} different Pokémon landed hits, up to ${burst} inside 4 s (one shared ${CHEST.SWARM_CAST_GAP} s gap for the whole swarm)`);
+    else fail(`chest: swarm hits (${hitters.size} hitters, ${burst} in any 4 s window)`);
+    // looted → off: nobody turns
+    eco.chestMode = 'off';
+    for (const e of eco.alive) if (e.state === 'retaliate') { e.state = 'wander'; e.stateT = 0; }
+    let after = 0; step(eco, p, 4, () => { for (const ev of eco.drainEvents()) if (ev.type === 'chestSwarm') after++; });
+    if (after === 0) ok('chest: a looted chest is left alone'); else fail(`chest: ${after} swarm ripples after looting`);
+  }
+
+  // 5. dwell opening with decay · 6. Master Balls · 7. loot rolls
+  {
+    const pos = { x: 0, y: -20, z: 0 };
+    const mk = () => { const cs = new ChestSystem({ ...pos }, new RNG(3)); cs.update(1 / 60, mkP(50, -20, 50), 0); cs.drainEvents(); return cs; };
+    const run = (cs: InstanceType<typeof ChestSystem>, secs: number, inside: boolean) => { const p = inside ? mkP(0.5, -19, 0.5) : mkP(9, -19, 0); for (let i = 0; i < Math.round(secs * 60); i++) cs.update(1 / 60, p, 0); };
+    const a = mk(); run(a, CHEST.DWELL_SECONDS + 0.05, true);
+    const openingAt = a.state; run(a, CHEST.OPEN_ANIM + 0.05, false);
+    if (openingAt === 'opening' && a.state === 'open') ok(`chest: ${CHEST.DWELL_SECONDS}s on top opens it (lid ${CHEST.OPEN_ANIM}s)`); else fail(`chest: dwell → ${openingAt} → ${a.state}`);
+    const b = mk(); run(b, 5, true); run(b, 2, false); run(b, 2.9, true);
+    const c = mk(); run(c, 5, true); run(c, 1, false); run(c, 3.6, true);
+    if (b.state === 'unlocked' && c.state === 'opening') ok('chest: drifting off drains the dwell slowly (5+2off+2.9 stays shut, 5+1off+3.6 opens)'); else fail(`chest: decay — b ${b.state} (${b.dwell.toFixed(2)}), c ${c.state}`);
+    // auto-collect
+    run(a, 0.1, true);
+    const looted = a.drainEvents().find((e) => e.type === 'looted') as any;
+    if (a.state === 'looted' && looted && looted.loot.length === CHEST.LOOT_PER_CHEST) ok(`chest: reaching the open chest collects ${looted.loot.join(' + ')}`); else fail(`chest: collect — ${a.state}`);
+    // master balls
+    const m = mk();
+    const locked = new ChestSystem({ ...pos }, new RNG(1)); locked.onChestHit('masterball');
+    for (let i = 0; i < CHEST.MASTER_HITS - 1; i++) m.onChestHit('masterball');
+    const fourState = m.state, fourHits = m.hits;
+    m.onChestHit('greatball');
+    const rejected = m.drainEvents().some((e) => e.type === 'rejected' && e.reason === 'notMaster');
+    m.onChestHit('masterball');
+    if (fourState === 'unlocked' && fourHits === CHEST.MASTER_HITS - 1 && rejected && m.state === 'opening' && locked.state === 'locked' && locked.drainEvents().some((e) => e.type === 'rejected' && e.reason === 'locked'))
+      ok(`chest: ${CHEST.MASTER_HITS - 1} Master Balls leave it shut, the ${CHEST.MASTER_HITS}th opens it; other balls and a locked chest are rejected`);
+    else fail(`chest: master balls — after 4: ${fourState}/${fourHits}, rejected ${rejected}, after 5: ${m.state}, locked ${locked.state}`);
+    // a real ball rings the chest obstacle once
+    const gen = generateEcosystem(getLevel(1), 2);
+    const eco = new Ecosystem(gen, hp);
+    const ch = eco.chest!;
+    const balls = new BallSystem();
+    const ox = ch.x - 5, oy = ch.y + 0.6, oz = ch.z;
+    const dx = ch.x - ox, dy = ch.y - oy, dz = ch.z - oz, L = Math.hypot(dx, dy, dz);
+    balls.throw('masterball', ox, oy, oz, dx / L, dy / L, dz / L, GAME.THROW_SPEED);
+    balls.throw('pokeball', ox, oy + 6, oz, 0, 1, 0, GAME.THROW_SPEED); // straight up: never touches it
+    let rings = 0; for (let i = 0; i < 60 * 3; i++) { balls.update(1 / 60, eco as any, null as any); for (const ev of balls.drainEvents()) if (ev.type === 'chestHit' && ev.ballType === 'masterball') rings++; }
+    if (rings === 1) ok('chest: a ball thrown at the chest rings it exactly once; one thrown elsewhere never does'); else fail(`chest: ${rings} chestHit events`);
+    // loot rolls
+    const seen = new Map<string, number>(); let badRoll = 0;
+    const roller = new ChestSystem({ ...pos }, new RNG(99));
+    for (let i = 0; i < 200; i++) { const l = roller.rollLoot(); if (l.length !== CHEST.LOOT_PER_CHEST || new Set(l).size !== l.length) badRoll++; for (const id of l) seen.set(id, (seen.get(id) ?? 0) + 1); }
+    if (badRoll === 0 && LOOT_ORDER.every((id) => (seen.get(id) ?? 0) > 20)) ok(`chest: 200 rolls → always ${CHEST.LOOT_PER_CHEST} distinct items (${LOOT_ORDER.map((id) => `${id} ${seen.get(id)}`).join(', ')})`); else fail(`chest: loot rolls (bad ${badRoll}, ${JSON.stringify([...seen])})`);
+  }
+
+  // 8. the ball launcher: 2× speed carries ≈ 2× as far; 2× hit radius
+  {
+    const ecoStub = { hash: { query() {} }, obstacles: [], byId: new Map() } as any;
+    const reach = (speed: number) => { const bs = new BallSystem(); const b = bs.throw('pokeball', 0, -6, 0, 0.94, 0.34, 0, speed); for (let i = 0; i < 60 * 12 && b.state === 'flying'; i++) bs.update(1 / 60, ecoStub, null as any); return Math.hypot(b.x, b.z); };
+    const r1 = reach(GAME.THROW_SPEED), r2 = reach(GAME.THROW_SPEED * CHEST.GUN.SPEED_MUL);
+    if (r2 >= r1 * 1.8) ok(`launcher: ${r1.toFixed(0)}m by hand → ${r2.toFixed(0)}m from the launcher (×${(r2 / r1).toFixed(2)})`); else fail(`launcher: range only ×${(r2 / r1).toFixed(2)} (${r1.toFixed(1)} → ${r2.toFixed(1)})`);
+    const gen = generateEcosystem(getLevel(1), 6);
+    const eco = new Ecosystem(gen, hp);
+    const tgt = eco.alive.find((e) => e.role === 'member' && e.species.stage === 0)!;
+    tgt.x = 100; tgt.y = -8; tgt.z = 100; tgt.vx = tgt.vy = tgt.vz = 0;
+    eco.update(1 / 60, mkP(0, -8, 0), 0); eco.drainEvents();
+    const tryPass = (lateral: number, hitMul: number) => {
+      const bs = new BallSystem();
+      const b = bs.throw('pokeball', tgt.x - 3, tgt.y, tgt.z + lateral, 1, 0, 0, 20, hitMul);
+      for (let i = 0; i < 60 && b.state === 'flying'; i++) bs.update(1 / 60, eco as any, null as any);
+      return bs.drainEvents().some((ev) => ev.type === 'hit');
+    };
+    const inner = tgt.species.size * 0.48 + GAME.BALL_HIT_RADIUS * CHEST.GUN.HIT_MUL;
+    const hitWide = tryPass(inner - 0.1, CHEST.GUN.HIT_MUL), missWide = tryPass(inner + 0.15, CHEST.GUN.HIT_MUL), handMiss = tryPass(inner - 0.1, 1);
+    if (hitWide && !missWide && !handMiss) ok(`launcher: hit radius doubles (a ${(inner - 0.1).toFixed(2)}m near-miss by hand connects from the launcher)`); else fail(`launcher: hit radius (wide hit ${hitWide}, wide miss ${missWide}, hand ${handMiss})`);
+  }
+
+  // 9. the catch laser: stage 0/1/2 fall in 1/2/3 shots, caught not KO'd, mission credit
+  {
+    const gen = generateEcosystem(getLevel(1), 8);
+    const eco = new Ecosystem(gen, hp);
+    const mission = createMission(1, 8, gen.objectives);
+    eco.update(1 / 60, mkP(0, -8, 0), 0); eco.drainEvents();
+    const bad: string[] = [];
+    for (const stage of [0, 1, 2]) {
+      const e = eco.alive.find((x) => x.species.stage === stage && !x.isBoss && x.state !== 'caught' && x.role !== 'guardian' && x.species.id !== 'lapras');
+      if (!e) { bad.push(`no stage-${stage} wild`); continue; }
+      let shots = 0;
+      while (e.state !== 'caught' && shots < 10) { eco.damage(e, laserFraction(stage, e.maxHp), 'laser', -2); shots++; }
+      const evs = eco.drainEvents();
+      if (shots !== laserShotsFor(stage) || e.state !== 'caught') bad.push(`stage ${stage} ${e.species.name}: ${shots} shots → ${e.state}`);
+      if (!evs.some((ev) => ev.type === 'autoCaught' && ev.by === 'laser') || evs.some((ev) => ev.type === 'ko')) bad.push(`stage ${stage}: events ${evs.map((ev) => ev.type).join(',')}`);
+    }
+    const member = eco.alive.find((x) => x.objectiveId?.startsWith('school') && x.role === 'member' && x.state !== 'caught')!;
+    while (member.state !== 'caught') eco.damage(member, laserFraction(member.species.stage, member.maxHp), 'laser', -2);
+    const out = applyCatch(mission, member);
+    if (!out.counted) bad.push('a lasered school member did not count for its objective');
+    if (bad.length === 0) ok('laser: stage 0/1/2 Pokémon are caught in 1/2/3 shots (autoCaught, never KO) and mission targets still count'); else fail(`laser: ${bad.join('; ')}`);
+  }
+
+  // 10. timer · 11. blue heart
+  {
+    const t60 = restockFor(60, true), t75 = restockFor(75, true), plain = restockFor(60, false);
+    if (t60 === 30 && t75 === 37.5 && plain === 60) ok('timer: halves a 60 s restock to 30 s and the L3/L4 75 s to 37.5 s; unarmed restocks are untouched'); else fail(`timer: ${t60}/${t75}/${plain}`);
+    const cs = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1));
+    cs.loot.timer = CHEST.TIMER_USES;
+    const armed = cs.armTimer(), again = cs.armTimer();
+    const c1 = cs.takeTimerCharge(), c2 = cs.takeTimerCharge(), c3 = cs.takeTimerCharge();
+    if (armed && !again && c1 && c2 && !c3 && cs.loot.timer === null && !cs.timerArmed) ok(`timer: arms once, pays for exactly ${CHEST.TIMER_USES} restocks, then is spent`); else fail(`timer: ${armed}/${again} charges ${c1}${c2}${c3} left ${cs.loot.timer}`);
+    const MAX = COMBAT.PLAYER_LIVES_MAX;
+    if (heartLives(4, MAX) === 6 && heartLives(5, MAX) === 6 && heartLives(2, MAX) === 4) ok(`heart: +${CHEST.HEART_LIVES} lifelines, capped at ${MAX}`); else fail('heart: maths');
+    const h = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1)); h.loot.blueHeart = 1;
+    let lives = MAX; const full = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
+    lives = 3; const used = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
+    const empty = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
+    const evs = h.drainEvents();
+    if (!full && used && lives === 5 && !empty && h.loot.blueHeart === null && evs.some((e) => e.type === 'blocked' && e.reason === 'maxLives') && evs.some((e) => e.type === 'blocked' && e.reason === 'empty'))
+      ok('heart: refused at the cap (kept), 3 → 5 lives when eaten, then the slot is empty'); else fail(`heart: full ${full} used ${used} lives ${lives} empty ${empty}`);
+    // weapons toggle and run dry
+    const w = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1));
+    const none = w.toggleWeapon('ballGun');
+    w.loot.ballGun = { pokeball: 1, greatball: 0, ultraball: 0, masterball: 0 }; w.loot.laserGun = 1;
+    const on = w.toggleWeapon('ballGun'); const wasGun = w.weapon; const off = w.toggleWeapon('ballGun'); const wasHands = w.weapon;
+    w.toggleWeapon('laserGun'); const swapped = w.weapon; w.toggleWeapon('ballGun'); const fired = w.consumeGunBall('pokeball'); const dry = w.weapon;
+    if (!none && on && wasGun === 'ballGun' && off && wasHands === 'hands' && swapped === 'laserGun' && fired && dry === 'hands' && w.loot.ballGun === null) ok('weapons: G/H toggle, pressing again returns to hands, an empty launcher drops back to hands');
+    else fail(`weapons: none ${none} on ${on}/${wasGun} off ${off}/${wasHands} swapped ${swapped} fired ${fired} dry ${dry}`);
+  }
+}
+
 
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

@@ -122,6 +122,7 @@ export function Balls() {
     let k = 0;
     for (const f of session.fx) {
       if (k >= fx.cap) break;
+      if (f.type === 'laser') continue; // the beam is drawn by LaserFx
       const life = f.type === 'lure' ? 1.4 : 1.0;
       const t = Math.min(1, f.t / life);
       const grow = f.type === 'lure' ? 2 + t * 26 : f.type === 'hit' ? 0.6 + t * 1.4 * f.size : 1 + t * (2.2 + f.size * 0.8);

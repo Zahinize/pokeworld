@@ -73,6 +73,8 @@ export interface Entity {
   atkStage: number; atkStageUntil: number;
   /** Berry buffs (companions): flat Attack added to both offences, and a speed multiplier (1 = none). */
   atkBonus: number; berrySpd: number;
+  /** One of the treasure chest's two shiny guardians: never respawns, attacks whoever nears the chest. */
+  chestGuard: boolean;
   defStage: number; defStageUntil: number;
   /** Status timers (seconds remaining). */
   stunT: number; slowT: number; blindT: number;
@@ -145,7 +147,7 @@ export interface Entity {
   souls: number; respectN: number; surgeT: number; surgeAt: number;
 }
 
-export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack';
+export type GroupKind = 'school' | 'passive' | 'ambientSchool' | 'drifters' | 'companions' | 'pack' | 'chestGuard';
 
 export interface Group {
   id: number;
@@ -181,7 +183,7 @@ export interface Group {
 export type CasterKind = 'wild' | 'predator' | 'guardian' | 'companion' | 'boss';
 
 export type EcoEvent =
-  | { type: 'hit'; entityId: number; by: 'ball' | 'predator'; damage: number }
+  | { type: 'hit'; entityId: number; by: 'ball' | 'predator' | 'laser'; damage: number }
   | { type: 'ko'; entityId: number; speciesId: string; bySpeciesId?: string }
   | { type: 'alarm'; groupId: number; threatId: number }
   | { type: 'feedChatter'; entityId: number }
@@ -210,7 +212,8 @@ export type EcoEvent =
   | { type: 'duelStart'; partnerId: number; wildId: number }
   | { type: 'duelEnd'; partnerId: number; wildId: number; reason: 'faint' | 'partnerDown' | 'fled' | 'recalled' | 'separated' | 'gone' }
   | { type: 'faint'; entityId: number; speciesId: string }
-  | { type: 'autoCaught'; entityId: number; speciesId: string }
+  | { type: 'autoCaught'; entityId: number; speciesId: string; by: 'partner' | 'laser' }
+  | { type: 'chestSwarm'; count: number }
   | { type: 'guardianDefends'; guardianId: number; speciesId: string }
   | { type: 'recovered'; entityId: number; speciesId: string }
   | { type: 'partnerDown'; entityId: number; speciesId: string }

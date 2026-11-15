@@ -23,7 +23,7 @@ function textureOf(id: BerryId): THREE.Texture {
   return t;
 }
 
-const BILLBOARD_VERT = /* glsl */ `
+export const BILLBOARD_VERT = /* glsl */ `
   uniform float uTime, uPhase, uSize;
   varying vec2 vUv;
   void main(){
@@ -49,7 +49,7 @@ const SPRITE_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
-const HALO_FRAG = /* glsl */ `
+export const HALO_FRAG = /* glsl */ `
   uniform vec3 uColor; uniform float uGlow;
   varying vec2 vUv;
   void main(){

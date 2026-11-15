@@ -98,5 +98,34 @@ console.log('Berries');
   if (!bad) ok(`${BERRY_IDS.length} berries: two sets of ${BERRY_KEYS.length}, sane thresholds/durations, every icon present`);
 }
 
+console.log('Treasure chest');
+{
+  const { existsSync } = await import('node:fs');
+  const { CHEST, CHEST_ICONS, LOOT, LOOT_ORDER, LOOT_KEYS, LOOT_CODES, laserShotsFor } = await import('@/data/chest');
+  const { BERRY_CODES } = await import('@/data/berries');
+  const { GAME } = await import('@/data/gameConfig');
+  const { BALL_ORDER } = await import('@/data/balls');
+  let bad = 0;
+  if (LOOT_ORDER.length !== 4 || new Set(LOOT_ORDER).size !== 4 || LOOT_KEYS.length !== 4 || LOOT_CODES.length !== 4) { bad++; fail('loot bar must hold four distinct items with four keys'); }
+  const taken = new Set<string>([...BERRY_CODES, 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'KeyE', 'KeyQ', 'KeyM', 'KeyC', 'KeyP', 'KeyB', 'KeyF', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyX', 'KeyZ', 'KeyV', 'Space', 'Tab']);
+  for (const code of LOOT_CODES) if (taken.has(code)) { bad++; fail(`loot key ${code} is already bound`); }
+  for (const id of LOOT_ORDER) {
+    const L = LOOT[id];
+    if (L.icon !== `/sprites/loot/${id}.png`) { bad++; fail(`${id}: icon path off pattern (${L.icon})`); }
+    if (!existsSync(`public${L.icon}`)) { bad++; fail(`${id}: missing icon public${L.icon}`); }
+  }
+  for (const icon of Object.values(CHEST_ICONS)) if (!existsSync(`public${icon}`)) { bad++; fail(`missing chest icon public${icon}`); }
+  const mag = BALL_ORDER.reduce((n, b) => n + CHEST.GUN.MAG[b], 0);
+  if (mag !== 22) { bad++; fail(`launcher magazine holds ${mag} balls, spec says 22 (10/5/4/3)`); }
+  if (CHEST.LASER.SHOTS_BY_STAGE.length !== 3 || laserShotsFor(0) !== 1 || laserShotsFor(1) !== 2 || laserShotsFor(2) !== 3) { bad++; fail('laser shots per stage must be 1/2/3'); }
+  if (CHEST.AGGRO_R !== CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH) { bad++; fail(`AGGRO_R ${CHEST.AGGRO_R} must equal GUARD_RADIUS + GUARDIAN_LEASH (${CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH}) or the guardians ping-pong at the edge`); }
+  if (CHEST.MIN_FROM_START < GAME.PLAYER_START_CLEAR + CHEST.GUARD_RADIUS + 1) { bad++; fail('the chest can sit inside the start clearing'); }
+  if (COMBAT.PLAYER_LIVES_MAX < COMBAT.PLAYER_LIVES + CHEST.HEART_LIVES) { bad++; fail('a blue heart could never be used at full starting lives'); }
+  if (!(CHEST.LOOT_PER_CHEST >= 1 && CHEST.LOOT_PER_CHEST <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
+  if (!(CHEST.TIMER_MUL > 0 && CHEST.TIMER_MUL < 1) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
+  if (CHEST.GUARDIANS.length !== 2 || !CHEST.GUARDIANS.every((g) => SPECIES[g]?.stage === 2)) { bad++; fail('the chest needs two fully evolved guardians'); }
+  if (!bad) ok(`chest: L${CHEST.LEVELS.join('/L')} · ${CHEST.GUARDIANS.join(' + ')} · ${LOOT_ORDER.length} loot items on ${LOOT_KEYS.join(' ')} · icons present · magazine ${mag} · laser 1/2/3`);
+}
+
 if (failures) { console.error(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log('\nAll checks passed.');

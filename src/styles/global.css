@@ -294,7 +294,21 @@ a { color: var(--aqua); }
 .hud .interactive, .hud .interactive * { pointer-events: auto; }
 .hud-top-left { position: absolute; top: calc(14px + var(--safe-top)); left: calc(14px + var(--safe-left)); width: min(340px, calc(100vw - 28px)); }
 .hud-top-right { position: absolute; top: calc(14px + var(--safe-top)); right: calc(14px + var(--safe-right)); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-.hud-bottom { position: absolute; bottom: calc(14px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; } /* berry bar above, ball chip below */
+.hud-bottom { position: absolute; bottom: calc(14px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; } /* loot bar, berry bar, ball chip stacked; the weapon panel hangs off its right */
+.hud-bottom-col { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+/* the equipped chest weapon: a card to the RIGHT of the ball chip / berry bar column (desktop only) */
+.weapon-panel { position: absolute; left: calc(100% + 12px); bottom: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; white-space: nowrap; animation: fadeUp .25s ease both; }
+.weapon-panel img { width: 36px; height: 36px; image-rendering: pixelated; }
+.weapon-panel .name { font-family: var(--font-display); font-weight: 800; font-size: 13px; }
+.weapon-panel.laserGun .name { color: #f9a8d4; }
+.weapon-panel.ballGun .name { color: #fca5a5; }
+.weapon-panel .ammo { display: flex; gap: 8px; font-size: 12px; font-weight: 800; margin-top: 2px; }
+.weapon-panel .ammo span { display: inline-flex; align-items: center; gap: 3px; }
+.weapon-panel .ammo .pokeball-icon { width: 12px; height: 12px; box-shadow: none; }
+.weapon-panel .ammo .pokeball-icon::after { width: 4px; height: 4px; border-width: 1px; }
+.weapon-panel .ammo b { font-size: 15px; }
+.weapon-panel .hint { font-size: 10px; color: var(--muted); margin-top: 2px; }
+.weapon-panel .hint .kbd { font-size: 9px; padding: 0 4px; line-height: 13px; }
 .hud-hint { position: absolute; left: calc(16px + var(--safe-left)); bottom: calc(64px + var(--safe-bottom)); max-width: 360px; font-size: 13px; color: var(--muted); background: rgba(0,0,0,.3); border: 1px solid var(--line); padding: 8px 12px; border-radius: 12px; backdrop-filter: blur(10px); animation: fadeUp .4s ease both; }
 /* First-run tutorial banner: top-center, one instruction at a time (regular hints stay hidden) */
 .tutorial-banner { position: absolute; top: calc(16px + var(--safe-top)); left: 50%; transform: translate(-50%, 0); width: max-content; display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-radius: 18px; max-width: min(560px, calc(100vw - 32px)); animation: tutIn .3s ease both; }
@@ -553,6 +567,24 @@ a { color: var(--aqua); }
 .berry-slot .cnt { position: absolute; right: -5px; top: -6px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px; background: var(--green); color: #052e16; font-size: 10px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
 .berry-slot .kbd { position: absolute; left: -4px; bottom: -7px; font-size: 9px; padding: 0 4px; line-height: 14px; }
 .berry-slot .held-dot { position: absolute; left: 50%; bottom: -3px; transform: translateX(-50%); width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+/* the loot bar shares the berry bar's look; the equipped weapon glows pink, an armed timer gold (held) */
+.loot-slot.equipped { border-color: #f472b6; box-shadow: 0 0 0 1px rgba(244,114,182,.55), 0 0 14px rgba(244,114,182,.4); background: rgba(244,114,182,.12); }
+.loot-slot .cnt { background: #f9a8d4; color: #4a044e; }
+.restore-banner .boost { margin-left: 8px; font-size: 9px; letter-spacing: .08em; padding: 1px 6px; border-radius: 999px; background: rgba(251,191,36,.18); color: #fde68a; border: 1px solid rgba(251,191,36,.45); vertical-align: middle; }
+/* chest pointer: gold, its label above the berry label; the dwell ring counts the 8 s down around the crosshair */
+.chest-ring { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin: -75px 0 0 -75px; }
+.chest-arrow { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform-origin: 0 0; }
+.chest-arrow i { position: absolute; left: -6px; top: -71px; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 11px solid var(--gold); filter: drop-shadow(0 0 6px rgba(255,209,102,.85)); }
+.chest-label { position: absolute; left: 50%; top: calc(50% - 122px); transform: translateX(-50%); display: flex; align-items: center; gap: 6px; white-space: nowrap; font-size: 12px; font-weight: 800; color: var(--gold); text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+.chest-label img { width: 24px; height: 24px; image-rendering: pixelated; }
+.dwell-ring { position: absolute; left: 50%; top: 50%; width: 72px; height: 72px; margin: -36px 0 0 -36px; border-radius: 50%; display: grid; place-items: center; box-shadow: 0 0 18px rgba(255,209,102,.35); }
+.dwell-ring::before { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: rgba(5,11,23,.55); }
+.dwell-ring span { position: relative; font: 900 20px var(--font-display); color: var(--gold); text-shadow: 0 1px 4px rgba(0,0,0,.8); }
+.hud.touch .chest-ring { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
+.hud.touch .chest-arrow i { top: -56px; }
+.hud.touch .chest-label { top: calc(50% - 96px); }
+.hud.touch .dwell-ring { width: 60px; height: 60px; margin: -30px 0 0 -30px; }
+.hud.touch .dwell-ring span { font-size: 16px; }
 .hud.touch .berry-bar { gap: 5px; padding: 4px 6px; border-radius: 12px; }
 .hud.touch .berry-slot { width: 34px; height: 34px; border-radius: 9px; }
 .hud.touch .berry-slot img { width: 26px; height: 26px; }
@@ -719,6 +751,11 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 /* locked on: the drawn shot would hit a wild — red means "throw now" */
 .touch-controls .sling-anchor.hot { border-color: #ff6b6b; box-shadow: 0 0 0 4px rgba(255, 97, 97, .35), 0 0 26px rgba(255, 97, 97, .55); }
 .touch-controls .sling-anchor .sling-count { position: absolute; right: 4px; bottom: 4px; font: 800 12px var(--font-display); color: var(--text); background: rgba(4,22,43,.75); border-radius: 8px; padding: 0 5px; }
+/* the chest's weapons take the slingshot's place: the launcher draws like the sling, the laser fires on touch */
+.touch-controls .sling-anchor .weapon-icon { width: 44px; height: 44px; image-rendering: pixelated; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
+.touch-controls .sling-anchor.ballGun { border-color: rgba(252,165,165,.7); box-shadow: 0 0 0 3px rgba(248,113,113,.25), 0 8px 24px rgba(4,22,43,.45); }
+.touch-controls .sling-anchor.laserGun { border-color: rgba(244,114,182,.8); box-shadow: 0 0 0 3px rgba(244,114,182,.28), 0 8px 24px rgba(4,22,43,.45); }
+.touch-controls .sling-anchor.fired { transform: scale(.9); border-color: #fff; box-shadow: 0 0 0 8px rgba(244,114,182,.3), 0 0 30px rgba(244,114,182,.5); }
 /* the attack circle: right thumb, underwater in companion levels — the joystick's mirror image,
    same size and same baseline at every breakpoint, where the slingshot sits when surfaced */
 .touch-controls .attack-anchor {
@@ -779,6 +816,10 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
   .berry-ring { width: 96px; height: 96px; margin: -48px 0 0 -48px; }
   .berry-arrow i { top: -44px; }
   .berry-label { top: calc(50% - 72px); font-size: 11px; }
+  .chest-ring { width: 120px; height: 120px; margin: -60px 0 0 -60px; }
+  .chest-arrow i { top: -56px; }
+  .chest-label { top: calc(50% - 94px); font-size: 11px; }
+  .touch-controls .sling-anchor .weapon-icon { width: 38px; height: 38px; }
   .berry-bar { gap: 4px; padding: 3px 5px; }
   .berry-slot { width: 30px; height: 30px; border-radius: 8px; }
   .berry-slot img { width: 22px; height: 22px; }

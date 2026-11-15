@@ -32,6 +32,10 @@ export interface Ball {
   /** When >= 0, the shake target is a sky bird, not an ecosystem entity. */
   skyTargetId: number;
   skySpeciesId: string;
+  /** Hit-radius multiplier (the chest's ball launcher throws at 2×). */
+  hitMul: number;
+  /** This ball already rang the treasure chest. */
+  chestHit: boolean;
 }
 
 export type BallEvent =
@@ -45,7 +49,8 @@ export type BallEvent =
   | { type: 'splash'; ball: Ball; entering: boolean }
   | { type: 'skyHit'; ball: Ball; speciesId: string }
   | { type: 'skyCaught'; ball: Ball; speciesId: string; birdId: number; p: number }
-  | { type: 'skyEscaped'; ball: Ball; speciesId: string; birdId: number; p: number };
+  | { type: 'skyEscaped'; ball: Ball; speciesId: string; birdId: number; p: number }
+  | { type: 'chestHit'; ball: Ball; ballType: BallId };
 
 const SHAKE_INTERVAL = 0.65;
 
@@ -56,8 +61,8 @@ export class BallSystem {
   catchMissMul = 1;
   private nextId = 1;
 
-  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED): Ball {
-    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '' };
+  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED, hitMul = 1): Ball {
+    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '', hitMul, chestHit: false };
     this.balls.push(b);
     this.events.push({ type: 'thrown', ball: b });
     return b;
@@ -101,7 +106,7 @@ export class BallSystem {
           eco.hash.query(b.x, b.y, b.z, 6, (e, d2) => {
             if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
             if (e.role === 'partner') return; // your own companions don't block throws
-            const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
+            const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS * b.hitMul;
             if (d2 < r * r && d2 < hitD) { hitD = d2; hit = e; }
           });
           if (hit) { this.onHit(b, hit, eco); break; }
@@ -116,6 +121,8 @@ export class BallSystem {
               b.vx -= 1.4 * vn * nx; b.vy -= 1.4 * vn * ny; b.vz -= 1.4 * vn * nz;
               b.vx *= 0.5; b.vy *= 0.5; b.vz *= 0.5;
               b.x = o.x + nx * (o.r + 0.31); b.y = o.y + ny * (o.r + 0.31); b.z = o.z + nz * (o.r + 0.31);
+              // the treasure chest rings once per ball (ChestSystem decides whether a Master Ball counts)
+              if (o.kind === 'chest' && !b.chestHit) { b.chestHit = true; this.events.push({ type: 'chestHit', ball: b, ballType: b.type }); }
             }
           }
           // Floor

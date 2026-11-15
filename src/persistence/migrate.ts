@@ -62,5 +62,6 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     objectives: Array.isArray(r.objectives) ? r.objectives.filter((o: any) => isObj(o) && typeof o.id === 'string').map((o: any) => ({ id: o.id, caught: clampInt(o.caught, 0, 99, 0), guardianCaught: !!o.guardianCaught })) : [],
     caught: clampInt(r.caught, 0, 999, 0), total: clampInt(r.total, 0, 999, 0),
     lives: clampInt(r.lives, 1, 9, 4),
+    chestLooted: !!r.chestLooted,
   };
 }

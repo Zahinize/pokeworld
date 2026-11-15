@@ -243,7 +243,7 @@ export function Rocks() {
     return { geo, mat };
   }, []);
   const coralHeadMat = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e07a9c', roughness: 0.8, flatShading: true }), []);
-  const rocks = obstacles.filter((o) => o.kind !== 'coral');
+  const rocks = obstacles.filter((o) => o.kind === 'rock' || o.kind === 'cave'); // the treasure chest obstacle has its own layer
   const heads = obstacles.filter((o) => o.kind === 'coral');
   const ref = useRef<THREE.InstancedMesh>(null);
   const ref2 = useRef<THREE.InstancedMesh>(null);
