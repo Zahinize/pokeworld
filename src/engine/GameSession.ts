@@ -17,7 +17,9 @@ import { SkyLife } from './sky/SkyLife';
 import { SkyCombat } from './sky/SkyCombat';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
-import { randomSeed } from './rng';
+import { randomSeed, RNG } from './rng';
+import { BerrySystem } from './sim/berries';
+import { BERRIES, BERRY_KEYS, berrySetKindFor, type BerryId } from '@/data/berries';
 import { maxHpOf, combatStatsOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
 import { useStore } from '@/state/store';
@@ -104,6 +106,9 @@ export class GameSession {
   ballsUsed = 0;
   lureCooldown = 0;
   playerHp: number = COMBAT.PLAYER_MAX_HP;
+  /** This heart's berries: floor drops, the bag, held berries and running effects (see sim/berries.ts). */
+  berries = new BerrySystem('solo', new RNG(randomSeed()));
+  private berryHudKey = '';
   /** Companion party for this level: up to 6 species; slots 0/1 are active in the reef. */
   party: string[] = [];
   /** Entity ids of the active companions (index = formation slot), -1 = empty/downed. */
@@ -234,6 +239,9 @@ export class GameSession {
     this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear();
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
+    // berries roll on their own random seed: the level seed is resumable, so timings off it would be guessable
+    this.berries = new BerrySystem(berrySetKindFor(this.level), new RNG(randomSeed()));
+    this.berries.startHeart(); this.berryHudKey = '';
     this.timeOfDay = this.level.timeOfDay;
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
@@ -257,7 +265,7 @@ export class GameSession {
     this.tutorial = levelId === 1 && !store.save.settings.tutorialDone ? createTutorial() : null;
     this.tutObs.threwWater = this.tutObs.threwSky = false; this.tutObs.caughtWater = this.tutObs.caughtSky = 0;
     this.tutScan.wildNearDist = Infinity; this.tutScan.skyBirdNear = false; this.tutScanAcc = 0; this.tutDoneT = 0;
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines(), lives: this.lives, recovering: 0, koBy: null });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: this.summaryLines(), lives: this.lives, recovering: 0, koBy: null, berries: this.berries.hudSnapshot(this.player) });
     if (!resume) {
       store.setInventory({ ...STARTING_INVENTORY });
       store.setRestoration(null);
@@ -322,7 +330,8 @@ export class GameSession {
     this.sheets.clear();
     this.ride = null;
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
-    this.tutorial = null; useStore.getState().setHud({ tutorial: null });
+    this.tutorial = null; useStore.getState().setHud({ tutorial: null, berries: null });
+    this.berries.endHeart([]);
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
     releasePointer();
     Audio.stopAmbience();
@@ -461,7 +470,7 @@ export class GameSession {
     const store = useStore.getState();
     store.setLevel(99, this.seed);
     store.setMission(null);
-    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null });
+    store.setHud({ ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, predatorAlert: false, huntingSpecies: null, hint: null, tutorial: null, slingHot: false, atRisk: [], nearestTarget: null, timeOfDay: this.timeOfDay, ecoSummary: [], bossBar: null, bossIntro: null, berries: null });
     this.arena = true;
     this.phase = 'playing';
     this.arenaSelect('corsola');
@@ -619,6 +628,9 @@ export class GameSession {
     const cap = Math.round(COMBAT.PLAYER_MAX_HP * (C.FRAC[this.level.id] ?? C.DEFAULT) * (by?.elite ? C.SHINY_MULT : 1));
     amount = Math.min(amount, cap);
     this.playerHp = Math.max(0, this.playerHp - amount);
+    // a held Sitrus/Figy is eaten the instant a hit lands under its threshold — including the hit that would have KO'd
+    const pinch = this.berries.trainerPinch(this.playerHp, COMBAT.PLAYER_MAX_HP);
+    if (pinch > 0) this.playerHp = Math.min(COMBAT.PLAYER_MAX_HP, this.playerHp + pinch);
     this.regenGrace = COMBAT.PLAYER_REGEN_GRACE;
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, playerHitSeq: store.hud.playerHitSeq + 1 });
@@ -627,6 +639,8 @@ export class GameSession {
 
   private beginRecovery(by: { name: string; sky: boolean } | null = null) {
     this.clearSlingAim();
+    this.berries.endHeart(this.activePartnerEntities()); // berries belong to the heart that found them
+    this.syncBerryHud();
     if (this.ride) this.dismount(true); // knocked off the bird
     // a lifeline is spent; the fourth fall wipes the level — the trainer starts it from scratch
     this.lives = Math.max(0, this.lives - 1);
@@ -651,12 +665,106 @@ export class GameSession {
     const eco = this.eco!;
     const spot = eco.randomSafePlayerSpot(COMBAT.PLAYER_RESPAWN_SAFE_DIST);
     this.player.reset(spot.x, spot.y, spot.z, this.player.yaw);
+    this.berries.startHeart(); // a fresh batch washes in over the next two minutes
     this.playerHp = Math.round(COMBAT.PLAYER_MAX_HP * COMBAT.PLAYER_RESPAWN_HP_FRAC);
     this.calmT = COMBAT.PLAYER_RESPAWN_CALM;
     this.recoveringT = 0;
     Audio.restore();
     const store = useStore.getState();
     store.setHud({ playerHp: this.playerHp, recovering: 0, koBy: null });
+  }
+
+  // ------------------------------------------------------------------ Berries
+
+  /** The alive active companions (empty on solo levels). */
+  private activePartnerEntities(): Entity[] {
+    const out: Entity[] = [];
+    if (!this.eco) return out;
+    for (const id of this.activePartners) { const e = id >= 0 ? this.eco.byId.get(id) : undefined; if (e && e.state !== 'ko') out.push(e); }
+    return out;
+  }
+
+  /** Eat the berry in hotbar `slot` (keys R T Y U I, or a tap on the berry bar). */
+  useBerry(slot: number): boolean {
+    if (!this.playing || this.recoveringT > 0 || this.arena || !this.eco) return false;
+    const ok = this.berries.use(slot, {
+      trainerHp: this.playerHp, trainerMaxHp: COMBAT.PLAYER_MAX_HP,
+      setTrainerHp: (hp) => { this.playerHp = hp; useStore.getState().setHud({ playerHp: Math.round(hp) }); },
+      partners: this.activePartnerEntities(),
+    });
+    this.handleBerryEvents();
+    this.syncBerryHud();
+    return ok;
+  }
+
+  private handleBerryEvents() {
+    const evs = this.berries.drainEvents();
+    if (!evs.length) return;
+    const store = useStore.getState(); const eco = this.eco;
+    const team = this.berries.kind === 'companion';
+    const keyOf = (id: BerryId) => BERRY_KEYS[this.berries.set.indexOf(id)];
+    const p = this.player; const [fx, fy, fz] = p.forward();
+    const trainerNumber = (text: string, color: string) => this.pushNumber(text, color, p.x + fx * 2, p.y + fy * 2 - 0.2, p.z + fz * 2, false);
+    const entityNumber = (id: number | undefined, text: string, color: string) => { const t = id !== undefined ? eco?.byId.get(id) : undefined; if (t) this.pushNumber(text, color, t.x, t.y + t.species.size * 0.5, t.z, false); };
+    const toasted = new Set<string>(); // one Oran feeds two companions: toast the berry once per batch
+    const once = (k: string) => { if (toasted.has(k)) return false; toasted.add(k); return true; };
+    for (const ev of evs) {
+      const B = BERRIES[ev.id]; const fxc = B.effect;
+      switch (ev.type) {
+        case 'spawn':
+          store.pushToast({ kind: 'event', title: 'A berry washed onto the reef', body: 'Search the sea floor — a green pointer picks it up within 50 m.', icon: B.icon, ttl: 5 });
+          break;
+        case 'pickup':
+          Audio.berryPickup();
+          this.pushFx('lure', ev.x, ev.y + 0.3, ev.z, 0.7, B.color);
+          store.pushToast({ kind: 'catch', title: `${B.name} acquired`, body: `${store.isTouch ? 'Tap it in the berry bar' : `Press ${keyOf(ev.id)}`} · ${B.blurb}`, icon: B.icon, ttl: 5 });
+          break;
+        case 'apply':
+          if (once(`apply:${ev.id}`)) { Audio.berryEat(); store.pushToast({ kind: 'info', title: `${B.name} eaten`, body: fxc.type === 'healNow' ? (team ? 'Both companions +40 HP' : '+40 HP') : B.blurb, icon: B.icon, ttl: 4 }); }
+          if (ev.amount) { if (ev.targetKind === 'trainer') trainerNumber(`+${ev.amount}`, '#4ade80'); else entityNumber(ev.targetId, `+${ev.amount}`, '#4ade80'); }
+          break;
+        case 'held':
+          if (once(`held:${ev.id}`)) { Audio.berryEat(); store.pushToast({ kind: 'info', title: `${B.name} held`, body: `${team ? 'Both companions hold it — ' : ''}${B.blurb.replace('Held: ', '')}`, icon: B.icon, ttl: 4 }); }
+          break;
+        case 'consume': {
+          Audio.berryEat();
+          const label = fxc.type === 'atkHeld' ? 'ATK↑' : fxc.type === 'spdHeld' ? 'SPD↑' : `+${ev.amount}`;
+          const color = fxc.type === 'healHeld' ? '#4ade80' : '#7ff0c9';
+          if (ev.targetKind === 'trainer') trainerNumber(label, color); else entityNumber(ev.targetId, label, color);
+          const who = ev.targetKind === 'trainer' ? 'You' : (ev.targetId !== undefined ? eco?.byId.get(ev.targetId)?.species.name : undefined) ?? 'A companion';
+          const what = fxc.type === 'healHeld' ? `+${ev.amount} HP` : fxc.type === 'atkHeld' ? `+${ev.amount} Attack for ${fxc.duration} s` : fxc.type === 'spdHeld' ? `+${ev.amount} Speed for ${fxc.duration} s` : '';
+          store.pushToast({ kind: 'info', title: `${B.name} kicked in`, body: `${who === 'You' ? 'You ate it' : `${who} ate it`} · ${what}`, icon: B.icon, ttl: 4 });
+          break;
+        }
+        case 'refund':
+          store.pushToast({ kind: 'info', title: `${B.name} back in the bag`, body: 'A held berry only waits on one Pokémon at a time.', icon: B.icon, ttl: 3 });
+          break;
+        case 'expire':
+          if (once(`expire:${ev.id}`)) store.pushToast({ kind: 'info', title: `${B.name} wore off`, icon: B.icon, ttl: 3 });
+          break;
+        case 'blocked':
+          Audio.uiClick();
+          if (once(`blocked:${ev.id}:${ev.reason}`)) store.pushToast({
+            kind: 'warn', icon: B.icon, ttl: 2.5,
+            title: ev.reason === 'empty' ? `No ${B.name}` : ev.reason === 'noTarget' ? 'No companion in the water' : `${B.name} already held`,
+            body: ev.reason === 'empty' ? 'Berries wash onto the sea floor during each lifeline — follow the green pointer.' : ev.reason === 'noTarget' ? 'Send a companion out first.' : undefined,
+          });
+          break;
+      }
+    }
+  }
+
+  /** Publish the berry bar when something about it changed (every 0.12 s tick, and right after a key press). */
+  private syncBerryHud() {
+    const store = useStore.getState();
+    if (this.arena || !this.eco) { if (store.hud.berries) store.setHud({ berries: null }); return; }
+    const snap = this.berries.hudSnapshot(this.player);
+    if (snap.nearest) snap.nearest = { ...snap.nearest, distance: Math.round(snap.nearest.distance * 2) / 2, dx: Math.round(snap.nearest.dx * 10) / 10, dz: Math.round(snap.nearest.dz * 10) / 10 };
+    for (const f of snap.effects) f.remaining = Math.round(f.remaining * 10) / 10;
+    const key = JSON.stringify(snap);
+    if (key === this.berryHudKey) return;
+    this.berryHudKey = key;
+    store.setHud({ berries: snap });
   }
 
   // ------------------------------------------------------------------ Riding sky legendaries
@@ -921,7 +1029,7 @@ export class GameSession {
     if (this.activePartners[slot] >= 0) {
       // remember the outgoing companion's wounds — swapping must never be a free full-heal
       const out = this.eco.byId.get(this.activePartners[slot]);
-      if (out) this.benchHp.set(this.tok(out), { frac: out.hp / out.maxHp, at: this.eco.time });
+      if (out) { this.benchHp.set(this.tok(out), { frac: out.hp / out.maxHp, at: this.eco.time }); this.berries.onPartnerGone(out, false); }
       this.eco.removePartner(this.activePartners[slot]);
     }
     const fielded = this.eco.addPartner(baseSpeciesId(token), slot, isShinyToken(token));
@@ -1126,10 +1234,12 @@ export class GameSession {
     // Simulation
     const p = this.player;
     eco.playerYaw = p.yaw;
+    eco.wildSpeedMul = this.berries.wildSpeedMul; // Nanab Berry
     eco.update(dt, { x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, vz: p.vz, speed: p.speed, huntable: this.phase === 'playing' && this.recoveringT <= 0 && this.calmT <= 0 && !this.arena, lureActive: eco.lureRemaining > 0 }, this.lighting.nightness);
     this.sky?.update(dt, this.lighting, this.timeOfDay, p.x, p.z);
     if (this.sky) {
       if (!this.skyCombat || this.skyCombat.sky !== this.sky) this.bindSkyCombat(eco, this.sky);
+      this.skyCombat!.wildSpeedMul = this.berries.wildSpeedMul;
       this.skyCombat!.update(dt, p, eco.time);
     } else this.skyCombat = null;
     // legendary storm: heavy currents while a rampage lasts (cleared when calm returns)
@@ -1137,6 +1247,7 @@ export class GameSession {
     else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
     this.updateSurfaceCombat(dt);
     this.updateCombatMode(dt);
+    this.balls.catchMissMul = this.berries.catchMissMul; // Razz Berry
     this.balls.update(dt, eco, this.sky);
     // camera shake always decays (rampages shake on any level, not just boss waves)
     // and is hard-capped so no event can ever leave the camera trembling for long
@@ -1158,10 +1269,11 @@ export class GameSession {
     this.handleEcoEvents();
     this.handleBallEvents();
     this.handleSkyEvents();
+    if (!this.arena) { this.berries.update(dt, p, eco, this.activePartnerEntities()); this.handleBerryEvents(); }
     this.updateTutorial(dt);
     if (this.arena) this.arenaTick();
     // Throttled UI / audio / persistence
-    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); this.updateAttackHot(); if (this.companionsEnabled) this.syncPartyHud(); }
+    this.hudAcc += dt; if (this.hudAcc > 0.12) { this.hudAcc = 0; this.updateHud(); this.updateAutoBall(); this.updateSlingHot(); this.updateAttackHot(); this.syncBerryHud(); if (this.companionsEnabled) this.syncPartyHud(); }
     this.audioAcc += dt; if (this.audioAcc > 0.1) { this.updateAudio(this.audioAcc); this.audioAcc = 0; }
     this.seenAcc += dt; if (this.seenAcc > 2 && !this.arena) { this.seenAcc = 0; this.updateSeen(); }
     this.saveAcc += dt; if (this.saveAcc > 20 && !this.arena) { this.saveAcc = 0; this.persistRun(); }
@@ -1469,6 +1581,7 @@ export class GameSession {
         case 'inflate': { if (near(eco.byId.get(ev.entityId), 30)) Audio.inflate(); break; }
         case 'partnerDown': {
           const downed = eco.byId.get(ev.entityId);
+          if (downed) this.berries.onPartnerGone(downed, true); // a held berry goes down with it
           const token = downed ? this.tok(downed) : ev.speciesId;
           this.downedSpecies.push(token);
           const slot = this.activePartners.indexOf(ev.entityId);

@@ -8,6 +8,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { useStore } from '@/state/store';
 import { BALL_ORDER } from '@/data/balls';
+import { BERRY_CODES } from '@/data/berries';
 
 export let canvasElement: HTMLCanvasElement | null = null;
 export function requestPointerLock() {
@@ -40,6 +41,7 @@ export function CameraRig() {
       }
       if (e.code === 'Tab') { e.preventDefault(); if (session.phase === 'playing' || session.phase === 'paused') s.setOverlay(s.overlay === 'mission' ? 'none' : 'mission'); }
       if (e.code === 'KeyE') session.activateLure();
+      { const bi = (BERRY_CODES as readonly string[]).indexOf(e.code); if (bi >= 0) session.useBerry(bi); } // R T Y U I: eat a berry
       if (e.code === 'KeyM' && (session.phase === 'playing' || session.phase === 'paused')) { const st = store(); st.setSettings({ missionCollapsed: !st.save.settings.missionCollapsed }); }
       if (e.code === 'KeyC' && session.playing) { s.setOverlay('collection'); session.pause(); document.exitPointerLock?.(); }
       if (e.code === 'KeyP') { if (session.playing) { session.pause(); s.setOverlay('pause'); document.exitPointerLock?.(); } }

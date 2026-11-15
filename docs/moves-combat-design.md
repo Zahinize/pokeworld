@@ -501,6 +501,63 @@ only roaming (`role: 'solo'`) predators hunt the trainer.
 
 ---
 
+## 8a. Berries — per-heart power-ups
+
+Once the Poké Balls run out, a solo dive turns into hiding until the restock timer ends. Berries are
+the tools for that stretch: a few wash onto the sea floor during every lifeline, the trainer swims onto
+one to pick it up (two-note chirp + toast naming its key), and eats it with **R T Y U I** (or a tap on
+the berry bar on touch). Everything about a berry belongs to the **heart that found it**: held berries,
+running effects and uncollected floor berries all clear when a lifeline is lost, and a fresh batch
+follows the respawn. Nothing is persisted; a resumed run starts a fresh batch.
+
+### Spawning
+- Per heart **3–5 berries**, each at a random time between 6 s and 120 s after the dive (or respawn),
+  rolled on a `Math.random`-seeded RNG — never the level seed, which is resumable and would make the
+  timings guessable. A toast announces each drop ("A berry washed onto the reef").
+- Placement: a ring 25–95 m from the trainer, inside 115 m of the reef centre, on the sand
+  (`floorY + 0.55`), clear of rocks/coral/caves (40 tries, then best effort). Floor berries render as
+  their 32×32 pixel icons with the shiny glow pulse and a tinted halo (`BerryLayer`).
+- Navigation: a **second, smaller green pointer** (label above the crosshair; the gold mission label
+  stays below) leads to the nearest berry within **50 m**. The mission arrow never disappears.
+
+### Sets (fixed per level pair, slot i ↔ key i)
+| Slot / key | L1–L2 (trainer & wild reef) | L3–L4 (BOTH active companions) |
+|---|---|---|
+| R | **Nanab** — the wild reef swims at 50% speed for 30 s | **Oran** — +40 HP now |
+| T | **Razz** — catch rolls keep only half their miss chance for 45 s | **Sitrus** (held) — +25% HP under 50% |
+| Y | **Oran** — +40 HP now | **Figy** (held) — +33% HP under 25% |
+| U | **Sitrus** (held) — +25% HP under 50% | **Liechi** (held) — +100 Attack for 60 s under 25% |
+| I | **Figy** (held) — +33% HP under 25% | **Salac** (held) — +50 Speed for 60 s under 25% |
+
+- **Nanab** scales every non-partner reef entity's steering target and cruise cap (`Ecosystem.integrate`,
+  `wildSpeedMul`) and the raiding birds' sortie cap (`SkyCombat.capOf`). Companions and the Lapras
+  ferry are exempt; Aqua Jet / Wing Attack rams bypass the cruise clamp as before.
+- **Razz**: `p' = min(cap, 1 − (1 − p) · 0.5)` applied in `rollCatch`/`rollCatchFor` only
+  (`boostCatch`), so `catchProbability` and the sim's catch tables are untouched. A guaranteed Master
+  Ball stays guaranteed; a sky legendary never rises past `SKY.LEGENDARY_CATCH_CAP`.
+- **Held berries** work like main-series held items: the key *arms* them, they are eaten automatically
+  the moment HP drops under the threshold. Arming while already under it eats it at once. A different
+  held berry replaces the current one and **refunds** it; the same one is a dud. Benching a companion
+  refunds its held berry; a KO loses it. In the companion set one berry arms on **both** actives and each
+  fires independently.
+- The trainer's Sitrus/Figy are checked inside `applyPlayerDamage` right after the hit lands, *before*
+  the KO branch — a pinch berry can save the last sliver of a heart (an intentional nod to the fun, not
+  the main series). Companion pinch berries are checked on the `BerrySystem` tick.
+- **Liechi** adds a flat +100 to both Attack and Sp. Atk through `offenseOf()` (the entity's `cs` stays
+  immutable); **Salac** multiplies the companion's formation/chase speed by `(speed + 50) / speed`
+  (capped ×1.8). Both last `BERRY_RULES.PINCH_BUFF_SECONDS` (60 s).
+
+### HUD
+- **Berry bar**: five slots with counts, key hints, a gold ring for a held berry and a conic timer for
+  a running effect. It stacks just above the ball chip (L1/L2, and the surface in L3/L4) and above the
+  companion cards (L3/L4 underwater). Desktop shows it throughout the dive; touch shows it only while
+  there is something in it, to keep the phone HUD minimal. `--berry-h` lifts the swap prompt clear of it.
+- Code: `data/berries.ts` (sets, rules), `engine/sim/berries.ts` (`BerrySystem`, store-free; covered in
+  `npm run sim`), `GameSession.useBerry/handleBerryEvents/syncBerryHud`, `render/env/BerryLayer.tsx`.
+
+---
+
+
 ## 9. Companions, duels, and the L3/L4 boss arc
 
 ### Party
@@ -651,6 +708,8 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
 - Touch layout: the attack circle mirrors the joystick (same size and baseline at every breakpoint) and the
   compact companion cards sit between them; everything obeys the existing `.hud.touch` layout rules and
   safe areas.
+- **Berry bar + berry pointer** (§8a): the five-slot bar sits in the same bottom-centre column as the ball
+  chip / companion cards; the smaller green pointer to a berry lives above the crosshair.
 
 ---
 

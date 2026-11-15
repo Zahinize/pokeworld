@@ -74,5 +74,29 @@ console.log('Damage formula');
   ok(`${n} attacker×move×defender combinations all inside the 4–55% clamp`);
 }
 
+console.log('Berries');
+{
+  const { existsSync } = await import('node:fs');
+  const { BERRIES, BERRY_IDS, BERRY_SETS, BERRY_KEYS, BERRY_CODES, BERRY_RULES } = await import('@/data/berries');
+  let bad = 0;
+  for (const kind of ['solo', 'companion'] as const) {
+    const set = BERRY_SETS[kind];
+    if (set.length !== BERRY_KEYS.length || new Set(set).size !== set.length) { bad++; fail(`berry set ${kind} must hold ${BERRY_KEYS.length} distinct berries`); }
+  }
+  if (BERRY_KEYS.length !== BERRY_CODES.length) { bad++; fail('berry keys and key codes differ in length'); }
+  for (const id of BERRY_IDS) {
+    const b = BERRIES[id];
+    const fx = b.effect;
+    if ('threshold' in fx && !(fx.threshold > 0 && fx.threshold < 1)) { bad++; fail(`${id}: threshold ${fx.threshold} outside (0,1)`); }
+    if ('duration' in fx && !(fx.duration > 0)) { bad++; fail(`${id}: duration must be positive`); }
+    if (fx.type === 'wildSlow' && !(fx.mul > 0 && fx.mul < 1)) { bad++; fail(`${id}: slow multiplier ${fx.mul} outside (0,1)`); }
+    if (fx.type === 'catchBoost' && !(fx.missMul > 0 && fx.missMul < 1)) { bad++; fail(`${id}: miss multiplier outside (0,1)`); }
+    if (b.icon !== `/sprites/berries/${id}_berry.png`) { bad++; fail(`${id}: icon path off pattern (${b.icon})`); }
+    if (!existsSync(`public${b.icon}`)) { bad++; fail(`${id}: missing icon public${b.icon}`); }
+  }
+  if (!(BERRY_RULES.SPAWN_MIN >= 1 && BERRY_RULES.SPAWN_MAX >= BERRY_RULES.SPAWN_MIN && BERRY_RULES.SPAWN_FIRST_AT < BERRY_RULES.SPAWN_WINDOW)) { bad++; fail('berry spawn rules inconsistent'); }
+  if (!bad) ok(`${BERRY_IDS.length} berries: two sets of ${BERRY_KEYS.length}, sane thresholds/durations, every icon present`);
+}
+
 if (failures) { console.error(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log('\nAll checks passed.');

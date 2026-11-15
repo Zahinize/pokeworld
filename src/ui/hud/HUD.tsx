@@ -5,6 +5,7 @@ import { COMBAT } from '@/data/combatConfig';
 import { useStore } from '@/state/store';
 import { session } from '@/engine/GameSession';
 import { BALL_ORDER, BALLS } from '@/data/balls';
+import { BERRIES, BERRY_KEYS } from '@/data/berries';
 import { GAME } from '@/data/gameConfig';
 import { SPECIES, baseSpeciesId, isShinyToken, tokenLabel } from '@/data/species';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
@@ -118,11 +119,41 @@ function BallChip() {
   );
 }
 
+/** This heart's berries: five fixed slots (R T Y U I), counts, held markers and effect timers. Tap to eat on touch. */
+function BerryBar() {
+  const b = useStore((s) => s.hud.berries);
+  const isTouch = useStore((s) => s.isTouch);
+  if (!b) return null;
+  if (isTouch && !b.active) return null; // phones keep the HUD minimal until there is a berry to show
+  return (
+    <div className="berry-bar glass interactive" role="toolbar" aria-label="Berries">
+      {b.slots.map((s, i) => {
+        const B = BERRIES[s.id];
+        const fx = b.effects.find((e) => e.id === s.id);
+        const held = s.held !== null;
+        return (
+          <button key={s.id} className={`berry-slot ${s.count === 0 ? 'empty' : ''} ${held ? 'held' : ''} ${fx ? 'active' : ''}`}
+            disabled={s.count === 0}
+            title={isTouch ? undefined : `${B.name} · ${B.blurb} · press ${BERRY_KEYS[i]}`}
+            aria-label={`${B.name}: ${s.count} in the bag${held ? ', held' : ''}${fx ? `, active for ${Math.ceil(fx.remaining)} s` : ''}`}
+            onClick={() => session.useBerry(i)}>
+            <img src={B.icon} alt="" draggable={false} />
+            {fx && <span className="cdp" style={{ background: `conic-gradient(rgba(5,11,23,.72) ${(1 - fx.remaining / (fx.total || 1)) * 360}deg, transparent 0deg)` }} />}
+            {s.count > 0 && <span className="cnt">{s.count}</span>}
+            {held && <span className="held-dot" aria-hidden />}
+            {!isTouch && <span className="kbd">{BERRY_KEYS[i]}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Ball controls live at bottom-centre — except underwater in companion levels, where the team fights. */
 function BallCatchControls() {
   const catchMode = useStore((s) => s.hud.catchMode);
   if (!catchMode) return null;
-  return <BallChip />;
+  return <><BerryBar /><BallChip /></>;
 }
 
 /** First-run tutorial: one instruction at a time, progress dots, always skippable. */
@@ -151,6 +182,8 @@ function PartyBar() {
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">
+      <BerryBar />
+      <div className="party-row">
       {party.active.map((a, slot) => a ? (
         <div key={slot} className={`q-card s${slot} ${a.dueling ? 'dueling' : ''}`}>
           {a.moves.map((mv, mi) => {
@@ -200,6 +233,7 @@ function PartyBar() {
           })}
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -290,6 +324,7 @@ function Toasts() {
       {toasts.map((t) => (
         <Panel key={t.id} className={`toast ${t.kind}`}>
           {t.speciesId && <SpriteImg id={t.speciesId} shiny={t.shiny} size={40} />}
+          {t.icon && !t.speciesId && <img className="item" src={t.icon} alt="" />}
           <div><div className="t">{t.title}</div>{t.body && <div className="b">{t.body}</div>}</div>
         </Panel>
       ))}
@@ -314,26 +349,48 @@ function CatchCard() {
   );
 }
 
-function TargetPointer() {
-  const t = useStore((s) => s.hud.nearestTarget);
-  const [, force] = useState(0);
-  useEffect(() => { const id = setInterval(() => force((n) => n + 1), 100); return () => clearInterval(id); }, []);
-  if (!t) return null;
-  // angle of target relative to the look direction (screen-space heading around crosshair)
+/** Screen-space heading of a world offset around the crosshair: `ahead` (1 = dead ahead) and the arrow angle. */
+function headingOf(dx: number, dz: number) {
   const yaw = session.player.yaw;
   const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
   const rx = Math.cos(yaw), rz = -Math.sin(yaw);
-  const dxz = Math.hypot(t.dx, t.dz) || 1;
-  const nx = t.dx / dxz, nz = t.dz / dxz;
+  const dxz = Math.hypot(dx, dz) || 1;
+  const nx = dx / dxz, nz = dz / dxz;
   const ahead = nx * fx + nz * fz, right = nx * rx + nz * rz;
-  const ang = Math.atan2(right, ahead); // 0 = straight ahead
-  const inView = ahead > 0.94 && t.distance < 60;
-  return (
-    <>
-      {!inView && <div className="target-ring"><div className="target-arrow" style={{ transform: `rotate(${(ang * 180) / Math.PI}deg)` }}><i /></div></div>}
-      <div className="target-label"><SpriteImg id={t.speciesId} size={28} />{SPECIES[t.speciesId].name} · {Math.round(t.distance)} m</div>
-    </>
-  );
+  return { ahead, deg: (Math.atan2(right, ahead) * 180) / Math.PI }; // 0 = straight ahead
+}
+
+/** The gold arrow to the next mission target, and the smaller green one to a berry within 50 m. */
+function TargetPointer() {
+  const t = useStore((s) => s.hud.nearestTarget);
+  const berry = useStore((s) => s.hud.berries?.nearest ?? null);
+  const [, force] = useState(0);
+  useEffect(() => { const id = setInterval(() => force((n) => n + 1), 100); return () => clearInterval(id); }, []);
+  if (!t && !berry) return null;
+  let target: React.ReactNode = null;
+  if (t) {
+    const h = headingOf(t.dx, t.dz);
+    const inView = h.ahead > 0.94 && t.distance < 60;
+    target = (
+      <>
+        {!inView && <div className="target-ring"><div className="target-arrow" style={{ transform: `rotate(${h.deg}deg)` }}><i /></div></div>}
+        <div className="target-label"><SpriteImg id={t.speciesId} size={28} />{SPECIES[t.speciesId].name} · {Math.round(t.distance)} m</div>
+      </>
+    );
+  }
+  let pick: React.ReactNode = null;
+  if (berry) {
+    const h = headingOf(berry.dx, berry.dz);
+    const inView = h.ahead > 0.94 && berry.distance < 40;
+    const B = BERRIES[berry.id];
+    pick = (
+      <>
+        {!inView && <div className="berry-ring"><div className="berry-arrow" style={{ transform: `rotate(${h.deg}deg)` }}><i /></div></div>}
+        <div className="berry-label"><img src={B.icon} alt="" />{B.name} · {Math.round(berry.distance)} m</div>
+      </>
+    );
+  }
+  return <>{target}{pick}</>;
 }
 
 function BossIntro() {
@@ -420,6 +477,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
       <Row keys={<b>Left stick</b>}><b>swim</b> — you swim where you look</Row>
       <Row keys={<b>Drag anywhere</b>}>look around</Row>
       <Row keys={<b>Poké Ball</b>}><b>drag to aim, release to throw</b> · tap = quick throw</Row>
+      <Row keys={<b>Berry bar</b>}>tap a berry to eat it — they wash onto the sea floor each lifeline</Row>
     </div>
   ) : (
     <>
@@ -435,6 +493,7 @@ export function ControlsLegend({ isTouch }: { isTouch: boolean }) {
           <Row keys={<K k="Shift" />}>sprint — speed also ramps up on its own</Row>
           <Row keys={<><K k="1" />–<K k="4" /> · <K k="Q" /></>}>pin a ball — otherwise they pick themselves</Row>
           <Row keys={<K k="E" />}>lure nearby Pokémon · once every 5 min</Row>
+          <Row keys={<><K k="R" /><K k="T" /><K k="Y" /><K k="U" /><K k="I" /></>}>eat a berry · held berries wait until HP drops</Row>
           <Row keys={<><K k="Tab" /> · <K k="M" /></>}>mission details · hide panel</Row>
           <Row keys={<K k="C" />}>collection</Row>
           {session.companionsEnabled && <Row keys={<b>Right click</b>}>quick attack — best ready companion move at your crosshair</Row>}
@@ -484,10 +543,12 @@ export function HUD({ onQuit }: { onQuit: () => void }) {
   const [compact, setCompact] = useState(() => isTouch || small());
   useEffect(() => { const f = () => setCompact(isTouch || small()); f(); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, [isTouch]);
   const missionExpanded = overlay === 'mission';
+  const berriesHud = useStore((s) => s.hud.berries);
+  const berryBar = !!berriesHud && (!isTouch || berriesHud.active); // the bar's height lifts the swap prompt (--berry-h)
 
   return (
     <>
-      <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''}`}>
+      <div className={`hud ${isTouch ? 'touch' : ''} ${restocking ? 'restocking' : ''} ${berryBar ? 'berries' : ''}`}>
         <div className="hud-top-left">
           {!missionExpanded && <MissionPanel compact={compact} onToggle={() => setOverlay('mission')} />}
           <Lifelines />

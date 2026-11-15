@@ -52,6 +52,8 @@ const SHAKE_INTERVAL = 0.65;
 export class BallSystem {
   balls: Ball[] = [];
   events: BallEvent[] = [];
+  /** Razz Berry: fraction of the miss chance every catch roll keeps (1 = no berry). */
+  catchMissMul = 1;
   private nextId = 1;
 
   throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED): Ball {
@@ -172,7 +174,7 @@ export class BallSystem {
     this.events.push({ type: 'hit', ball: b, entity: e });
     if (GAME.BALL_IMPACT_DAMAGE > 0) eco.damage(e, GAME.BALL_IMPACT_DAMAGE, 'ball', -2);
     else e.hpBarT = GAME.HEALTH_BAR_TTL;
-    const roll = rollCatch(e, b.type, Math.random, eco.ferryActive);
+    const roll = rollCatch(e, b.type, Math.random, eco.ferryActive, this.catchMissMul);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = e.id; b.vx = b.vy = b.vz = 0;
@@ -183,7 +185,7 @@ export class BallSystem {
     this.events.push({ type: 'skyHit', ball: b, speciesId: bird.speciesId });
     // a bird that dived into the reef is out of its element — twice as easy to hold (shinies still resist)
     const inReef = bird.y < GAME.SURFACE_Y;
-    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type, undefined, (bird.shiny ? SKY.SHINY.CATCH_MULT : 1) * (inReef ? SKY.RAID.CATCH_MULT : 1));
+    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type, undefined, (bird.shiny ? SKY.SHINY.CATCH_MULT : 1) * (inReef ? SKY.RAID.CATCH_MULT : 1), this.catchMissMul);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = -1; b.skyTargetId = bird.id; b.skySpeciesId = bird.speciesId;

@@ -191,6 +191,10 @@ class AudioManagerImpl {
     this.noiseBurst(1.5, 0.12, 2500, 1, 0.8);
   }
   restore() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.3, 0.12, 'triangle', undefined, 0, i * 0.08)); }
+  /** Berry pickup: a bright two-note chirp. */
+  berryPickup() { this.tone(880, 0.12, 0.1, 'triangle', 1320); this.tone(1320, 0.18, 0.1, 'triangle', 1760, 0, 0.09); }
+  /** Eating a berry: two soft crunches over a low munch. */
+  berryEat() { this.noiseBurst(0.07, 0.14, 1400, 1.2); this.noiseBurst(0.08, 0.12, 900, 1.0, 0.11); this.tone(260, 0.22, 0.08, 'sine', 180, 0, 0.02); }
 
   /**
    * Move cast sound — per-move signatures for the redesigned moves (timed to their

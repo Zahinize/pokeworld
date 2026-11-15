@@ -165,7 +165,7 @@ export class Ecosystem {
         : s.id === 'mantine' ? 10 + this.rng.next() * 15   // the first leap comes early
         : 120 + this.rng.next() * 200,
       cs: combatStatsOf(s.id), mcd: [this.rng.next() * 2, this.rng.next() * 2],
-      atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
+      atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1,
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
@@ -693,9 +693,9 @@ export class Ecosystem {
         } else {
           // a flyer closes in over the water, never under it: it skims down to the swell above its target
           const ty2 = e.species.skyOnly ? Math.max(t.y, GAME.SURFACE_Y + 1.0 + e.species.size * 0.5) : t.y;
-          const k = e.species.burst / (d || 1);
+          const k = e.species.burst * e.berrySpd / (d || 1);
           e.dx = (t.x - e.x) * k; e.dy = (ty2 - e.y) * k; e.dz = (t.z - e.z) * k;
-          e.maxSpeed = e.species.burst;
+          e.maxSpeed = e.species.burst * e.berrySpd;
           return;
         }
       }
@@ -721,7 +721,7 @@ export class Ecosystem {
       e.x = tx; e.y = ty; e.z = tz; e.vx = e.vy = e.vz = 0;
       return;
     }
-    const speed = d > 20 ? e.species.burst * 1.4 : d > 6 ? e.species.burst : e.species.speed * Math.min(1.6, 0.4 + d * 0.4);
+    const speed = (d > 20 ? e.species.burst * 1.4 : d > 6 ? e.species.burst : e.species.speed * Math.min(1.6, 0.4 + d * 0.4)) * e.berrySpd; // Salac Berry: a faster companion
     const k = speed / (d || 1);
     e.dx = (tx - e.x) * k; e.dy = (ty - e.y) * k; e.dz = (tz - e.z) * k;
     e.maxSpeed = speed;
@@ -749,7 +749,7 @@ export class Ecosystem {
     const ty = o.y + Math.sin(this.time * 0.9 + e.phase * 4) * 0.8;
     const tz = o.z + Math.sin(e.lureOrbit) * r;
     const d = len3(tx - e.x, ty - e.y, tz - e.z) || 1;
-    const speed = e.species.speed * 1.3;
+    const speed = e.species.speed * 1.3 * e.berrySpd;
     e.dx = (tx - e.x) / d * speed; e.dy = (ty - e.y) / d * speed; e.dz = (tz - e.z) / d * speed;
     e.maxSpeed = speed;
   }
@@ -869,10 +869,13 @@ export class Ecosystem {
     const leaping = e.state === 'leapAir';
     const agility = e.behavior === 'giant' ? 0.22 : e.behavior === 'bottom' ? 0.7 : e.state === 'rush' || e.state === 'scatter' || e.state === 'flee' ? 1.6 : 1.0;
     const k = Math.min(1, agility * 3.2 * dt);
-    if (!leaping) { e.vx += (e.dx - e.vx) * k; e.vy += (e.dy - e.vy) * k; e.vz += (e.dz - e.vz) * k; }
+    // Nanab Berry: the wild reef swims at a fraction of its pace — the steering target AND the cap scale,
+    // so a cruiser under its cap slows too (companions and the ferry Lapras keep their stride)
+    const wm = e.role !== 'partner' && this.ctx.ferry !== e ? this.wildSpeedMul : 1;
+    if (!leaping) { e.vx += (e.dx * wm - e.vx) * k; e.vy += (e.dy * wm - e.vy) * k; e.vz += (e.dz * wm - e.vz) * k; }
     else e.vy -= GAME.MANTINE_LEAP.GRAVITY * dt;   // ballistic: gravity only, forward speed carried
     const sp = len3(e.vx, e.vy, e.vz);
-    const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1);
+    const lim = Math.max(e.maxSpeed, 0.2) * 1.1 * (e.slowT > 0 ? 0.6 : 1) * wm;
     if (sp > lim && !leaping) { const f = lim / sp; e.vx *= f; e.vy *= f; e.vz *= f; }
     // wind-up brace: a caster mid-charge digs in and holds its spot, so the rear-back
     // (and the aqua cannon building around a dash user) plays out in place, not mid-glide
@@ -1075,6 +1078,8 @@ export class Ecosystem {
 
   /** Extra current force applied to everything while a boss event rages (set by the session). */
   bossCurrent = 0;
+  /** Nanab Berry: every wild (non-partner) reef Pokémon swims at this fraction of its speed; the ferry Lapras is exempt. */
+  wildSpeedMul = 1;
   /** Bosses fight only when awakened (the session flips this after the challenge dialog). */
   bossesActive = true;
 

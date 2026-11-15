@@ -71,6 +71,8 @@ export interface Entity {
   mcd: [number, number];
   /** Stat stage multipliers with expiry (sim time). */
   atkStage: number; atkStageUntil: number;
+  /** Berry buffs (companions): flat Attack added to both offences, and a speed multiplier (1 = none). */
+  atkBonus: number; berrySpd: number;
   defStage: number; defStageUntil: number;
   /** Status timers (seconds remaining). */
   stunT: number; slowT: number; blindT: number;

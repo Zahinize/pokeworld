@@ -16,6 +16,7 @@ import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
 import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
 import { FeedCrumbs } from './env/FeedCrumbs';
+import { BerryLayer } from './env/BerryLayer';
 import { ThrowArc } from './fx/ThrowArc';
 import { CatchConfetti } from './fx/CatchConfetti';
 import { SKY } from '@/data/sky';
@@ -93,6 +94,7 @@ export function Scene() {
         <SkyWorld clouds={SKY.CLOUDS[resolveQuality(qualitySetting, isTouch)] ?? 3} />
         <SkyLifeLayer />
         <FeedCrumbs />
+        <BerryLayer />
         <ThrowArc />
         <PokemonShadows />
         <PokemonLayer />

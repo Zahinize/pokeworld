@@ -8,6 +8,15 @@ import { getLevel } from '@/data/levels';
 import { normalizeHp } from '@/pokeapi/hp';
 import { SPECIES } from '@/data/species';
 import { floorY } from '@/engine/world/terrain';
+import { BerrySystem } from '@/engine/sim/berries';
+import { BERRY_RULES } from '@/data/berries';
+import { RNG } from '@/engine/rng';
+import { boostCatch, rollCatch, rollCatchFor, catchProbability } from '@/engine/sim/catching';
+import { computeDamage } from '@/engine/sim/combat';
+import { offenseOf } from '@/engine/sim/moveSystem';
+import { getMove } from '@/data/moves';
+import { SKY } from '@/data/sky';
+import type { Entity } from '@/engine/ai/types';
 
 const hp = (id: string) => normalizeHp(SPECIES[id].fallbackStats);
 let failures = 0;
@@ -854,6 +863,172 @@ for (const levelId of [1, 2]) {
     if (b3.hp === hpBefore) ok('sky: captured birds are immune to move damage'); else fail('sky: damage leaked into a capture attempt');
   }
 }
+
+// ---- Berries: per-heart spawns, pickup, Nanab/Razz, held pinch berries ----
+{
+  const P = BERRY_RULES.PLACE;
+  const gen = generateEcosystem(getLevel(1), 11);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  const world = { obstacles: eco.obstacles };
+  // 1. twelve seeded hearts: 3–5 berries, all inside the window, on the sand, inside the reef, clear of rocks, not underfoot
+  {
+    let hearts = 0, berries = 0, bad: string[] = [];
+    for (let seed = 1; seed <= 12; seed++) {
+      const bs = new BerrySystem('solo', new RNG(seed));
+      bs.startHeart();
+      if (bs.pending < BERRY_RULES.SPAWN_MIN || bs.pending > BERRY_RULES.SPAWN_MAX) bad.push(`seed ${seed}: ${bs.pending} berries scheduled`);
+      let t = 0;
+      while (t < BERRY_RULES.SPAWN_WINDOW + 1) { bs.update(0.5, p, world, []); t += 0.5; }
+      if (bs.pending) bad.push(`seed ${seed}: ${bs.pending} berries never landed inside ${BERRY_RULES.SPAWN_WINDOW}s`);
+      for (const b of bs.floor) {
+        berries++;
+        const lift = b.y - floorY(b.x, b.z);
+        if (Math.hypot(b.x, b.z) > P.MAX_WORLD_R + 0.01) bad.push(`seed ${seed}: berry outside the reef (${Math.hypot(b.x, b.z).toFixed(0)}m)`);
+        if (lift < 0.3 || lift > 1) bad.push(`seed ${seed}: berry floating ${lift.toFixed(2)}m off the sand`);
+        if (Math.hypot(b.x - p.x, b.z - p.z) < P.MIN_FROM_PLAYER - 0.01) bad.push(`seed ${seed}: berry underfoot`);
+        for (const o of eco.obstacles) if (Math.hypot(b.x - o.x, b.z - o.z) < o.r) bad.push(`seed ${seed}: berry inside a ${o.kind}`);
+      }
+      hearts++;
+    }
+    if (bad.length === 0) ok(`berries: ${berries} berries over ${hearts} hearts all landed on open sand inside the reef within ${BERRY_RULES.SPAWN_WINDOW}s`);
+    else fail(`berries: placement problems — ${bad.slice(0, 3).join('; ')}${bad.length > 3 ? ` (+${bad.length - 3})` : ''}`);
+    // the schedule is random per heart, not fixed: two hearts never share their timings
+    const a = new BerrySystem('solo', new RNG(21)); a.startHeart();
+    const b = new BerrySystem('solo', new RNG(22)); b.startHeart();
+    const ta = (a as any).schedule.map((s: { at: number }) => s.at.toFixed(1)).join(','), tb = (b as any).schedule.map((s: { at: number }) => s.at.toFixed(1)).join(',');
+    if (ta !== tb) ok('berries: spawn timings differ between hearts'); else fail('berries: two hearts rolled identical spawn timings');
+  }
+  // 2. pickup: swim onto a berry
+  const bs = new BerrySystem('solo', new RNG(5));
+  bs.startHeart();
+  for (let i = 0; i < 260; i++) bs.update(0.5, p, world, []);
+  bs.drainEvents();
+  {
+    const first = bs.floor[0];
+    const n0 = bs.floor.length;
+    const near = bs.nearest({ x: first.x + 10, y: first.y, z: first.z });
+    if (near && near.id === first.id && Math.abs(near.distance - 10) < 0.01) ok('berries: pointer finds the berry inside 50 m'); else fail('berries: pointer missed a berry 10 m away');
+    if (bs.nearest({ x: 400, y: first.y, z: 400 }) === null) ok('berries: pointer stays quiet beyond 50 m'); else fail('berries: pointer led to a berry over 50 m away');
+    bs.update(1 / 60, { x: first.x, y: first.y + 1, z: first.z }, world, []);
+    const picked = bs.drainEvents().filter((e) => e.type === 'pickup');
+    if (picked.length === 1 && bs.inventory[first.id] === 1 && bs.floor.length === n0 - 1) ok(`berries: swimming onto a ${first.id} berry picks it up`); else fail(`berries: pickup failed (events ${picked.length}, bag ${bs.inventory[first.id]}, floor ${bs.floor.length}/${n0})`);
+  }
+  // 3. Nanab: the reef at half speed; a companion keeps its pace
+  {
+    const speedOf = (frames: number) => { let s = 0, n = 0; for (let i = 0; i < frames; i++) { eco.update(1 / 60, p, 0); if (i % 10 === 0) for (const e of eco.alive) if (e.role !== 'partner' && (e.state as string) !== 'rest') { s += Math.hypot(e.vx, e.vy, e.vz); n++; } } eco.drainEvents(); return s / Math.max(1, n); };
+    const base = speedOf(5 * 60);
+    eco.wildSpeedMul = 0.5;
+    const slowed = speedOf(5 * 60);
+    eco.wildSpeedMul = 1;
+    const after = speedOf(3 * 60);
+    if (slowed <= base * 0.62) ok(`berries: Nanab slows the reef (mean ${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`); else fail(`berries: Nanab barely slowed the reef (${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`);
+    if (after >= slowed * 1.3) ok('berries: the reef speeds back up when Nanab wears off'); else fail(`berries: reef stayed slow after Nanab (${slowed.toFixed(2)} → ${after.toFixed(2)})`);
+    const partner = eco.addPartner('sharpedo', 0);
+    eco.wildSpeedMul = 0.5;
+    partner.x = p.x + 28; partner.y = p.y; partner.z = p.z; partner.vx = partner.vy = partner.vz = 0; partner.nextThink = eco.time;
+    for (let i = 0; i < 45; i++) eco.update(1 / 60, p, 0);
+    const ps = Math.hypot(partner.vx, partner.vy, partner.vz);
+    eco.wildSpeedMul = 1;
+    if (ps >= partner.species.burst * 0.9) ok(`berries: Nanab never slows a companion (${ps.toFixed(1)} m/s rushing back)`); else fail(`berries: Nanab slowed a companion (${ps.toFixed(1)} vs burst ${partner.species.burst})`);
+    eco.removePartner(partner.id);
+    eco.drainEvents();
+  }
+  // 4. Razz: halves the miss chance, never past a cap; the base formula is untouched
+  {
+    const b = boostCatch(0.4, 0.5, 0.96);
+    if (Math.abs(b - 0.7) < 1e-9) ok('berries: Razz turns a 40% catch into 70% (miss chance halved)'); else fail(`berries: Razz math off (${b})`);
+    if (boostCatch(1, 0.5, 0.96) === 1) ok('berries: a guaranteed Master Ball stays guaranteed under Razz'); else fail('berries: Razz dragged a Master Ball below 100%');
+    const lugia = SPECIES.lugia;
+    const r = rollCatchFor(lugia, 'masterball', () => 0.99, 1, 0.5);
+    if (Math.abs(r.p - SKY.LEGENDARY_CATCH_CAP) < 1e-9) ok('berries: Razz cannot lift a sky legendary past its Master Ball cap'); else fail(`berries: sky legendary cap broken under Razz (${r.p})`);
+    const wild = eco.alive.find((e) => e.role !== 'partner' && !e.isBoss)!;
+    const p0 = catchProbability(wild, 'pokeball');
+    const rr = rollCatch(wild, 'pokeball', () => 0.999, false, 0.5);
+    if (Math.abs(rr.p - Math.min(0.96, 1 - (1 - p0) * 0.5)) < 1e-9 && catchProbability(wild, 'pokeball') === p0) ok('berries: reef catch rolls carry the Razz boost; catchProbability itself is unchanged'); else fail(`berries: reef Razz roll off (${p0} → ${rr.p})`);
+  }
+  // 5. the trainer's berries: Oran now, Sitrus/Figy held and fired at the threshold — even on the hit that would have KO'd
+  {
+    const t = new BerrySystem('solo', new RNG(3));
+    t.startHeart();
+    let trainerHp = 70;
+    const ctx = { trainerHp: 0, trainerMaxHp: 100, setTrainerHp: (v: number) => { trainerHp = v; }, partners: [] as Entity[] };
+    const use = (slot: number) => { ctx.trainerHp = trainerHp; return t.use(slot, ctx); };
+    if (!use(2) && t.drainEvents().some((e) => e.type === 'blocked' && e.reason === 'empty')) ok('berries: an empty slot is a dud'); else fail('berries: ate a berry the trainer did not have');
+    t.inventory.oran = 2; t.inventory.sitrus = 1; t.inventory.figy = 1;
+    use(2);
+    if (trainerHp === 100 && t.inventory.oran === 1) ok('berries: Oran heals 40 (capped at max HP)'); else fail(`berries: Oran gave ${trainerHp} HP`);
+    trainerHp = 60;
+    use(3);
+    const armed = t.heldTrainer === 'sitrus' && t.inventory.sitrus === 0;
+    const quiet = t.trainerPinch(55, 100) === 0 && t.heldTrainer === 'sitrus';
+    const heal = t.trainerPinch(30, 100);
+    if (armed && quiet && heal === 25 && t.heldTrainer === null) ok('berries: Sitrus arms, waits above 50%, then restores 25 HP under it'); else fail(`berries: Sitrus held path broken (armed ${armed}, quiet ${quiet}, heal ${heal})`);
+    use(4);
+    const saved = t.trainerPinch(0, 100);
+    if (saved === 33) ok('berries: Figy fires on the hit that drops HP to 0 (+33)'); else fail(`berries: Figy did not save the trainer (${saved})`);
+    // arming while already under the threshold eats it at once
+    t.inventory.sitrus = 1; trainerHp = 20;
+    use(3);
+    if (trainerHp === 45 && t.heldTrainer === null) ok('berries: a held berry armed below its threshold fires immediately'); else fail(`berries: immediate pinch failed (hp ${trainerHp}, held ${t.heldTrainer})`);
+    // swapping held berries refunds the old one
+    t.inventory.sitrus = 1; t.inventory.figy = 1; trainerHp = 90;
+    use(3); use(4);
+    if (t.heldTrainer === 'figy' && t.inventory.sitrus === 1 && t.inventory.figy === 0) ok('berries: arming a second held berry refunds the first'); else fail(`berries: refund failed (held ${t.heldTrainer}, sitrus ${t.inventory.sitrus})`);
+    t.endHeart([]);
+    if (t.heldTrainer === null && t.inventory.sitrus === 0 && t.floor.length === 0 && t.pending === 0) ok('berries: a lost heart clears bag, held berries and the floor'); else fail('berries: endHeart left something behind');
+    t.startHeart();
+    if (t.pending >= 3) ok('berries: a new heart schedules a fresh batch'); else fail('berries: no batch after the respawn');
+  }
+  // 6. companions: one berry feeds both; pinch berries fire per Pokémon; Liechi/Salac buff and expire
+  {
+    const c = new BerrySystem('companion', new RNG(8));
+    c.startHeart();
+    const a = eco.addPartner('sharpedo', 0), b = eco.addPartner('alomomola', 1);
+    eco.update(1 / 60, p, 0); eco.drainEvents();
+    const partners = [a, b];
+    const ctx = { trainerHp: 100, trainerMaxHp: 100, setTrainerHp: () => {}, partners };
+    c.inventory.oran = 1; c.inventory.sitrus = 1; c.inventory.liechi = 1; c.inventory.salac = 1;
+    const aHp0 = Math.round(a.maxHp * 0.25);
+    a.hp = aHp0; b.hp = b.maxHp - 10;
+    c.use(0, ctx);
+    if (a.hp === Math.min(a.maxHp, aHp0 + 40) && b.hp === b.maxHp && c.inventory.oran === 0) ok('berries: one Oran heals both companions 40 (capped)'); else fail(`berries: team Oran off (${a.hp}/${a.maxHp}, ${b.hp}/${b.maxHp})`);
+    c.use(1, ctx);
+    if (c.heldBy.get(a.id) === 'sitrus' && c.heldBy.get(b.id) === 'sitrus' && c.inventory.sitrus === 0) ok('berries: one Sitrus arms on both companions'); else fail('berries: team Sitrus did not arm both');
+    c.drainEvents();
+    a.hp = Math.round(a.maxHp * 0.4);
+    c.update(1 / 60, p, world, partners);
+    const fired = c.drainEvents().filter((e) => e.type === 'consume');
+    if (fired.length === 1 && fired[0].targetId === a.id && a.hp === Math.round(a.maxHp * 0.4) + Math.round(a.maxHp * 0.25) && c.heldBy.get(b.id) === 'sitrus') ok('berries: the hurt companion eats its Sitrus; the healthy one keeps holding'); else fail(`berries: team pinch wrong (${fired.length} fired, a ${a.hp}/${a.maxHp})`);
+    // Liechi: +100 Attack folded into damage, gone after the buff window
+    const move = getMove('bite');
+    const rand = () => 0.5;
+    a.hp = a.maxHp; b.hp = b.maxHp;
+    c.use(3, ctx);
+    a.hp = Math.round(a.maxHp * 0.2);
+    c.update(1 / 60, p, world, partners);
+    const dBase = computeDamage(a.cs, b.cs, b.maxHp, move, undefined, undefined, rand);
+    const dBuff = computeDamage(offenseOf(a), b.cs, b.maxHp, move, undefined, undefined, rand);
+    if (a.atkBonus === 100 && dBuff > dBase) ok(`berries: Liechi adds +100 Attack (bite ${dBase} → ${dBuff})`); else fail(`berries: Liechi did nothing (bonus ${a.atkBonus}, ${dBase} → ${dBuff})`);
+    c.update(BERRY_RULES.PINCH_BUFF_SECONDS + 1, p, world, partners);
+    if (a.atkBonus === 0 && c.drainEvents().some((e) => e.type === 'expire' && e.id === 'liechi')) ok(`berries: Liechi wears off after ${BERRY_RULES.PINCH_BUFF_SECONDS}s`); else fail('berries: Liechi never expired');
+    // Salac: faster formation swimming, then back to normal
+    a.hp = a.maxHp; b.hp = Math.round(b.maxHp * 0.2);
+    c.use(4, ctx);
+    const spd = b.berrySpd;
+    if (spd > 1 && spd <= 1.8 && b.hp === Math.round(b.maxHp * 0.2)) ok(`berries: Salac lifts speed ×${spd.toFixed(2)} without healing`); else fail(`berries: Salac off (×${spd})`);
+    c.update(BERRY_RULES.PINCH_BUFF_SECONDS + 1, p, world, partners);
+    if (b.berrySpd === 1) ok('berries: Salac wears off'); else fail('berries: Salac stuck on');
+    // benching refunds a held berry; a KO loses it
+    c.inventory.sitrus = 1; a.hp = a.maxHp; b.hp = b.maxHp;
+    c.use(1, ctx);
+    c.onPartnerGone(a, false);
+    c.onPartnerGone(b, true);
+    if (c.inventory.sitrus === 1 && c.heldBy.size === 0) ok('berries: benching refunds the held berry once; a KO drops it'); else fail(`berries: partner-gone handling off (bag ${c.inventory.sitrus}, held ${c.heldBy.size})`);
+    eco.removePartner(a.id); eco.removePartner(b.id);
+  }
+}
+
 
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

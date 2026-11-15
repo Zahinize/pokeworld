@@ -7,6 +7,7 @@ import type { BallId } from '@/data/types';
 import { BALLS, BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import { loadGame, saveGame, resetGame, type SaveData, type CollectionEntry, type Settings, type CurrentRun } from '@/persistence';
 import type { MissionState } from '@/engine/sim/mission';
+import type { BerryHudSnapshot } from '@/engine/sim/berries';
 import { SPECIES } from '@/data/species';
 
 export type Screen = 'loading' | 'start' | 'login' | 'worlds' | 'leaderboard' | 'trainer' | 'defeat' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings' | 'arena';
@@ -19,6 +20,8 @@ export interface Toast {
   speciesId?: string;
   shiny?: boolean;
   missionTarget?: boolean;
+  /** Item icon (a berry) shown in place of a sprite. */
+  icon?: string;
   ttl: number;
 }
 
@@ -68,6 +71,8 @@ export interface HudState {
   tutorial: { step: string; text: string; i: number; n: number } | null;
   fps: number;
   ecoSummary: string[];
+  /** The berry bar: this heart's bag, held berries, running effects and the nearest floor berry (null outside a dive). */
+  berries: BerryHudSnapshot | null;
 }
 
 interface AppState {
@@ -126,7 +131,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [], berries: null },
   toasts: [],
   lastCatch: null,
   completeStats: null,
