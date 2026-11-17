@@ -195,8 +195,14 @@ class AudioManagerImpl {
   berryPickup() { this.tone(880, 0.12, 0.1, 'triangle', 1320); this.tone(1320, 0.18, 0.1, 'triangle', 1760, 0, 0.09); }
   /** The Ball Launcher: a pneumatic thump with a bright release. */
   launcher() { this.noiseBurst(0.06, 0.22, 500, 0.8); this.tone(180, 0.14, 0.14, 'square', 90); this.tone(1200, 0.08, 0.06, 'triangle', 1800, 0, 0.03); }
-  /** The Catch Laser: a falling zap. */
-  laser() { this.tone(1800, 0.16, 0.12, 'square', 420); this.tone(2600, 0.08, 0.05, 'sawtooth', 900, 0, 0.01); this.noiseBurst(0.05, 0.08, 3200, 2); }
+  /** The Catch Laser: an electric crack — a snap of static, a crackling sweep, and a low charge thump. */
+  laser() {
+    this.noiseBurst(0.03, 0.26, 5200, 3);                                   // the snap
+    [0, 0.025, 0.05, 0.08, 0.115].forEach((d, i) => this.noiseBurst(0.02, 0.12 - i * 0.015, 3600 - i * 400, 4, d)); // crackle
+    this.tone(2400, 0.14, 0.08, 'sawtooth', 700);                           // the arc's whine
+    this.tone(3200, 0.07, 0.05, 'square', 1400, 0, 0.02);
+    this.tone(140, 0.16, 0.12, 'sine', 60);                                 // the charge thump
+  }
   /** A ball clanks off the treasure chest. */
   chestHit() { this.noiseBurst(0.04, 0.18, 2600, 3); this.tone(520, 0.18, 0.1, 'triangle', 300); }
   /** The chest's lid swings open: a creak under a rising arpeggio. */

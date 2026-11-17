@@ -101,6 +101,7 @@ interface AppState {
   selectTrainer(id: string): void;
   setSettings(patch: Partial<Settings>): void;
   setInventory(inv: Record<BallId, number>): void;
+  setLoot(loot: SaveData['loot']): void;
   setRestoration(endsAt: number | null): void;
   recordCatch(speciesId: string, levelId: number): void;
   recordSeen(speciesId: string): void;
@@ -155,6 +156,10 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setInventory(inventory) {
     const save = { ...get().save, inventory: { ...inventory } };
+    saveGame(save); set({ save });
+  },
+  setLoot(loot) {
+    const save = { ...get().save, loot: { ...loot, ballGun: loot.ballGun ? { ...loot.ballGun } : null } };
     saveGame(save); set({ save });
   },
   setRestoration(endsAt) {

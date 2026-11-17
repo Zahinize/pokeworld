@@ -164,15 +164,13 @@ function LootBar() {
         const L = LOOT[s.id];
         const owned = s.count !== null;
         const equipped = c.weapon === s.id;
-        const armed = s.id === 'timer' && c.timerArmed;
         return (
-          <button key={s.id} className={`berry-slot loot-slot ${owned ? '' : 'empty'} ${equipped ? 'equipped' : ''} ${armed ? 'held' : ''}`} disabled={!owned}
+          <button key={s.id} className={`berry-slot loot-slot ${owned ? '' : 'empty'} ${equipped ? 'equipped' : ''}`} disabled={!owned}
             title={isTouch ? undefined : `${L.name} · ${L.blurb} · press ${LOOT_KEYS[i]}`}
-            aria-label={`${L.name}${owned ? `: ${s.count} left` : ': not found yet'}${equipped ? ', equipped' : ''}${armed ? ', armed' : ''}`}
+            aria-label={`${L.name}${owned ? `: ${s.count} left` : ': not found yet'}${equipped ? ', equipped' : ''}`}
             onClick={() => session.useLoot(i)}>
             <img src={L.icon} alt="" draggable={false} />
             {owned && <span className="cnt">{s.count}</span>}
-            {armed && <span className="held-dot" aria-hidden />}
             {!isTouch && <span className="kbd">{LOOT_KEYS[i]}</span>}
           </button>
         );
@@ -535,7 +533,7 @@ function RestoreBanner() {
   if (!endsAt) return null;
   const rem = Math.max(0, endsAt - Date.now());
   const s = Math.ceil(rem / 1000);
-  return <Panel className="restore-banner strong"><div className="eyebrow">Restocking Poké Balls{boosted && <span className="boost">×2 faster</span>}</div><b>{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</b><div className="muted small">Observe the reef while you wait</div></Panel>;
+  return <Panel className="restore-banner strong"><div className="eyebrow">Restocking Poké Balls{boosted && <span className="boost">−{CHEST.TIMER_CUT} s</span>}</div><b>{Math.floor(s / 60)}:{(s % 60).toString().padStart(2, '0')}</b><div className="muted small">Observe the reef while you wait</div></Panel>;
 }
 
 export function ControlsLegend({ isTouch }: { isTouch: boolean }) {

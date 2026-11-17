@@ -122,7 +122,7 @@ console.log('Treasure chest');
   if (CHEST.MIN_FROM_START < GAME.PLAYER_START_CLEAR + CHEST.GUARD_RADIUS + 1) { bad++; fail('the chest can sit inside the start clearing'); }
   if (COMBAT.PLAYER_LIVES_MAX < COMBAT.PLAYER_LIVES + CHEST.HEART_LIVES) { bad++; fail('a blue heart could never be used at full starting lives'); }
   if (!(CHEST.LOOT_PER_CHEST >= 1 && CHEST.LOOT_PER_CHEST <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
-  if (!(CHEST.TIMER_MUL > 0 && CHEST.TIMER_MUL < 1) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
+  if (!(CHEST.TIMER_CUT > 0 && CHEST.TIMER_MIN > 0 && CHEST.TIMER_CUT < 60) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
   if (CHEST.GUARDIANS.length !== 2 || !CHEST.GUARDIANS.every((g) => SPECIES[g]?.stage === 2)) { bad++; fail('the chest needs two fully evolved guardians'); }
   if (!bad) ok(`chest: L${CHEST.LEVELS.join('/L')} · ${CHEST.GUARDIANS.join(' + ')} · ${LOOT_ORDER.length} loot items on ${LOOT_KEYS.join(' ')} · icons present · magazine ${mag} · laser 1/2/3`);
 }

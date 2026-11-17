@@ -10,10 +10,11 @@
  * off), or land MASTER_HITS Master Balls on it. It then yields LOOT_PER_CHEST distinct items out of four:
  *   ballGun  — a Poké Ball launcher with its own magazine; 2× speed (≈ 2× range) and 2× hit radius
  *   laserGun — ROUNDS hitscan shots; a stage-0 wild is CAUGHT in 1 shot, stage-1 in 2, stage-2 in 3
- *   timer    — the next two Poké Ball restocks take half as long
+ *   timer    — TIMER_USES charges, each cutting TIMER_CUT seconds off a Poké Ball restock; charges stack
  *   blueHeart — +2 lifelines (up to COMBAT.PLAYER_LIVES_MAX)
- * Loot lives in a four-slot bar (keys G H J K) and survives heart losses within the dive; only the
- * `chestLooted` flag is persisted so a resumed run cannot farm the chest.
+ * Loot lives in a four-slot bar (keys G H J K). The bag is PERSISTED in the save (SaveData.loot): it survives
+ * heart losses, resumes and later dives; two timers found on two dives are four shorter restocks. A run's
+ * `chestLooted` flag keeps a resumed run from opening the same chest twice.
  */
 import type { BallId } from './types';
 import type { LevelConfig } from './levels/types';
@@ -63,8 +64,10 @@ export const CHEST = {
   LOOT_PER_CHEST: 2,
   LASER: { ROUNDS: 15, RANGE: 45, HIT_PAD: 0.4, SHOTS_BY_STAGE: [1, 2, 3] as readonly number[] },
   GUN: { MAG: { pokeball: 10, greatball: 5, ultraball: 4, masterball: 3 } as Record<BallId, number>, SPEED_MUL: 2, HIT_MUL: 2 },
+  /** Each Restock Timer holds TIMER_USES charges; a charge takes TIMER_CUT s off a restock (never under TIMER_MIN s). */
   TIMER_USES: 2,
-  TIMER_MUL: 0.5,
+  TIMER_CUT: 30,
+  TIMER_MIN: 10,
   HEART_LIVES: 2,
 } as const;
 
@@ -84,8 +87,8 @@ const icon = (file: string) => `/sprites/loot/${file}.png`;
 
 export const LOOT: Record<LootId, LootConfig> = {
   ballGun:   { id: 'ballGun',   name: 'Ball Launcher', icon: icon('ballGun'),   color: '#f87171', blurb: 'Fires Poké Balls twice as fast and far · 10 Poké · 5 Great · 4 Ultra · 3 Master' },
-  laserGun:  { id: 'laserGun',  name: 'Catch Laser',   icon: icon('laserGun'),  color: '#f472b6', blurb: '15 shots · catches a stage-0 Pokémon in 1 hit, stage-1 in 2, stage-2 in 3' },
-  timer:     { id: 'timer',     name: 'Restock Timer', icon: icon('timer'),     color: '#fbbf24', blurb: 'The next two Poké Ball restocks take half as long' },
+  laserGun:  { id: 'laserGun',  name: 'Catch Laser',   icon: icon('laserGun'),  color: '#fde047', blurb: '15 shots · catches a stage-0 Pokémon in 1 hit, stage-1 in 2, stage-2 in 3' },
+  timer:     { id: 'timer',     name: 'Restock Timer', icon: icon('timer'),     color: '#fbbf24', blurb: 'Each of your next two Poké Ball restocks is 30 s shorter · timers stack' },
   blueHeart: { id: 'blueHeart', name: 'Blue Heart',    icon: icon('blueHeart'), color: '#60a5fa', blurb: '+2 lifelines' },
 };
 
@@ -107,8 +110,8 @@ export function laserFraction(stage: number, maxHp: number): number {
   return Math.ceil(maxHp / n) / Math.max(1, maxHp);
 }
 
-/** Restock duration with/without the timer. */
-export function restockFor(secs: number, boosted: boolean): number { return boosted ? secs * CHEST.TIMER_MUL : secs; }
+/** Restock duration with/without a timer charge: TIMER_CUT seconds shorter, never under TIMER_MIN. */
+export function restockFor(secs: number, boosted: boolean): number { return boosted ? Math.max(CHEST.TIMER_MIN, secs - CHEST.TIMER_CUT) : secs; }
 
 /** Lives after a blue heart (capped). */
 export function heartLives(lives: number, max: number): number { return Math.min(max, lives + CHEST.HEART_LIVES); }

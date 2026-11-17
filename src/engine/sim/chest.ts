@@ -19,7 +19,7 @@ export interface LootInventory {
   ballGun: Record<BallId, number> | null;
   /** Laser rounds left. */
   laserGun: number | null;
-  /** Halved restocks left. */
+  /** Restock-timer charges left (TIMER_USES per timer found; they stack). */
   timer: number | null;
   /** Blue hearts in the bag. */
   blueHeart: number | null;
@@ -33,8 +33,8 @@ export type ChestEvent =
   | { type: 'open' }
   | { type: 'looted'; loot: LootId[] }
   | { type: 'equip'; weapon: Weapon }
-  | { type: 'use'; id: LootId; lives?: number }
-  | { type: 'blocked'; id: LootId; reason: 'empty' | 'maxLives' | 'alreadyArmed' }
+  | { type: 'use'; id: LootId; lives?: number; /** timer: a running restock was cut right now (else just a status). */ cut?: boolean; left?: number }
+  | { type: 'blocked'; id: LootId; reason: 'empty' | 'maxLives' }
   | { type: 'weaponEmpty'; weapon: Weapon };
 
 export interface ChestHudSnapshot {
@@ -51,7 +51,6 @@ export interface ChestHudSnapshot {
   weapon: Weapon;
   gunAmmo: Record<BallId, number> | null;
   laser: number;
-  timerArmed: boolean;
   restockBoosted: boolean;
   /** Anything to show in the loot bar. */
   active: boolean;
@@ -64,8 +63,7 @@ export class ChestSystem {
   openT = 0;
   loot: LootInventory = { ballGun: null, laserGun: null, timer: null, blueHeart: null };
   weapon: Weapon = 'hands';
-  timerArmed = false;
-  /** The restock running right now was paid for by the timer (the banner's badge). */
+  /** The restock running right now was shortened by a timer charge (the banner's badge). */
   restockBoosted = false;
   events: ChestEvent[] = [];
   /** What the open chest holds until the trainer reaches it. */
@@ -120,10 +118,11 @@ export class ChestSystem {
   }
 
   private collect() {
+    // everything stacks: a second launcher tops up the magazine, a second timer is two more charges
     for (const id of this.pending) {
-      if (id === 'ballGun') this.loot.ballGun = { ...CHEST.GUN.MAG };
-      else if (id === 'laserGun') this.loot.laserGun = CHEST.LASER.ROUNDS;
-      else if (id === 'timer') this.loot.timer = CHEST.TIMER_USES;
+      if (id === 'ballGun') { const m = this.loot.ballGun ?? { pokeball: 0, greatball: 0, ultraball: 0, masterball: 0 }; for (const b of BALL_ORDER) m[b] += CHEST.GUN.MAG[b]; this.loot.ballGun = m; }
+      else if (id === 'laserGun') this.loot.laserGun = (this.loot.laserGun ?? 0) + CHEST.LASER.ROUNDS;
+      else if (id === 'timer') this.loot.timer = (this.loot.timer ?? 0) + CHEST.TIMER_USES;
       else this.loot.blueHeart = (this.loot.blueHeart ?? 0) + 1;
     }
     this.state = 'looted';
@@ -136,13 +135,24 @@ export class ChestSystem {
 
   // ------------------------------------------------------------------ loot use
 
-  /** Loot bar slot `i` (LOOT_ORDER / keys G H J K). Weapons toggle; the timer arms; the heart is eaten. */
-  use(i: number, ctx: { lives: number; maxLives: number; setLives: (n: number) => void }): boolean {
+  /** Loot bar slot `i` (LOOT_ORDER / keys G H J K). Weapons toggle; the timer cuts a running restock (else reports its
+   *  charges — they spend themselves on restock starts); the heart is eaten. */
+  use(i: number, ctx: { lives: number; maxLives: number; setLives: (n: number) => void; restockLeft: number | null; cutRestock: (leftSecs: number) => void }): boolean {
     const id = LOOT_ORDER[i];
     if (!id) return false;
     switch (id) {
       case 'ballGun': case 'laserGun': return this.toggleWeapon(id);
-      case 'timer': return this.armTimer();
+      case 'timer': {
+        if (!this.loot.timer) { this.events.push({ type: 'blocked', id, reason: 'empty' }); return false; }
+        if (ctx.restockLeft !== null && ctx.restockLeft > 0 && !this.restockBoosted) {
+          this.spendTimerCharge();
+          ctx.cutRestock(Math.max(0, ctx.restockLeft - CHEST.TIMER_CUT));
+          this.events.push({ type: 'use', id, cut: true, left: this.loot.timer ?? 0 });
+          return true;
+        }
+        this.events.push({ type: 'use', id, cut: false, left: this.loot.timer });
+        return true;
+      }
       case 'blueHeart': {
         if (!this.loot.blueHeart) { this.events.push({ type: 'blocked', id, reason: 'empty' }); return false; }
         if (ctx.lives >= ctx.maxLives) { this.events.push({ type: 'blocked', id, reason: 'maxLives' }); return false; }
@@ -181,22 +191,22 @@ export class ChestSystem {
     return true;
   }
 
-  armTimer(): boolean {
-    if (!this.loot.timer) { this.events.push({ type: 'blocked', id: 'timer', reason: 'empty' }); return false; }
-    if (this.timerArmed) { this.events.push({ type: 'blocked', id: 'timer', reason: 'alreadyArmed' }); return false; }
-    this.timerArmed = true;
-    this.events.push({ type: 'use', id: 'timer' });
+  private spendTimerCharge() {
+    this.restockBoosted = true;
+    this.loot.timer = (this.loot.timer ?? 1) - 1;
+    if (this.loot.timer <= 0) this.loot.timer = null;
+  }
+
+  /** A restock is starting: a timer charge, if there is one, pays for TIMER_CUT seconds of it. */
+  takeTimerCharge(): boolean {
+    if (!this.loot.timer) { this.restockBoosted = false; return false; }
+    this.spendTimerCharge();
     return true;
   }
 
-  /** A restock is starting (or was running when the timer was armed): spend one halved restock. */
-  takeTimerCharge(): boolean {
-    if (!this.timerArmed || !this.loot.timer) { this.restockBoosted = false; return false; }
-    this.restockBoosted = true;
-    this.loot.timer--;
-    if (this.loot.timer === 0) { this.loot.timer = null; this.timerArmed = false; }
-    return true;
-  }
+  /** The persisted bag (SaveData.loot) comes back for a new dive or a resume. */
+  setLoot(l: LootInventory) { this.loot = { ballGun: l.ballGun ? { ...l.ballGun } : null, laserGun: l.laserGun, timer: l.timer, blueHeart: l.blueHeart }; if (!this.has(this.weapon)) this.weapon = 'hands'; }
+  lootSnapshot(): LootInventory { const L = this.loot; return { ballGun: L.ballGun ? { ...L.ballGun } : null, laserGun: L.laserGun, timer: L.timer, blueHeart: L.blueHeart }; }
 
   // ------------------------------------------------------------------ HUD
 
@@ -214,7 +224,7 @@ export class ChestSystem {
     const slots = LOOT_ORDER.map((id) => ({ id, count: count(id) }));
     return {
       state: this.state, dwell01: Math.min(1, this.dwell / CHEST.DWELL_SECONDS), hits: this.hits, hitsNeeded: CHEST.MASTER_HITS, guardians,
-      nearest: this.nearest(player), slots, weapon: this.weapon, gunAmmo: L.ballGun ? { ...L.ballGun } : null, laser: L.laserGun ?? 0, timerArmed: this.timerArmed, restockBoosted: this.restockBoosted,
+      nearest: this.nearest(player), slots, weapon: this.weapon, gunAmmo: L.ballGun ? { ...L.ballGun } : null, laser: L.laserGun ?? 0, restockBoosted: this.restockBoosted,
       active: slots.some((s) => s.count !== null),
     };
   }

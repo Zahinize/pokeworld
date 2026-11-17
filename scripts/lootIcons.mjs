@@ -97,14 +97,15 @@ function ballGun(c) {
   for (let y = 8; y <= 12; y++) for (let x = 7; x <= 17; x++) if ((x - 12) ** 2 + (y - 7) ** 2 <= 25.25) c.set(x, y, WHITE);
   c.rect(11, 6, 13, 8, WHITE); c.set(12, 7, INK); c.set(9, 4, hex('#ff8a94')); c.set(10, 4, hex('#ff8a94'));
 }
-const TEAL = hex('#2dd4bf'), TEAL_D = hex('#0f766e'), TEAL_L = hex('#99f6e4'), PINK = hex('#f472b6'), PINK_L = hex('#fbcfe8');
+const TEAL = hex('#2dd4bf'), TEAL_D = hex('#0f766e'), TEAL_L = hex('#99f6e4'), VOLT = hex('#fde047'), VOLT_L = hex('#fef9c3'), VOLT_B = hex('#7dd3fc');
 function laserGun(c) {
   c.rect(6, 11, 20, 18, TEAL); c.rect(7, 11, 19, 11, TEAL_L); c.rect(6, 18, 20, 18, TEAL_D);     // body
   c.rect(10, 7, 16, 10, TEAL_D); c.rect(11, 7, 15, 7, TEAL);                                       // top fin
   c.rect(20, 12, 27, 16, TEAL_D); c.rect(20, 12, 27, 12, TEAL); c.rect(21, 14, 26, 14, TEAL);     // barrel
-  c.circle(28.5, 14, 2.5, PINK); c.set(28, 13, PINK_L); c.set(29, 14, PINK_L);                     // emitter
-  for (const [x, y] of [[31, 14], [30, 10], [30, 18], [31, 12], [31, 16]]) c.set(x, y, PINK_L);    // sparks
-  c.rect(12, 13, 17, 15, PINK); c.rect(13, 13, 16, 13, PINK_L);                                     // energy cell
+  c.circle(28.5, 14, 2.5, VOLT); c.set(28, 13, VOLT_L); c.set(29, 14, VOLT_L);                     // emitter
+  for (const [x, y] of [[31, 14], [30, 10], [30, 18], [31, 12], [31, 16], [29, 9], [29, 19]]) c.set(x, y, VOLT_B); // electric arcs
+  c.set(31, 13, VOLT_L); c.set(31, 15, VOLT_L);
+  c.rect(12, 13, 17, 15, VOLT); c.rect(13, 13, 16, 13, VOLT_L); c.set(14, 14, VOLT_B); c.set(16, 14, VOLT_B); // charged cell
   for (let i = 0; i < 9; i++) c.rect(8 + Math.floor(i / 3), 19 + i, 12 + Math.floor(i / 3), 19 + i, TEAL_D);  // grip
   c.rect(9, 20, 10, 26, TEAL);
   c.rect(14, 19, 15, 21, INK);                                                                     // trigger

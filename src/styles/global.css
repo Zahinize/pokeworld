@@ -300,7 +300,7 @@ a { color: var(--aqua); }
 .weapon-panel { position: absolute; left: calc(100% + 12px); bottom: 0; display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; white-space: nowrap; animation: fadeUp .25s ease both; }
 .weapon-panel img { width: 36px; height: 36px; image-rendering: pixelated; }
 .weapon-panel .name { font-family: var(--font-display); font-weight: 800; font-size: 13px; }
-.weapon-panel.laserGun .name { color: #f9a8d4; }
+.weapon-panel.laserGun .name { color: #fde047; }
 .weapon-panel.ballGun .name { color: #fca5a5; }
 .weapon-panel .ammo { display: flex; gap: 8px; font-size: 12px; font-weight: 800; margin-top: 2px; }
 .weapon-panel .ammo span { display: inline-flex; align-items: center; gap: 3px; }
@@ -568,8 +568,8 @@ a { color: var(--aqua); }
 .berry-slot .kbd { position: absolute; left: -4px; bottom: -7px; font-size: 9px; padding: 0 4px; line-height: 14px; }
 .berry-slot .held-dot { position: absolute; left: 50%; bottom: -3px; transform: translateX(-50%); width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 6px var(--gold); }
 /* the loot bar shares the berry bar's look; the equipped weapon glows pink, an armed timer gold (held) */
-.loot-slot.equipped { border-color: #f472b6; box-shadow: 0 0 0 1px rgba(244,114,182,.55), 0 0 14px rgba(244,114,182,.4); background: rgba(244,114,182,.12); }
-.loot-slot .cnt { background: #f9a8d4; color: #4a044e; }
+.loot-slot.equipped { border-color: #fde047; box-shadow: 0 0 0 1px rgba(253,224,71,.55), 0 0 14px rgba(253,224,71,.4); background: rgba(253,224,71,.1); }
+.loot-slot .cnt { background: #fde68a; color: #422006; }
 .restore-banner .boost { margin-left: 8px; font-size: 9px; letter-spacing: .08em; padding: 1px 6px; border-radius: 999px; background: rgba(251,191,36,.18); color: #fde68a; border: 1px solid rgba(251,191,36,.45); vertical-align: middle; }
 /* chest pointer: gold, its label above the berry label; the dwell ring counts the 8 s down around the crosshair */
 .chest-ring { position: absolute; left: 50%; top: 50%; width: 150px; height: 150px; margin: -75px 0 0 -75px; }
@@ -754,8 +754,8 @@ input[type=range] { accent-color: var(--aqua); width: 150px; }
 /* the chest's weapons take the slingshot's place: the launcher draws like the sling, the laser fires on touch */
 .touch-controls .sling-anchor .weapon-icon { width: 44px; height: 44px; image-rendering: pixelated; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5)); }
 .touch-controls .sling-anchor.ballGun { border-color: rgba(252,165,165,.7); box-shadow: 0 0 0 3px rgba(248,113,113,.25), 0 8px 24px rgba(4,22,43,.45); }
-.touch-controls .sling-anchor.laserGun { border-color: rgba(244,114,182,.8); box-shadow: 0 0 0 3px rgba(244,114,182,.28), 0 8px 24px rgba(4,22,43,.45); }
-.touch-controls .sling-anchor.fired { transform: scale(.9); border-color: #fff; box-shadow: 0 0 0 8px rgba(244,114,182,.3), 0 0 30px rgba(244,114,182,.5); }
+.touch-controls .sling-anchor.laserGun { border-color: rgba(253,224,71,.85); box-shadow: 0 0 0 3px rgba(253,224,71,.28), 0 8px 24px rgba(4,22,43,.45); }
+.touch-controls .sling-anchor.fired { transform: scale(.9); border-color: #fff; box-shadow: 0 0 0 8px rgba(253,224,71,.3), 0 0 30px rgba(125,211,252,.6); }
 /* the attack circle: right thumb, underwater in companion levels — the joystick's mirror image,
    same size and same baseline at every breakpoint, where the slingshot sits when surfaced */
 .touch-controls .attack-anchor {

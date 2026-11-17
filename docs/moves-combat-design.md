@@ -603,8 +603,8 @@ pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everyth
 | Key | Item | Effect |
 |---|---|---|
 | G | **Ball Launcher** | Its own magazine 10 Poké · 5 Great · 4 Ultra · 3 Master. Fires at **2× speed** (≈ 2× range under the exponential drag) with a **2× hit radius**. Never touches the bag, never starts the restock. Auto/pinned ball choice reads the magazine while equipped. |
-| H | **Catch Laser** | 15 hitscan rounds, 45 m. Each shot takes 1/N of max HP by evolution stage (N = 1/2/3, `laserFraction` rounds up so N shots always finish). The finishing shot **captures** (`Ecosystem.autoCapture`, `by: 'laser'`): collection, mission credit, "Lasered! Caught X". Bosses, companions and the ferry are immune. |
-| J | **Restock Timer** | Arms; the next **two** restocks take half as long (60 → 30 s, 75 → 37.5 s). Arming during a restock halves what is left and counts as one use. |
+| H | **Catch Laser** | 15 hitscan rounds, 45 m. Each shot takes 1/N of max HP by evolution stage (N = 1/2/3, `laserFraction` rounds up so N shots always finish). The finishing shot **captures** (`Ecosystem.autoCapture`, `by: 'laser'`): collection, mission credit, "Lasered! Caught X". Bosses, companions and the ferry are immune. It is **electric**: a jagged yellow-white arc that re-shapes 48×/s with a pale-blue glow rod, a muzzle flash and impact sparks (`LaserFx`), an electric crack for a sound. |
+| J | **Restock Timer** | **Two charges**, each taking **30 s** off a Poké Ball restock (60 → 30 s, 75 → 45 s, never under 10 s). Charges spend themselves on restock starts — nothing to arm — and **stack**: two timers are four shorter restocks. J during a restock spends a charge on it right now (30 s off what is left, once per restock); J otherwise just reports the charges. |
 | K | **Blue Heart** | **+2 lifelines**, up to `PLAYER_LIVES_MAX` (6); refused (and kept) at the cap. The hearts row grows past four. |
 
 - G/H **toggle** the weapon (`session.fire` dispatches hands / launcher / laser); pressing the equipped
@@ -612,8 +612,13 @@ pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everyth
   **weapon panel** to the right of the ball chip shows the magazine or rounds. Touch: the launcher takes
   the slingshot's place (same drag-to-aim, always full power); the laser fires at the crosshair the
   moment it is touched. The lock-on (`slingHot`) follows the launcher's speed/radius or the laser's ray.
-- Loot **survives heart losses** within the dive (unlike berries). Only `chestLooted` is persisted on
-  the run, so a resumed run finds the chest open and bare with its guardians gone; the loot itself is not.
+- **The bag is the save's** (`SaveData.loot`, written whenever it changes): loot survives heart losses,
+  resumes, level completion and later dives — everything found stacks (a second launcher tops up the
+  magazine). `chestLooted` on the run keeps a resumed run from opening the same chest twice. Consequence:
+  replaying a level re-rolls its chest, so loot can be farmed by replaying L1/L2 — accepted for now.
+- **In hand**: an equipped launcher or laser is drawn in first person in the lower right of the view
+  (`WeaponView`: procedural models riding the camera, swim bob, recoil on every shot, muzzle glow on the
+  laser, drawn over the world). The laser's bolt leaves that muzzle.
 - Code: `data/chest.ts` (rules, loot table, keys), `engine/ecosystem/generator.ts` (placement, near-chest
   schools, guardians, the obstacle clearing), `engine/world/Ecosystem.ts` (`chestAggro`, cast-gap bypass,
   laser capture), `engine/sim/chest.ts` (`ChestSystem`), `engine/sim/balls.ts` (`chestHit`, `hitMul`),

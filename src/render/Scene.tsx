@@ -12,6 +12,7 @@ import { TalkMarks } from './fx/TalkMarks';
 import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
+import { WeaponView } from './player/WeaponView';
 import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
 import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
@@ -113,6 +114,7 @@ export function Scene() {
         <DamageNumbers />
       </Suspense>
       <CameraRig />
+      <WeaponView />
     </Canvas>
   );
 }

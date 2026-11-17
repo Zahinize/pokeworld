@@ -55,6 +55,9 @@ export interface SaveData {
   currentRun: CurrentRun | null;
   /** Last-used companion party (species ids, ≤6). */
   party: string[];
+  /** Treasure-chest loot (L1/L2): the launcher's magazine, laser rounds, timer charges, blue hearts. Survives
+   *  heart losses, resumes and later dives. */
+  loot: { ballGun: Record<BallId, number> | null; laserGun: number | null; timer: number | null; blueHeart: number | null };
   settings: Settings;
   stats: { totalCaught: number; levelsCompleted: number; ballsThrown: number };
 }
@@ -76,6 +79,7 @@ export function createNewSave(): SaveData {
     collection: {},
     currentRun: null,
     party: [],
+    loot: { ballGun: null, laserGun: null, timer: null, blueHeart: null },
     settings: { ...DEFAULT_SETTINGS },
     stats: { totalCaught: 0, levelsCompleted: 0, ballsThrown: 0 },
   };

@@ -1241,19 +1241,36 @@ for (const levelId of [1, 2]) {
 
   // 10. timer · 11. blue heart
   {
-    const t60 = restockFor(60, true), t75 = restockFor(75, true), plain = restockFor(60, false);
-    if (t60 === 30 && t75 === 37.5 && plain === 60) ok('timer: halves a 60 s restock to 30 s and the L3/L4 75 s to 37.5 s; unarmed restocks are untouched'); else fail(`timer: ${t60}/${t75}/${plain}`);
+    const t60 = restockFor(60, true), t75 = restockFor(75, true), plain = restockFor(60, false), floor = restockFor(25, true);
+    if (t60 === 60 - CHEST.TIMER_CUT && t75 === 75 - CHEST.TIMER_CUT && plain === 60 && floor === CHEST.TIMER_MIN) ok(`timer: a charge takes ${CHEST.TIMER_CUT} s off a restock (60→${t60}, 75→${t75}; never under ${CHEST.TIMER_MIN} s); unspent restocks are untouched`); else fail(`timer: ${t60}/${t75}/${plain}/${floor}`);
+    // charges spend themselves on restock starts, stack across timers, and J cuts a running restock
     const cs = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1));
     cs.loot.timer = CHEST.TIMER_USES;
-    const armed = cs.armTimer(), again = cs.armTimer();
-    const c1 = cs.takeTimerCharge(), c2 = cs.takeTimerCharge(), c3 = cs.takeTimerCharge();
-    if (armed && !again && c1 && c2 && !c3 && cs.loot.timer === null && !cs.timerArmed) ok(`timer: arms once, pays for exactly ${CHEST.TIMER_USES} restocks, then is spent`); else fail(`timer: ${armed}/${again} charges ${c1}${c2}${c3} left ${cs.loot.timer}`);
+    (cs as any).pending = ['timer']; (cs as any).collect(); // a second timer found later
+    const stacked = cs.loot.timer;
+    const spent: boolean[] = []; for (let i = 0; i < 5; i++) spent.push(cs.takeTimerCharge());
+    const okAuto = stacked === CHEST.TIMER_USES * 2 && spent.join() === 'true,true,true,true,false' && cs.loot.timer === null && cs.restockBoosted === false;
+    if (okAuto) ok(`timer: two timers = ${stacked} charges, spent one per restock start, then gone`); else fail(`timer: stacked ${stacked}, spent ${spent.join()}, left ${cs.loot.timer}`);
+    const cj = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1)); cj.loot.timer = 2;
+    let cutTo = -1; const ctx = (left: number | null) => ({ lives: 4, maxLives: 6, setLives: () => {}, restockLeft: left, cutRestock: (l: number) => { cutTo = l; } });
+    const idle = cj.use(2, ctx(null)); const idleLeft = cj.loot.timer;
+    const cut = cj.use(2, ctx(50)); const cutLeft = cj.loot.timer;
+    const again = cj.use(2, ctx(20)); // this restock is already shortened: just a status
+    const tevs = cj.drainEvents().filter((e) => e.type === "use") as any[];
+    if (idle && idleLeft === 2 && cut && cutTo === 50 - CHEST.TIMER_CUT && cutLeft === 1 && again && cj.loot.timer === 1 && tevs.map((e) => !!e.cut).join() === "false,true,false")
+      ok(`timer: J with no restock running just reports; J during a restock cuts ${CHEST.TIMER_CUT} s off it once and spends a charge`);
+    else fail(`timer: J — idle ${idle}/${idleLeft}, cut ${cut}→${cutTo}/${cutLeft}, again ${again}/${cj.loot.timer}, events ${tevs.map((e) => e.cut).join()}`);
+    // the persisted bag round-trips
+    const src = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1)); src.loot = { ballGun: { pokeball: 3, greatball: 0, ultraball: 1, masterball: 0 }, laserGun: 7, timer: 3, blueHeart: 1 };
+    const dst = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(2)); dst.weapon = 'laserGun'; dst.setLoot(src.lootSnapshot());
+    if (JSON.stringify(dst.loot) === JSON.stringify(src.loot) && dst.loot.ballGun !== src.loot.ballGun && dst.weapon === 'laserGun') ok('loot: the bag round-trips through the save snapshot (deep copy) and keeps a still-loaded weapon'); else fail('loot: snapshot round-trip');
     const MAX = COMBAT.PLAYER_LIVES_MAX;
     if (heartLives(4, MAX) === 6 && heartLives(5, MAX) === 6 && heartLives(2, MAX) === 4) ok(`heart: +${CHEST.HEART_LIVES} lifelines, capped at ${MAX}`); else fail('heart: maths');
     const h = new ChestSystem({ x: 0, y: -20, z: 0 }, new RNG(1)); h.loot.blueHeart = 1;
-    let lives = MAX; const full = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
-    lives = 3; const used = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
-    const empty = h.use(3, { lives, maxLives: MAX, setLives: (n) => { lives = n; } });
+    let lives = MAX; const hctx = () => ({ lives, maxLives: MAX, setLives: (n: number) => { lives = n; }, restockLeft: null, cutRestock: () => {} });
+    const full = h.use(3, hctx());
+    lives = 3; const used = h.use(3, hctx());
+    const empty = h.use(3, hctx());
     const evs = h.drainEvents();
     if (!full && used && lives === 5 && !empty && h.loot.blueHeart === null && evs.some((e) => e.type === 'blocked' && e.reason === 'maxLives') && evs.some((e) => e.type === 'blocked' && e.reason === 'empty'))
       ok('heart: refused at the cap (kept), 3 → 5 lives when eaten, then the slot is empty'); else fail(`heart: full ${full} used ${used} lives ${lives} empty ${empty}`);

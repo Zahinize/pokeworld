@@ -32,6 +32,7 @@ export function migrateSave(raw: unknown): SaveData {
     collection: isObj(r.collection) ? sanitizeCollection(r.collection) : {},
     currentRun: sanitizeRun(r.currentRun),
     party: Array.isArray(r.party) ? r.party.filter((x: unknown) => typeof x === 'string').slice(0, 6) : [],
+    loot: sanitizeLoot(r.loot),
     settings: { ...DEFAULT_SETTINGS, ...(isObj(r.settings) ? r.settings : {}) },
     stats: {
       totalCaught: clampInt(r.stats?.totalCaught, 0, 1e9, 0),
@@ -44,6 +45,13 @@ export function migrateSave(raw: unknown): SaveData {
 }
 
 function isObj(v: unknown): v is Record<string, any> { return !!v && typeof v === 'object' && !Array.isArray(v); }
+function sanitizeLoot(l: any): SaveData['loot'] {
+  const none: SaveData['loot'] = { ballGun: null, laserGun: null, timer: null, blueHeart: null };
+  if (!isObj(l)) return none;
+  const n = (v: unknown) => (Number.isFinite(v as number) && (v as number) > 0 ? Math.min(999, Math.round(v as number)) : null);
+  const mag = isObj(l.ballGun) ? { pokeball: clampInt(l.ballGun.pokeball, 0, 999, 0), greatball: clampInt(l.ballGun.greatball, 0, 999, 0), ultraball: clampInt(l.ballGun.ultraball, 0, 999, 0), masterball: clampInt(l.ballGun.masterball, 0, 999, 0) } : null;
+  return { ballGun: mag && mag.pokeball + mag.greatball + mag.ultraball + mag.masterball > 0 ? mag : null, laserGun: n(l.laserGun), timer: n(l.timer), blueHeart: n(l.blueHeart) };
+}
 function clampInt(v: unknown, min: number, max: number, dflt: number) {
   return Number.isFinite(v as number) ? Math.max(min, Math.min(max, Math.round(v as number))) : dflt;
 }

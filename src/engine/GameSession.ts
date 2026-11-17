@@ -114,6 +114,7 @@ export class GameSession {
   /** The treasure chest (L1/L2): its state machine and loot bag. Its defence lives in the ecosystem. */
   chest = new ChestSystem(null, new RNG(randomSeed()));
   private chestHudKey = '';
+  private lootKey = '';
   private chestToastT = 0;
   private chestSwarmToastT = 0;
   /** Companion party for this level: up to 6 species; slots 0/1 are active in the reef. */
@@ -240,6 +241,7 @@ export class GameSession {
     this.eco = new Ecosystem(this.gen, maxHpOf);
     this.chest = new ChestSystem(this.gen.chest ? { x: this.gen.chest.x, y: this.gen.chest.y, z: this.gen.chest.z } : null, new RNG(randomSeed()));
     this.chestHudKey = ''; this.chestToastT = 0; this.chestSwarmToastT = 0;
+    if (this.chest.present) { this.chest.setLoot(useStore.getState().save.loot); this.lootKey = JSON.stringify(this.chest.lootSnapshot()); } // the bag is the save's: it outlives hearts, resumes and dives
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     this.lives = COMBAT.PLAYER_LIVES;
     if (resume && resume.seed === this.seed) this.applyResume(resume);
@@ -349,6 +351,7 @@ export class GameSession {
     this.sheets.clear();
     this.ride = null;
     this.phase = 'idle'; this.eco = null; this.gen = null; this.mission = null; this.sky = null; this.clearSlingAim();
+    this.persistLoot();
     this.tutorial = null; useStore.getState().setHud({ tutorial: null, berries: null, chest: null });
     this.berries.endHeart([]);
     this.party = []; this.activePartners = [-1, -1]; this.downedSpecies = [];
@@ -657,10 +660,10 @@ export class GameSession {
       const total = BALL_ORDER.reduce((n, b) => n + inv![b], 0);
       if (total === 0 && !store.save.restoration.endsAt) {
         const base = this.level.restockSeconds ?? GAME.RESTORE_DURATION_MS / 1000;
-        const boosted = this.chest.takeTimerCharge(); // an armed Restock Timer pays for this one
+        const boosted = this.chest.takeTimerCharge(); // a Restock Timer charge, if there is one, pays for TIMER_CUT seconds of it
         store.setRestoration(Date.now() + restockFor(base, boosted) * 1000);
         // No duration in the copy — players discover the longer L3/L4 wait from the countdown itself
-        store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: boosted ? 'Your supply is being restored — the Restock Timer halves the wait.' : 'Your supply is being restored — watch the countdown.', ttl: 5 });
+        store.pushToast({ kind: 'warn', title: 'Out of Poké Balls', body: boosted ? `Your supply is being restored — a Restock Timer charge took ${CHEST.TIMER_CUT} s off the wait.` : 'Your supply is being restored — watch the countdown.', ttl: 5 });
         if (boosted) this.syncChestHud(); // the banner's ×2 badge reads the snapshot
       }
     }
@@ -694,7 +697,9 @@ export class GameSession {
     if (!this.playing || !eco || this.recoveringT > 0 || !this.catchingAllowed) return false;
     if (!this.chest.consumeLaser()) { this.handleChestEvents(); return false; }
     const store = useStore.getState();
-    const { origin: [ox, oy, oz], dir: [dx, dy, dz] } = computeThrow(this.player, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
+    const { origin: [ox0, oy0, oz0], dir: [dx, dy, dz] } = computeThrow(this.player, dirX, dirY, dirZ, store.isTouch, store.isTouch ? this.handOffsets() : undefined);
+    // the bolt leaves the muzzle of the laser the trainer is holding (WeaponView), a little past the hand
+    const ox = ox0 + dx * 0.45, oy = oy0 + dy * 0.45 - 0.02, oz = oz0 + dz * 0.45;
     const hit = this.laserTarget(ox, oy, oz, dx, dy, dz);
     const R = CHEST.LASER.RANGE;
     const end = hit ? { x: hit.x, y: hit.y, z: hit.z } : { x: ox + dx * R, y: oy + dy * R, z: oz + dz * R };
@@ -716,14 +721,13 @@ export class GameSession {
   useLoot(slot: number): boolean {
     if (!this.playing || this.recoveringT > 0 || this.arena || !this.eco) return false;
     const store = useStore.getState();
-    const id = LOOT_ORDER[slot];
-    const wasArmed = this.chest.timerArmed;
-    const ok = this.chest.use(slot, { lives: this.lives, maxLives: COMBAT.PLAYER_LIVES_MAX, setLives: (n) => { this.lives = n; store.setHud({ lives: n }); this.persistRun(); } });
-    // arming the timer while a restock is already running halves what is left of it — and that is one of its uses
-    if (ok && id === 'timer' && !wasArmed) {
-      const endsAt = store.save.restoration.endsAt;
-      if (endsAt && endsAt > Date.now() && this.chest.takeTimerCharge()) store.setRestoration(Date.now() + (endsAt - Date.now()) * CHEST.TIMER_MUL);
-    }
+    const endsAt = store.save.restoration.endsAt;
+    const ok = this.chest.use(slot, {
+      lives: this.lives, maxLives: COMBAT.PLAYER_LIVES_MAX, setLives: (n) => { this.lives = n; store.setHud({ lives: n }); this.persistRun(); },
+      // J during a restock spends a charge on it right now (TIMER_CUT seconds off what is left)
+      restockLeft: endsAt && endsAt > Date.now() ? (endsAt - Date.now()) / 1000 : null,
+      cutRestock: (left) => store.setRestoration(Date.now() + left * 1000),
+    });
     this.handleChestEvents(); this.syncChestHud();
     return ok;
   }
@@ -775,16 +779,17 @@ export class GameSession {
             store.pushToast({ kind: 'catch', title: 'Blue Heart', body: `${ev.lives} lifelines now`, icon: LOOT.blueHeart.icon, ttl: 4 });
           } else if (ev.id === 'timer') {
             Audio.uiConfirm();
-            store.pushToast({ kind: 'info', title: 'Restock Timer armed', body: `Your next ${CHEST.TIMER_USES} Poké Ball restocks take half as long.`, icon: LOOT.timer.icon, ttl: 4 });
+            const left = ev.left ?? 0;
+            store.pushToast(ev.cut
+              ? { kind: 'info', title: `Restock Timer · −${CHEST.TIMER_CUT} s`, body: `${left} charge${left === 1 ? '' : 's'} left — each later restock starts ${CHEST.TIMER_CUT} s shorter on its own.`, icon: LOOT.timer.icon, ttl: 4 }
+              : { kind: 'info', title: `Restock Timer · ${left} charge${left === 1 ? '' : 's'}`, body: `Your next ${left} Poké Ball restock${left === 1 ? ' is' : 's are'} ${CHEST.TIMER_CUT} s shorter — press J during a restock to cut it now.`, icon: LOOT.timer.icon, ttl: 4 });
           }
           break;
         case 'blocked':
           Audio.uiClick();
           store.pushToast(ev.reason === 'empty'
             ? { kind: 'warn', title: `No ${LOOT[ev.id].name}`, body: 'Open the treasure chest at the heart of the reef.', icon: LOOT[ev.id].icon, ttl: 3 }
-            : ev.reason === 'maxLives'
-              ? { kind: 'warn', title: 'Lifelines are full', body: `You already have ${COMBAT.PLAYER_LIVES_MAX} — the heart keeps.`, icon: LOOT.blueHeart.icon, ttl: 3 }
-              : { kind: 'info', title: 'Restock Timer already armed', icon: LOOT.timer.icon, ttl: 2.5 });
+            : { kind: 'warn', title: 'Lifelines are full', body: `You already have ${COMBAT.PLAYER_LIVES_MAX} — the heart keeps.`, icon: LOOT.blueHeart.icon, ttl: 3 });
           break;
         case 'weaponEmpty':
           Audio.uiClick();
@@ -806,6 +811,17 @@ export class GameSession {
     if (key === this.chestHudKey) return;
     this.chestHudKey = key;
     store.setHud({ chest: snap });
+    this.persistLoot();
+  }
+
+  /** The bag is the save's (SaveData.loot): written whenever it changes, so it outlives hearts, resumes and dives. */
+  private persistLoot() {
+    if (!this.chest.present) return;
+    const loot = this.chest.lootSnapshot();
+    const key = JSON.stringify(loot);
+    if (key === this.lootKey) return;
+    this.lootKey = key;
+    useStore.getState().setLoot(loot);
   }
 
   /** Damage from wild/predator moves. Ignored while recovering or during post-respawn calm. No single hit
