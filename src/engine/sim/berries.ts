@@ -48,6 +48,19 @@ export interface BerryUseContext {
   partners: Entity[];
 }
 
+/** Everything about the current heart's berries that a resumed run must carry on with (see snapshot / restore). */
+export interface BerrySnapshot {
+  heartT: number;
+  inventory: Record<BerryId, number>;
+  heldTrainer: BerryId | null;
+  /** Berries still lying on the sand. */
+  floor: { id: BerryId; x: number; y: number; z: number }[];
+  /** Berries still to wash in (heart-clock seconds). */
+  schedule: { at: number; id: BerryId }[];
+  /** Trainer-wide timed effects (Nanab, Razz) still running; companion buffs do not survive (the team is re-sent). */
+  effects: { id: BerryId; until: number; total: number }[];
+}
+
 export interface BerryHudSlot { id: BerryId; count: number; held: 'trainer' | number[] | null }
 export interface BerryHudSnapshot {
   kind: BerrySetKind;
@@ -99,6 +112,31 @@ export class BerrySystem {
 
   /** Berries still to land this heart. */
   get pending(): number { return this.schedule.length; }
+
+  // ------------------------------------------------------------------ Resume
+
+  /** The heart's berry state for the save: a resumed run carries on with it instead of rolling a fresh batch. */
+  snapshot(): BerrySnapshot {
+    return {
+      heartT: this.heartT,
+      inventory: { ...this.inventory },
+      heldTrainer: this.heldTrainer,
+      floor: this.floor.map((b) => ({ id: b.id, x: b.x, y: b.y, z: b.z })),
+      schedule: this.schedule.map((s) => ({ at: s.at, id: s.id })),
+      effects: this.effects.filter((f) => f.targetId === undefined).map((f) => ({ id: f.id, until: f.until, total: f.total })),
+    };
+  }
+
+  /** Continue a heart from its snapshot (instead of startHeart): no new drops beyond the ones still owed. */
+  restore(s: BerrySnapshot) {
+    this.clear();
+    this.heartT = Math.max(0, s.heartT);
+    for (const k of Object.keys(this.inventory) as BerryId[]) this.inventory[k] = Math.max(0, Math.round(s.inventory[k] ?? 0));
+    this.heldTrainer = s.heldTrainer && isHeldBerry(s.heldTrainer) ? s.heldTrainer : null;
+    this.floor = s.floor.map((b) => ({ uid: this.nextUid++, id: b.id, x: b.x, y: b.y, z: b.z, phase: this.rng.next() * Math.PI * 2 }));
+    this.schedule = s.schedule.map((x) => ({ at: x.at, id: x.id })).sort((a, b) => a.at - b.at);
+    this.effects = s.effects.filter((f) => f.until > this.heartT).map((f) => ({ id: f.id, until: f.until, total: f.total }));
+  }
 
   // ------------------------------------------------------------------ Tick
 

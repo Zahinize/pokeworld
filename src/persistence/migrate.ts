@@ -1,5 +1,6 @@
 import { createNewSave, SAVE_VERSION, type SaveData, DEFAULT_SETTINGS } from './schema';
 import { STARTING_INVENTORY } from '@/data/balls';
+import { BERRY_IDS, type BerryId } from '@/data/berries';
 
 /**
  * Migrate/repair any parsed save object into the current schema.
@@ -71,5 +72,21 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     caught: clampInt(r.caught, 0, 999, 0), total: clampInt(r.total, 0, 999, 0),
     lives: clampInt(r.lives, 1, 9, 4),
     chestLooted: !!r.chestLooted,
+    berries: sanitizeBerries(r.berries),
+  };
+}
+function sanitizeBerries(b: any): NonNullable<SaveData['currentRun']>['berries'] {
+  if (!isObj(b)) return null;
+  const isBerry = (v: unknown): v is BerryId => typeof v === 'string' && (BERRY_IDS as string[]).includes(v);
+  const num = (v: unknown, dflt = 0) => (Number.isFinite(v as number) ? (v as number) : dflt);
+  const inventory = Object.fromEntries(BERRY_IDS.map((id) => [id, clampInt(b.inventory?.[id], 0, 99, 0)])) as Record<BerryId, number>;
+  const list = (v: unknown) => (Array.isArray(v) ? v : []);
+  return {
+    heartT: Math.max(0, num(b.heartT)),
+    inventory,
+    heldTrainer: isBerry(b.heldTrainer) ? b.heldTrainer : null,
+    floor: list(b.floor).filter((f: any) => isObj(f) && isBerry(f.id) && [f.x, f.y, f.z].every((n) => Number.isFinite(n))).slice(0, 12).map((f: any) => ({ id: f.id, x: f.x, y: f.y, z: f.z })),
+    schedule: list(b.schedule).filter((s: any) => isObj(s) && isBerry(s.id) && Number.isFinite(s.at)).slice(0, 12).map((s: any) => ({ at: s.at, id: s.id })),
+    effects: list(b.effects).filter((f: any) => isObj(f) && isBerry(f.id) && Number.isFinite(f.until) && Number.isFinite(f.total)).slice(0, 8).map((f: any) => ({ id: f.id, until: f.until, total: f.total })),
   };
 }

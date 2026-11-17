@@ -96,8 +96,9 @@ export class BallSystem {
               }
             }
           }
-          // Sky hit test — birds overhead, Ducklett riding the waves
-          if (sky && b.y > -0.5) {
+          // Sky hit test — birds overhead, Ducklett riding the waves, and a raider down in the reef (a bird under
+          // the swell is out of its element: SKY.RAID.CATCH_MULT makes it twice as easy to hold)
+          if (sky) {
             const bird = sky.hitTest(b.x, b.y, b.z);
             if (bird) { this.onSkyHit(b, bird, sky); break; }
           }

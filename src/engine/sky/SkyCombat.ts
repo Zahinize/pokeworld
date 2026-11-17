@@ -177,7 +177,8 @@ export class SkyCombat {
     }
     let best: MoveTarget | null = null, bestScore = Infinity;
     for (const e of this.eco.alive) {
-      if (e.species.skyOnly || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'faint') continue;
+      // a sky companion fighting at its trainer's side is fair game; wild flyers are the sky's own business
+      if ((e.species.skyOnly && e.role !== 'partner') || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'faint') continue;
       if (e.y < -SKY.RAID.MAX_DEPTH) continue;
       const d = Math.hypot(e.x - b.x, e.y - b.y, e.z - b.z);
       if (d > R) continue;

@@ -287,7 +287,8 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   (its stand-in reads `removed`). A raid can still end badly against a family or a school volley; a bird
   the reef kills is replaced from the horizon after `FLOCK_REFILL` 45–75 s, one the trainer catches is not.
   **A bird in the water is out of its element**: a ball that connects with any sky Pokémon below the
-  waterline rolls at `RAID.CATCH_MULT` 2× the odds (Wingull 46 → 91 % on a Poké Ball; a shiny raider
+  waterline — the ball's bird hit test runs at every depth, so a raider 5–28 m down is as hittable as a
+  Ducklett on the swell — rolls at `RAID.CATCH_MULT` 2× the odds (Wingull 46 → 91 % on a Poké Ball; a shiny raider
   still resists, 0.35 × 2 = 70 % of plain odds). On Levels 3 and 4 **companions duel raiders**: a raider
   that strikes a companion is dueled by it, one that strikes the trainer or a reef Pokémon is dueled by
   the nearest free companion within `COMBAT.RAID_DUEL_ASSIST_R` 16 m. The duel locks on the bird's
@@ -302,9 +303,15 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   the flock (the circling pursuit is clamped to cruise: a straggler cuts the corner, it never sprints).
   Attack stats are untouched. The KO banner says "Sky Legendary" only for an actual legendary.
 - **Companions** — sky Pokémon can be picked for the party on Levels 3 and 4 (companion levels). A
-  flyer hovers 10 m ahead over the swell, never submerges, breathes air (no surface drain), stays visible
-  when the trainer surfaces, auto-engages sky birds like any surfaced companion, and strikes reef targets
-  from above (a Wing Attack over a submerged target connects when the bird is overhead).
+  flyer **dives the reef with its trainer**: under the water it holds the same formation as a water
+  companion (3.2 m ahead, flanking the crosshair), chases ordered targets at their depth and duels like
+  anyone else; the sand is its floor and nothing is its ceiling. It breathes air (no surface drain) and
+  stays visible when the trainer surfaces: it climbs to hover 5 m ahead over the swell, auto-engages sky
+  birds (`COMPANION_AIR_REACH_BONUS`) and still takes orders against raiders and reef Pokémon — so with a
+  flyer in the active pair **the surface stays the team's fight** (`catchingAllowed` is false, the ball
+  chip stays away, clicks are orders, raiders may pick the flyer as a victim). Bench the flyer, or lose
+  it, and the surface Poké Ball mechanic returns exactly as before. The water partner of the pair still
+  stands down and waits submerged while the trainer is up.
 
 Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble · Cramorant Air Slash/Water Gun ·
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
@@ -508,7 +515,11 @@ the tools for that stretch: a few wash onto the sea floor during every lifeline,
 one to pick it up (two-note chirp + toast naming its key), and eats it with **R T Y U I** (or a tap on
 the berry bar on touch). Everything about a berry belongs to the **heart that found it**: held berries,
 running effects and uncollected floor berries all clear when a lifeline is lost, and a fresh batch
-follows the respawn. Nothing is persisted; a resumed run starts a fresh batch.
+follows the respawn. The heart's berries ARE persisted (`CurrentRun.berries`: bag, floor berries, drops still
+owed, held berry, heart clock, trainer-wide effects): a resumed run carries on where it left off instead of
+rolling a fresh batch, so quitting and resuming cannot farm berries. The run is written on every pickup / eat /
+hold (and every 20 s); while a lifeline is being lost it writes `null`, since the next heart starts fresh anyway.
+Companion buffs (a fired Liechi / Salac) do not survive the resume — the team is re-sent.
 
 ### Spawning
 - Per heart **3–5 berries**, each at a random time between 6 s and 120 s after the dive (or respawn),

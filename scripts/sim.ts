@@ -864,6 +864,71 @@ for (const levelId of [1, 2]) {
   }
 }
 
+// ---- Resume: a heart's berries carry over (no fresh batch), a raider is hittable under the swell, flyers dive ----
+{
+  // 1. berry snapshot round-trip: the drops still owed are exactly the ones a restored heart gets — nothing more
+  const gen = generateEcosystem(getLevel(1), 31);
+  const eco = new Ecosystem(gen, hp);
+  const p = { x: gen.playerStart.x, y: gen.playerStart.y, z: gen.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  const world = { obstacles: eco.obstacles };
+  const a = new BerrySystem('solo', new RNG(77)); a.startHeart();
+  const owed = a.pending;
+  for (let i = 0; i < 40 * 60; i++) a.update(1 / 60, p, world, []);
+  a.inventory.oran = 2; // picked two along the way
+  const landed = a.floor.length, left = a.pending;
+  const snap = JSON.parse(JSON.stringify(a.snapshot()));
+  const b = new BerrySystem('solo', new RNG(78)); b.restore(snap);
+  let extra = 0;
+  for (let i = 0; i < BERRY_RULES.SPAWN_WINDOW * 60; i++) { b.update(1 / 60, p, world, []); for (const ev of b.drainEvents()) if (ev.type === 'spawn') extra++; }
+  if (b.inventory.oran === 2 && b.floor.length === landed + left && extra === left && landed + left === owed) ok(`resume: berry snapshot round-trips — bag kept, ${landed} on the sand, ${left} still owed and no more (${owed} per heart)`);
+  else fail(`resume: berry snapshot broke — bag ${b.inventory.oran}, floor ${b.floor.length} (want ${landed + left}), extra drops ${extra} (want ${left})`);
+  const fresh = new BerrySystem('solo', new RNG(79)); fresh.startHeart();
+  if (fresh.pending >= BERRY_RULES.SPAWN_MIN && b.heartT >= 40) ok('resume: a new lifeline still rolls a fresh batch'); else fail('resume: fresh heart rolled nothing');
+
+  // 2. a bird raiding down in the reef can be hit by a ball thrown under the water (and rolls at the raid odds)
+  {
+    const { SkyLife } = await import('@/engine/sky/SkyLife');
+    const { lightingAt } = await import('@/engine/world/lighting');
+    const { BallSystem } = await import('@/engine/sim/balls');
+    const sky = new SkyLife(4242, (sid) => hp(sid));
+    const L = lightingAt(0.4);
+    for (let i = 0; i < 10 * 60; i++) sky.update(1 / 60, L, 0.4, 0, 0);
+    const bird = sky.birds.find((x) => x.state === 'flying' && !x.legendary && !x.shiny);
+    if (!bird) fail('resume: no flying bird to test the raid hit');
+    else {
+      bird.state = 'attacking'; bird.y = -9; bird.x = 10; bird.z = 10; bird.fade = 1;
+      const cy = bird.y + bird.vis * 0.45;
+      const balls = new BallSystem();
+      balls.throw('pokeball', bird.x, cy, bird.z, 0, 0, 0, 0);
+      balls.update(1 / 60, eco, sky);
+      const evs = balls.drainEvents();
+      const hit = evs.find((e) => e.type === 'skyHit');
+      const pRaid = rollCatchFor(SPECIES[bird.speciesId], 'pokeball', () => 0.5, SKY.RAID.CATCH_MULT).p;
+      const pGot = (balls.balls[0] as any)?._p ?? -1;
+      if (hit && Math.abs(pGot - pRaid) < 1e-9) ok(`resume: a ${bird.speciesId} raiding ${-bird.y} m down takes the ball at the raid odds (p ${pRaid.toFixed(2)})`);
+      else fail(`resume: underwater raider ${hit ? 'hit but rolled p=' + pGot.toFixed(2) + ' (want ' + pRaid.toFixed(2) + ')' : 'ignored the ball'}`);
+    }
+  }
+
+  // 3. a sky companion dives with its trainer and hovers over the swell when the trainer surfaces
+  {
+    const gen3 = generateEcosystem(getLevel(3), 9);
+    const eco3 = new Ecosystem(gen3, hp);
+    const deep = { x: gen3.playerStart.x, y: -12, z: gen3.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+    const flyer = eco3.addPartner('swanna', 0);
+    const floorAt = () => floorY(flyer.x, flyer.z);
+    for (let i = 0; i < 8 * 60; i++) eco3.update(1 / 60, deep, 0);
+    const yDive = flyer.y;
+    const dived = yDive < -6 && yDive >= floorAt();
+    const dUnder = Math.hypot(flyer.x - deep.x, flyer.z - deep.z);
+    const up = { ...deep, y: -0.4 };
+    for (let i = 0; i < 8 * 60; i++) eco3.update(1 / 60, up, 0);
+    const hovering = flyer.y > 0.3 && flyer.y < 6;
+    if (dived && dUnder < 8 && hovering) ok(`resume: a Swanna companion dives to ${yDive.toFixed(1)} m beside a trainer at −12 m (${dUnder.toFixed(1)} m off) and hovers ${flyer.y.toFixed(1)} m over the swell when the trainer surfaces`);
+    else fail(`resume: sky companion — dived ${dived} (y after dive ${yDive.toFixed(1)}), ${dUnder.toFixed(1)} m off, hovering ${hovering} (y ${flyer.y.toFixed(1)})`);
+  }
+}
+
 // ---- Berries: per-heart spawns, pickup, Nanab/Razz, held pinch berries ----
 {
   const P = BERRY_RULES.PLACE;

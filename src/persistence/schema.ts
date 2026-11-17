@@ -1,4 +1,5 @@
 import type { BallId } from '@/data/types';
+import type { BerrySnapshot } from '@/engine/sim/berries';
 import { STARTING_INVENTORY } from '@/data/balls';
 
 export const SAVE_VERSION = 1;
@@ -24,6 +25,9 @@ export interface CurrentRun {
   lives: number;
   /** The treasure chest was emptied (L1/L2): a resumed run finds it open and bare. */
   chestLooted?: boolean;
+  /** This heart's berries (bag, floor, drops still owed): a resumed run carries on with them instead of rolling a
+   *  fresh batch. Null while a lifeline is being lost — the next heart starts fresh anyway. */
+  berries?: BerrySnapshot | null;
 }
 
 export interface Settings {

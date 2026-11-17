@@ -714,10 +714,9 @@ export class Ecosystem {
         if (d <= effectiveRange(e, move) + e.species.size * 0.5) {
           if (this.moves.cast(e, e.orderMove, { kind: 'entity', id: t.id })) { e.orderTarget = -1; e.orderMove = -1; }
         } else {
-          // a flyer closes in over the water, never under it: it skims down to the swell above its target
-          const ty2 = e.species.skyOnly ? Math.max(t.y, GAME.SURFACE_Y + 1.0 + e.species.size * 0.5) : t.y;
+          // a flyer dives after its target like any companion: the reef is its hunting ground too
           const k = e.species.burst * e.berrySpd / (d || 1);
-          e.dx = (t.x - e.x) * k; e.dy = (ty2 - e.y) * k; e.dz = (t.z - e.z) * k;
+          e.dx = (t.x - e.x) * k; e.dy = (t.y - e.y) * k; e.dz = (t.z - e.z) * k;
           e.maxSpeed = e.species.burst * e.berrySpd;
           return;
         }
@@ -730,12 +729,14 @@ export class Ecosystem {
     const cy = Math.cos(this.playerYaw), sy = Math.sin(this.playerYaw);
     const rx = cy, rz = -sy;             // camera right
     const fx = -sy, fz = -cy;            // camera forward
-    // a flyer keeps further ahead, low over the swell: in frame from under the water as well as on it
-    const ahead = e.species.skyOnly ? 10.0 : 3.2, flank = e.species.skyOnly ? 2.6 : 1.9;
+    // a flyer dives with its trainer and holds the same formation under the water; with the trainer up at the
+    // surface it flies a little further ahead, low over the swell (drawn at flock scale), where it keeps fighting
+    const flying = e.species.skyOnly && this.playerAtSurface;
+    const ahead = flying ? 5.0 : 3.2, flank = flying ? 2.4 : 1.9;
     const tx = p.x + fx * ahead + rx * side * flank;
     const tz = p.z + fz * ahead + rz * side * flank;
-    const ty = e.species.skyOnly
-      ? GAME.SURFACE_Y + 0.9 + skyPartnerScale(e.species.size) * 0.5 + Math.sin(this.time * 1.1 + e.phase * 6) * 0.2   // hovering low over the swell (drawn at flock scale)
+    const ty = flying
+      ? GAME.SURFACE_Y + 0.9 + skyPartnerScale(e.species.size) * 0.5 + Math.sin(this.time * 1.1 + e.phase * 6) * 0.2   // hovering low over the swell
       : this.playerAtSurface
       ? e.species.size * 0.22 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.1  // riding the swell beside you
       : p.y - 0.55 + Math.sin(this.time * 1.4 + e.phase * 6) * 0.15;
@@ -990,15 +991,15 @@ export class Ecosystem {
     }
     e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt;
     // Hard constraints
-    // sky Pokémon never go under: their floor is the swell itself, and no ceiling holds them down
-    const fy = e.species.skyOnly ? GAME.SURFACE_Y + 0.5 + e.species.size * 0.45 : floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
+    // the sand is everyone's floor — a sky companion dives the reef with its trainer; only the ceiling differs
+    const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
     if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
     // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
     // so the open-air suffocation drain can never touch them — EXCEPT the Lapras ferry, which
     // comes all the way up and out, and the amphibious riders perched on its shell
     const ferrying = e.state === 'ferry' || e.state === 'ferryRise' || e.state === 'ferryVoyage' || e.state === 'ferryDisembark' || e.aboardT > 0;
     const fer = this.ctx.ferry;
-    const top = e.species.skyOnly ? Infinity
+    const top = e.species.skyOnly ? Infinity   // a flyer is as happy over the swell as under it
       : leaping ? GAME.SURFACE_Y + GAME.MANTINE_LEAP.HEIGHT[1] + e.species.size   // airborne: the arc owns the height
       : !ferrying ? -Math.max(0.8, e.species.size * 0.45)
       : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
@@ -1567,8 +1568,7 @@ export class Ecosystem {
     const side = slot === 0 ? -1 : 1;
     const e = this.spawn({
       speciesId, role: 'partner', groupIndex: -1, ambient: true, zone: zoneAtSafe(p.x, p.z),
-      // a sky Pokémon fights from the air: it hovers over the swell beside its trainer
-      pos: { x: p.x + side * 2.2, y: getSpecies(speciesId).skyOnly ? GAME.SURFACE_Y + 1.6 : p.y + 0.2, z: p.z - 1.2 },
+      pos: { x: p.x + side * 2.2, y: p.y + 0.2, z: p.z - 1.2 }, // a sky Pokémon dives in beside its trainer like any other
     });
     const kit = companionMovesFor(speciesId);
     e.kitOverride = [kit[0].id, kit[1].id];

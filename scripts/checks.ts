@@ -127,5 +127,28 @@ console.log('Treasure chest');
   if (!bad) ok(`chest: L${CHEST.LEVELS.join('/L')} · ${CHEST.GUARDIANS.join(' + ')} · ${LOOT_ORDER.length} loot items on ${LOOT_KEYS.join(' ')} · icons present · magazine ${mag} · laser 1/2/3`);
 }
 
+console.log('Shiny sprites');
+{
+  const { existsSync } = await import('node:fs');
+  const { CHEST } = await import('@/data/chest');
+  const { SKY } = await import('@/data/sky');
+  const { getLevel } = await import('@/data/levels');
+  // every species that can appear shiny in play — pack-lead predators, the chest guardians, the shiny flocks and
+  // the forced-shiny boss waves — needs its shiny front AND back sheets, or the game (and the Collection) fall back
+  const shinyAble = new Set<string>([
+    ...SPECIES_LIST.filter((s) => s.primary === 'predator' && !s.bossOnly).map((s) => s.id),
+    ...CHEST.GUARDIANS,
+    ...SKY.FLOCKS.filter((f) => f.shiny).map((f) => f.speciesId),
+    ...[1, 2, 3, 4].flatMap((l) => (getLevel(l).bossPhases ?? []).filter((p) => p.shiny).flatMap((p) => p.bosses)),
+  ]);
+  let bad = 0;
+  for (const id of shinyAble) {
+    const dex = SPECIES[id]?.dexId;
+    if (!dex) { bad++; fail(`${id}: unknown species`); continue; }
+    for (const path of [`public/sprites/pokemon/shiny/${dex}.gif`, `public/sprites/pokemon/back/shiny/${dex}.gif`]) if (!existsSync(path)) { bad++; fail(`${id}: missing ${path}`); }
+  }
+  if (!bad) ok(`${shinyAble.size} shiny-capable species all have shiny front + back sheets`);
+}
+
 if (failures) { console.error(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log('\nAll checks passed.');
