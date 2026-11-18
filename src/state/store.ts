@@ -7,6 +7,8 @@ import type { BallId } from '@/data/types';
 import { BALLS, BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import { loadGame, saveGame, resetGame, type SaveData, type CollectionEntry, type Settings, type CurrentRun } from '@/persistence';
 import type { MissionState } from '@/engine/sim/mission';
+import type { BerryHudSnapshot } from '@/engine/sim/berries';
+import type { ChestHudSnapshot } from '@/engine/sim/chest';
 import { SPECIES } from '@/data/species';
 
 export type Screen = 'loading' | 'start' | 'login' | 'worlds' | 'leaderboard' | 'trainer' | 'defeat' | 'menu' | 'levels' | 'brief' | 'play' | 'complete' | 'collection' | 'settings' | 'arena';
@@ -19,7 +21,12 @@ export interface Toast {
   speciesId?: string;
   shiny?: boolean;
   missionTarget?: boolean;
+  /** Item icon (a berry) shown in place of a sprite. */
+  icon?: string;
   ttl: number;
+  /** Which notifications reach the player (USER RULING 2026-11-18): only KOs, berries, the treasure chest and
+   *  "X is hunting you!" — a toast without a channel is dropped on every platform. */
+  channel?: 'ko' | 'berry' | 'chest' | 'hunt';
 }
 
 export interface HudState {
@@ -62,12 +69,16 @@ export interface HudState {
   slingHot: boolean;
   /** The touch attack circle would fire right now: the crosshair is on a wild, or the team's quarry is in reach. */
   attackHot: boolean;
-  /** Catching allowed right now: always true in solo levels; in companion levels only at the surface. */
+  /** Catching allowed right now: true on solo levels (L1/L2); never on companion levels, where the team fights everywhere. */
   catchMode: boolean;
   /** First-run tutorial banner: current step + copy; null once done/skipped. */
   tutorial: { step: string; text: string; i: number; n: number } | null;
   fps: number;
   ecoSummary: string[];
+  /** The berry bar: this heart's bag, held berries, running effects and the nearest floor berry (null outside a dive). */
+  berries: BerryHudSnapshot | null;
+  /** The treasure chest (L1/L2): state, dwell progress, Master Ball hits, pointer, the loot bar and the equipped weapon. */
+  chest: ChestHudSnapshot | null;
 }
 
 interface AppState {
@@ -93,6 +104,7 @@ interface AppState {
   selectTrainer(id: string): void;
   setSettings(patch: Partial<Settings>): void;
   setInventory(inv: Record<BallId, number>): void;
+  setLoot(loot: SaveData['loot']): void;
   setRestoration(endsAt: number | null): void;
   recordCatch(speciesId: string, levelId: number): void;
   recordSeen(speciesId: string): void;
@@ -126,7 +138,7 @@ export const useStore = create<AppState>((set, get) => ({
   mission: null,
   levelId: 1,
   seed: 0,
-  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [] },
+  hud: { ballType: 'pokeball', ballMode: 'auto', lureRemaining: 0, lureCooldown: 0, restorationEndsAt: null, predatorAlert: false, huntingSpecies: null, timeOfDay: 0.4, zoneLabel: '', depth: 0, atRisk: [], nearestTarget: null, playerHp: 100, playerHitSeq: 0, recovering: 0, lives: 4, koBy: null, riding: null, rideAvail: false, ridePicker: false, party: { list: [], downed: [], active: [null, null] }, bossBar: null, bossIntro: null, swapPrompt: null, hint: null, tutorial: null, slingHot: false, attackHot: false, catchMode: true, fps: 60, ecoSummary: [], berries: null, chest: null },
   toasts: [],
   lastCatch: null,
   completeStats: null,
@@ -147,6 +159,10 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setInventory(inventory) {
     const save = { ...get().save, inventory: { ...inventory } };
+    saveGame(save); set({ save });
+  },
+  setLoot(loot) {
+    const save = { ...get().save, loot: { ...loot, ballGun: loot.ballGun ? { ...loot.ballGun } : null } };
     saveGame(save); set({ save });
   },
   setRestoration(endsAt) {
@@ -192,6 +208,7 @@ export const useStore = create<AppState>((set, get) => ({
   setLevel(levelId, seed) { set({ levelId, seed }); },
   setHud(patch) { set({ hud: { ...get().hud, ...patch } }); },
   pushToast(t) {
+    if (!t.channel) return; // only the four allowed channels show (see Toast.channel)
     const id = toastId++;
     const toasts = [...get().toasts, { ...t, id }].slice(-5);
     set({ toasts });

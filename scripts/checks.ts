@@ -74,5 +74,84 @@ console.log('Damage formula');
   ok(`${n} attacker×move×defender combinations all inside the 4–55% clamp`);
 }
 
+console.log('Berries');
+{
+  const { existsSync } = await import('node:fs');
+  const { BERRIES, BERRY_IDS, BERRY_SETS, BERRY_KEYS, BERRY_CODES, BERRY_RULES } = await import('@/data/berries');
+  let bad = 0;
+  for (const kind of ['solo', 'companion'] as const) {
+    const set = BERRY_SETS[kind];
+    if (set.length !== BERRY_KEYS.length || new Set(set).size !== set.length) { bad++; fail(`berry set ${kind} must hold ${BERRY_KEYS.length} distinct berries`); }
+  }
+  if (BERRY_KEYS.length !== BERRY_CODES.length) { bad++; fail('berry keys and key codes differ in length'); }
+  for (const id of BERRY_IDS) {
+    const b = BERRIES[id];
+    const fx = b.effect;
+    if ('threshold' in fx && !(fx.threshold > 0 && fx.threshold < 1)) { bad++; fail(`${id}: threshold ${fx.threshold} outside (0,1)`); }
+    if ('duration' in fx && !(fx.duration > 0)) { bad++; fail(`${id}: duration must be positive`); }
+    if (fx.type === 'wildSlow' && !(fx.mul > 0 && fx.mul < 1)) { bad++; fail(`${id}: slow multiplier ${fx.mul} outside (0,1)`); }
+    if (fx.type === 'catchBoost' && !(fx.missMul > 0 && fx.missMul < 1)) { bad++; fail(`${id}: miss multiplier outside (0,1)`); }
+    if (b.icon !== `/sprites/berries/${id}_berry.png`) { bad++; fail(`${id}: icon path off pattern (${b.icon})`); }
+    if (!existsSync(`public${b.icon}`)) { bad++; fail(`${id}: missing icon public${b.icon}`); }
+  }
+  if (!(BERRY_RULES.SPAWN_MIN >= 1 && BERRY_RULES.SPAWN_MAX >= BERRY_RULES.SPAWN_MIN && BERRY_RULES.SPAWN_FIRST_AT < BERRY_RULES.SPAWN_WINDOW)) { bad++; fail('berry spawn rules inconsistent'); }
+  if (!bad) ok(`${BERRY_IDS.length} berries: two sets of ${BERRY_KEYS.length}, sane thresholds/durations, every icon present`);
+}
+
+console.log('Treasure chest');
+{
+  const { existsSync } = await import('node:fs');
+  const { CHEST, CHEST_ICONS, LOOT, LOOT_ORDER, LOOT_KEYS, LOOT_CODES, laserShotsFor } = await import('@/data/chest');
+  const { BERRY_CODES } = await import('@/data/berries');
+  const { GAME } = await import('@/data/gameConfig');
+  const { BALL_ORDER } = await import('@/data/balls');
+  let bad = 0;
+  if (LOOT_ORDER.length !== 4 || new Set(LOOT_ORDER).size !== 4 || LOOT_KEYS.length !== 4 || LOOT_CODES.length !== 4) { bad++; fail('loot bar must hold four distinct items with four keys'); }
+  const taken = new Set<string>([...BERRY_CODES, 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9', 'Digit0', 'KeyE', 'KeyQ', 'KeyM', 'KeyC', 'KeyP', 'KeyB', 'KeyF', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyX', 'KeyZ', 'KeyV', 'Space', 'Tab']);
+  for (const code of LOOT_CODES) if (taken.has(code)) { bad++; fail(`loot key ${code} is already bound`); }
+  for (const id of LOOT_ORDER) {
+    const L = LOOT[id];
+    if (L.icon !== `/sprites/loot/${id}.png`) { bad++; fail(`${id}: icon path off pattern (${L.icon})`); }
+    if (!existsSync(`public${L.icon}`)) { bad++; fail(`${id}: missing icon public${L.icon}`); }
+  }
+  for (const icon of Object.values(CHEST_ICONS)) if (!existsSync(`public${icon}`)) { bad++; fail(`missing chest icon public${icon}`); }
+  const mag = BALL_ORDER.reduce((n, b) => n + CHEST.GUN.MAG[b], 0);
+  if (mag !== 22) { bad++; fail(`launcher magazine holds ${mag} balls, spec says 22 (10/5/4/3)`); }
+  if (CHEST.LASER.SHOTS_BY_STAGE.length !== 3 || laserShotsFor(0) !== 1 || laserShotsFor(1) !== 2 || laserShotsFor(2) !== 3) { bad++; fail('laser shots per stage must be 1/2/3'); }
+  if (CHEST.AGGRO_R !== CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH) { bad++; fail(`AGGRO_R ${CHEST.AGGRO_R} must equal GUARD_RADIUS + GUARDIAN_LEASH (${CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH}) or the guardians ping-pong at the edge`); }
+  if (CHEST.MIN_FROM_START < GAME.PLAYER_START_CLEAR + CHEST.GUARD_RADIUS + 1) { bad++; fail('the chest can sit inside the start clearing'); }
+  if (COMBAT.PLAYER_LIVES_MAX < COMBAT.PLAYER_LIVES + CHEST.HEART_LIVES) { bad++; fail('a blue heart could never be used at full starting lives'); }
+  if (!(COMBAT.PARTY_SHINY_MAX >= 1 && COMBAT.PARTY_SHINY_MAX < COMBAT.PARTY_SIZE)) { bad++; fail('the shiny cap must leave room for a plain Pokémon'); }
+  if (!(COMBAT.ELITE_PREDATORS.HP >= 1 && COMBAT.ELITE_PREDATORS.ATK >= 1 && COMBAT.ELITE_PREDATORS.SPEED >= 1)) { bad++; fail('elite predators must not be weaker than plain ones'); }
+  if (!(COMBAT.HUNTERS.SPEED >= 1 && COMBAT.HUNTERS.COOLDOWN > 0 && COMBAT.HUNTERS.COOLDOWN <= 1 && COMBAT.HUNTERS.CHASE_SPEED >= 1 && COMBAT.HUNTERS.CHASE_SECONDS > 0)) { bad++; fail('hunter rules inconsistent'); }
+  if (!(CHEST.LOOT_PER_CHEST >= 1 && CHEST.LOOT_PER_CHEST <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
+  if (!(CHEST.TIMER_CUT > 0 && CHEST.TIMER_MIN > 0 && CHEST.TIMER_CUT < 60) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
+  if (CHEST.GUARDIANS.length !== 2 || !CHEST.GUARDIANS.every((g) => SPECIES[g]?.stage === 2)) { bad++; fail('the chest needs two fully evolved guardians'); }
+  if (!bad) ok(`chest: L${CHEST.LEVELS.join('/L')} · ${CHEST.GUARDIANS.join(' + ')} · ${LOOT_ORDER.length} loot items on ${LOOT_KEYS.join(' ')} · icons present · magazine ${mag} · laser 1/2/3`);
+}
+
+console.log('Shiny sprites');
+{
+  const { existsSync } = await import('node:fs');
+  const { CHEST } = await import('@/data/chest');
+  const { SKY } = await import('@/data/sky');
+  const { getLevel } = await import('@/data/levels');
+  // every species that can appear shiny in play — pack-lead predators, the chest guardians, the shiny flocks and
+  // the forced-shiny boss waves — needs its shiny front AND back sheets, or the game (and the Collection) fall back
+  const shinyAble = new Set<string>([
+    ...SPECIES_LIST.filter((s) => s.primary === 'predator' && !s.bossOnly).map((s) => s.id),
+    ...CHEST.GUARDIANS,
+    ...SKY.FLOCKS.filter((f) => f.shiny).map((f) => f.speciesId),
+    ...[1, 2, 3, 4].flatMap((l) => (getLevel(l).bossPhases ?? []).filter((p) => p.shiny).flatMap((p) => p.bosses)),
+  ]);
+  let bad = 0;
+  for (const id of shinyAble) {
+    const dex = SPECIES[id]?.dexId;
+    if (!dex) { bad++; fail(`${id}: unknown species`); continue; }
+    for (const path of [`public/sprites/pokemon/shiny/${dex}.gif`, `public/sprites/pokemon/back/shiny/${dex}.gif`]) if (!existsSync(path)) { bad++; fail(`${id}: missing ${path}`); }
+  }
+  if (!bad) ok(`${shinyAble.size} shiny-capable species all have shiny front + back sheets`);
+}
+
 if (failures) { console.error(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log('\nAll checks passed.');

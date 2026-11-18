@@ -110,6 +110,16 @@ export function stagesOf(e: Entity) {
   return { atk: e.atkStage, def: e.defStage };
 }
 
+/** A caster's offensive stats with a Liechi Berry's flat Attack folded in (`cs` itself stays untouched). */
+const offenseScratch: CombatStats = { maxHp: 0, atk: 0, def: 0, spAtk: 0, spDef: 0, speed: 0 };
+export function offenseOf(e: Entity): CombatStats {
+  if (!e.atkBonus) return e.cs;
+  const o = offenseScratch;
+  o.maxHp = e.cs.maxHp; o.def = e.cs.def; o.spDef = e.cs.spDef; o.speed = e.cs.speed;
+  o.atk = e.cs.atk + e.atkBonus; o.spAtk = e.cs.spAtk + e.atkBonus;
+  return o;
+}
+
 export class MoveSystem {
   projectiles: Projectile[] = [];
   visuals: MoveVisual[] = [];
@@ -355,7 +365,7 @@ export class MoveSystem {
     const h = this.host;
     if (target.kind === 'player') {
       if (move.kind === 'damage') {
-        const dmg = computeDamage(caster.cs, PLAYER_STATS, COMBAT.PLAYER_MAX_HP, move, stagesOf(caster), { atk: 1, def: 1 }, h.rng);
+        const dmg = computeDamage(offenseOf(caster), PLAYER_STATS, COMBAT.PLAYER_MAX_HP, move, stagesOf(caster), { atk: 1, def: 1 }, h.rng);
         h.damagePlayer(dmg, caster.id, move.id);
       }
       return;
@@ -364,7 +374,7 @@ export class MoveSystem {
       // a bird of the open sky: damage lands through the sky system (no status effects up there)
       const b = h.skyBody?.(target.id);
       if (!b || move.kind !== 'damage') return;
-      const dmg = computeDamage(caster.cs, b.cs, b.maxHp, move, stagesOf(caster), { atk: 1, def: 1 }, h.rng);
+      const dmg = computeDamage(offenseOf(caster), b.cs, b.maxHp, move, stagesOf(caster), { atk: 1, def: 1 }, h.rng);
       h.damageSky?.(target.id, dmg, caster.id, move.id);
       return;
     }
@@ -374,7 +384,7 @@ export class MoveSystem {
       const ext = h.externalCaster?.(target.id);
       if (!ext || !h.damageExternal) return;
       if (move.kind === 'damage') {
-        const dmg = computeDamage(caster.cs, ext.cs, ext.maxHp, move, stagesOf(caster), stagesOf(ext), h.rng);
+        const dmg = computeDamage(offenseOf(caster), ext.cs, ext.maxHp, move, stagesOf(caster), stagesOf(ext), h.rng);
         h.events.push({ type: 'moveHit', casterId: caster.id, targetId: ext.id, moveId: move.id, damage: dmg });
         h.damageExternal(ext, dmg, caster.id, move.id);
         if (move.effect && (move.effect.chance === undefined || h.rng() < move.effect.chance)) this.applyEffectTo(caster, ext, move);
@@ -383,7 +393,7 @@ export class MoveSystem {
     }
     if (t.state === 'ko' || t.state === 'removed' || t.state === 'caught') return;
     if (move.kind === 'damage') {
-      let dmg = computeDamage(caster.cs, t.cs, t.maxHp, move, stagesOf(caster), stagesOf(t), h.rng);
+      let dmg = computeDamage(offenseOf(caster), t.cs, t.maxHp, move, stagesOf(caster), stagesOf(t), h.rng);
       if (move.airborneMult && t.y > GAME.SURFACE_Y) dmg = Math.round(dmg * move.airborneMult); // Gust vs a flyer
       h.events.push({ type: 'moveHit', casterId: caster.id, targetId: t.id, moveId: move.id, damage: dmg });
       h.damageAbs(t, dmg, caster.id);

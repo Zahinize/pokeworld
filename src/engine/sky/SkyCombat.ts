@@ -47,12 +47,12 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
   const shim = {
     id: SHIM_BASE - b.id, species: { ...sp, size: b.vis }, behavior: sp.primary, role: 'solo', groupId: -1, ambient: true,
     x: b.x, y: b.y + b.vis * 0.45, z: b.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-    maxSpeed: sp.speed, speedMul: 1, phase: b.phase, scaleMul: 1,
+    maxSpeed: sp.speed, speedMul: 1, spdMul: 1, spdBase: 1, cdRate: 1, hunter: false, boostT: 0, wasChasing: false, phase: b.phase, scaleMul: 1,
     state: 'wander', stateT: 0, nextThink: 0, lod: 0,
     hp: b.hp, maxHp: b.maxHp, hpBarT: 0, flashT: 0, animT: 0,
     home: { ...zero }, target: { ...zero }, wander: { ...zero }, targetId: -1, huntCooldown: 0, curiosityCooldown: 0,
     threatId: -1, threatT: 0, lured: false, lureOrbit: 0, facing: 1, zone: 'openReef',
-    t1: 0, t2: 0, cs, mcd: [0, 0], atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0,
+    t1: 0, t2: 0, cs, mcd: [0, 0], atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1, chestGuard: false,
     stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0, concealT: 0, concealDur: 0, veilT: 0, veilDur: 0,
     castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0,
     leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0,
@@ -75,6 +75,8 @@ export class SkyCombat {
   private nextPlayerCastAt = 0;
   private nextRaidPlayerCastAt = 0;
   private now = 0;
+  /** Nanab Berry: birds on the attack fly at this fraction of their cap. */
+  wildSpeedMul = 1;
   private tmp: Vec3 = { x: 0, y: 0, z: 0 };
 
   constructor(readonly sky: SkyLife, private eco: Ecosystem, private csOf: (speciesId: string) => CombatStats) {
@@ -87,6 +89,16 @@ export class SkyCombat {
   /** True while this bird is under the swell picking fights. */
   isRaiding(birdId: number): boolean { return this.attackers.some((a) => a.birdId === birdId && a.mode === 'raid'); }
 
+  /** Birds the trainer ordered the team onto: their stand-ins stay targetable in the air until this time. */
+  private ordered = new Map<number, number>();
+  /** The trainer clicked a bird: its stand-in becomes an orderable target (companion moves reach into the air) for `seconds`. */
+  orderShim(b: SkyBird, seconds = 8): Entity {
+    this.ordered.set(b.id, this.now + seconds);
+    const s = this.shimFor(b);
+    if (s.state === 'removed') s.state = 'wander';
+    return s;
+  }
+
   private shimFor(b: SkyBird): Entity {
     let s = this.shims.get(b.id);
     if (!s) { s = makeShim(b, this.csOf(b.speciesId)); this.shims.set(b.id, s); this.shimById.set(s.id, s); this.shimList.push(s); }
@@ -98,7 +110,7 @@ export class SkyCombat {
   }
 
   /** Top speed of a bird on the attack: its cruise plus a modest boost, never a doubling. */
-  private capOf(b: SkyBird, s: Entity): number { return skyCruiseSpeed(b.speciesId, s.species.speed) * SKY.SORTIE_SPEED_MULT; }
+  private capOf(b: SkyBird, s: Entity): number { return skyCruiseSpeed(b.speciesId, s.species.speed) * SKY.SORTIE_SPEED_MULT * this.wildSpeedMul; }
 
   /** Send a whole group after a target. Returns how many birds took off. */
   private sortie(members: SkyBird[], target: MoveTarget, until: number): number {
@@ -175,7 +187,8 @@ export class SkyCombat {
     }
     let best: MoveTarget | null = null, bestScore = Infinity;
     for (const e of this.eco.alive) {
-      if (e.species.skyOnly || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'faint') continue;
+      // a sky companion fighting at its trainer's side is fair game; wild flyers are the sky's own business
+      if ((e.species.skyOnly && e.role !== 'partner') || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'captureAttempt' || e.state === 'faint') continue;
       if (e.y < -SKY.RAID.MAX_DEPTH) continue;
       const d = Math.hypot(e.x - b.x, e.y - b.y, e.z - b.z);
       if (d > R) continue;
@@ -213,7 +226,7 @@ export class SkyCombat {
       if (b.state !== 'attacking') {
         s.x = b.x; s.y = b.y + b.vis * 0.45; s.z = b.z; s.vx = b.vx; s.vy = b.vy; s.vz = b.vz;
         // a bird back in the air is out of the reef's reach: moves aimed at its stand-in lose their target
-        s.state = b.y > 0.3 && !b.legendary ? 'removed' : 'wander'; // a legendary's stand-in casts from the air
+        s.state = b.y > 0.3 && !b.legendary && !((this.ordered.get(birdId) ?? 0) > now) ? 'removed' : 'wander'; // a legendary's stand-in casts from the air; an ordered bird stays a target
       } else s.state = 'wander';
     }
     for (let i = this.attackers.length - 1; i >= 0; i--) {

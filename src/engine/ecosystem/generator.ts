@@ -12,6 +12,7 @@ import { floorY } from '../world/terrain';
 import type { Obstacle } from '../world/terrain';
 import { GAME } from '@/data/gameConfig';
 import type { EntityRole, GroupKind, Vec3 } from '../ai/types';
+import { CHEST, levelHasChest } from '@/data/chest';
 
 export interface SpawnSpec {
   speciesId: string;
@@ -23,6 +24,10 @@ export interface SpawnSpec {
   pos: Vec3;
   /** A shiny predator: 2× HP and Attack, meaner and hungrier (COMBAT.PREDATOR_HUNT). */
   shiny?: boolean;
+  /** One of the treasure chest's two shiny guardians (src/data/chest.ts). */
+  chestGuard?: boolean;
+  /** A level boss (spawned by Ecosystem.spawnBoss): tuned by BOSS_TUNING, never by the elite-predator boost. */
+  boss?: boolean;
 }
 
 export interface GroupSpec {
@@ -64,7 +69,11 @@ export interface GeneratedEcosystem {
   obstacles: Obstacle[];
   objectives: MissionObjective[];
   hasLegendary: boolean;
+  /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (HP, Attack, speed). */
+  elitePredators: boolean;
   playerStart: Vec3;
+  /** The treasure chest (L1/L2): where it rests, its two guardian spawns and the groups anchored around it. */
+  chest?: { x: number; y: number; z: number; guardSpawnIdx: number[]; schoolGroupIdx: number[] };
   /** Readable composition summary for debugging / mission brief flavour. */
   summary: { schools: string[]; passives: string[]; curious: string[]; predators: string[]; bottom: string[]; defensive: string[]; ambient: string[] };
 }
@@ -137,6 +146,26 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   };
   anchors.push(playerStart);
 
+  // ---- The treasure chest (L1/L2): the coral centre, jittered, never within MIN_FROM_START of the trainer ----
+  let chest: GeneratedEcosystem['chest'];
+  if (levelHasChest(level)) {
+    const cz0 = ZONES.coral;
+    const ja = rng.next() * Math.PI * 2, jr = Math.sqrt(rng.next()) * CHEST.CENTRE_JITTER;
+    let cx = cz0.cx + Math.cos(ja) * jr, cz = cz0.cz + Math.sin(ja) * jr;
+    const dx = cx - playerStart.x, dz = cz - playerStart.z, d = Math.hypot(dx, dz);
+    if (d < CHEST.MIN_FROM_START) {
+      const a = d > 0.5 ? Math.atan2(dz, dx) : rng.next() * Math.PI * 2, want = CHEST.MIN_FROM_START + rng.next() * 4;
+      cx = playerStart.x + Math.cos(a) * want; cz = playerStart.z + Math.sin(a) * want;
+    }
+    const rr = Math.hypot(cx - cz0.cx, cz - cz0.cz), lim = cz0.radius * 0.8;
+    if (rr > lim) { cx = cz0.cx + (cx - cz0.cx) * lim / rr; cz = cz0.cz + (cz - cz0.cz) * lim / rr; }
+    chest = { x: cx, y: floorY(cx, cz) + 0.55, z: cz, guardSpawnIdx: [], schoolGroupIdx: [] };
+    anchors.push({ x: cx, y: chest.y, z: cz }); // other groups keep their 28 m from it
+  }
+  // groups anchored around the chest sit on the far side from the trainer's start, ± 55°
+  const chestBase = chest ? Math.atan2(chest.z - playerStart.z, chest.x - playerStart.x) : 0;
+  const chestAngles = [chestBase - 55 * Math.PI / 180, chestBase + 55 * Math.PI / 180];
+
   // entourage: followers that always spawn with a species — Kingler's Krabby court, the Remoraid
   // that ride under Mantine's wings — whether that species spawns solo or as a group's guardian
   const attachEntourage = (s: SpeciesConfig, idx: number) => {
@@ -150,9 +179,18 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     summary.ambient.push(`${cs.name} ×${n} (with ${s.name})`);
   };
 
-  const addGroup = (kind: GroupKind, member: SpeciesConfig, guardian: SpeciesConfig | undefined, count: number, objectiveId: string | undefined, ambient: boolean, nearPlayer: boolean) => {
-    const zone = pickZone(rng, member, nearPlayer ? level.playerStart.zone : undefined);
-    const anchor = nearPlayer
+  const addGroup = (kind: GroupKind, member: SpeciesConfig, guardian: SpeciesConfig | undefined, count: number, objectiveId: string | undefined, ambient: boolean, nearPlayer: boolean, nearChest?: { at: Vec3; angle: number }) => {
+    const zone = nearChest ? 'coral' : pickZone(rng, member, nearPlayer ? level.playerStart.zone : undefined);
+    const anchor = nearChest
+      ? (() => {
+          // a ring around the chest: the school is the chest's company, whatever farFrom would prefer
+          const p = posInZone(rng, zone, member, 0.5);
+          const r = rng.range(CHEST.SCHOOL_RING[0], CHEST.SCHOOL_RING[1]);
+          p.x = nearChest.at.x + Math.cos(nearChest.angle) * r; p.z = nearChest.at.z + Math.sin(nearChest.angle) * r;
+          p.y = Math.max(p.y, floorY(p.x, p.z) + member.size * 0.8 + 1.0);
+          return p;
+        })()
+      : nearPlayer
       ? farFrom(rng, 12, () => {
           const p = posInZone(rng, zone, member, 0.5);
           // pull toward the player start so the first target is close — but just beyond the clear ring,
@@ -198,10 +236,29 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     const count = rng.int(member.groupSize[0], member.groupSize[1]);
     const m = level.mission.schoolGroups[i];
     const objectiveId = m ? `school-${i}` : undefined;
-    const gi = addGroup('school', member, guardian, count, objectiveId, !m, i === 0);
+    const near = chest && i >= 1 && chest.schoolGroupIdx.length < 2 ? { at: chest, angle: chestAngles[chest.schoolGroupIdx.length] } : undefined;
+    const gi = addGroup('school', member, guardian, count, objectiveId, !m, i === 0, near);
+    if (near) chest!.schoolGroupIdx.push(gi);
     if (m) objectives.push({ id: objectiveId!, kind: 'school', label: 'Schooling Fish', groupIndex: gi, speciesId: member.id, guardianSpeciesId: guardian.id, required: m.members, caught: 0, guardianRequired: m.guardian, guardianCaught: false, candidateSpecies: [member.id] });
     summary.schools.push(`${member.name} + ${guardian.name}`);
   });
+
+  // ---- The chest guardians: a SHINY Blastoise and a SHINY Feraligatr, each its own memberless group anchored
+  // on the chest (orbit + leash from guardianThink; the chest aggro itself lives in Ecosystem.chestAggro).
+  // No entourage: Feraligatr's Totodile court would muddle "catch both guardians".
+  if (chest) {
+    CHEST.GUARDIANS.forEach((id, k) => {
+      const s = getSpecies(id);
+      const gi = groups.length;
+      groups.push({ kind: 'chestGuard', speciesId: id, guardianSpeciesId: id, zone: 'coral', anchor: { x: chest!.x, y: chest!.y + 2, z: chest!.z }, radius: CHEST.GUARD_RADIUS });
+      const a = chestBase + Math.PI / 2 + k * Math.PI, r = CHEST.GUARD_RADIUS + 1;
+      const x = chest!.x + Math.cos(a) * r, z = chest!.z + Math.sin(a) * r;
+      spawns.push({ speciesId: id, role: 'guardian', groupIndex: gi, ambient: true, zone: 'coral', pos: { x, y: Math.max(chest!.y + 1.5, floorY(x, z) + s.size * 0.8 + 1), z }, shiny: true, chestGuard: true });
+      chest!.guardSpawnIdx.push(spawns.length - 1);
+      used.add(id);
+    });
+    summary.predators.push('Chest guardians · SHINY Blastoise + SHINY Feraligatr');
+  }
 
   // ---- Mission passive groups (with guardians) ----
   const passivePool = SPAWNABLE.filter((s) => s.primary === 'passive' && hasGuardian(s));
@@ -311,7 +368,9 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   const ambSchoolPool = SPAWNABLE.filter((s) => s.primary === 'schooling' && !hasGuardian(s) && !used.has(s.id));
   for (let i = 0; i < level.spawn.ambient.schools && ambSchoolPool.length; i++) {
     const s = rng.weighted(ambSchoolPool, (x) => RARITY_W[x.rarity]);
-    addGroup('ambientSchool', s, undefined, rng.int(s.groupSize[0], s.groupSize[1]), undefined, true, false);
+    const near = chest && chest.schoolGroupIdx.length < 2 ? { at: chest, angle: chestAngles[chest.schoolGroupIdx.length] } : undefined;
+    const gi = addGroup('ambientSchool', s, undefined, rng.int(s.groupSize[0], s.groupSize[1]), undefined, true, false, near);
+    if (near) chest!.schoolGroupIdx.push(gi);
     summary.ambient.push(`${s.name} school`);
   }
   const driftPool = SPAWNABLE.filter((s) => s.primary === 'passive' && !hasGuardian(s) && !s.guards && !used.has(s.id));
@@ -373,6 +432,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
       const r = Math.sqrt(rockRng.next()) * zone.radius * 0.9;
       const x = zone.cx + Math.cos(a) * r, z = zone.cz + Math.sin(a) * r;
       const rad = rockRng.range(1.4, zone.palette.rock > 0.7 ? 5.5 : 3.5);
+      if (chest && Math.hypot(x - chest.x, z - chest.z) < CHEST.OBSTACLE_CLEAR_R + rad) continue; // the chest's clearing
       obstacles.push({ x, y: floorY(x, z) + rad * 0.45, z, r: rad, kind: 'rock' });
     }
     if (zone.palette.coral > 0.5) {
@@ -380,10 +440,13 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
         const a = rockRng.next() * Math.PI * 2, r = Math.sqrt(rockRng.next()) * zone.radius * 0.8;
         const x = zone.cx + Math.cos(a) * r, z = zone.cz + Math.sin(a) * r;
         const rad = rockRng.range(1.2, 2.6);
+        if (chest && Math.hypot(x - chest.x, z - chest.z) < CHEST.OBSTACLE_CLEAR_R + rad) continue;
         obstacles.push({ x, y: floorY(x, z) + rad * 0.5, z, r: rad, kind: 'coral' });
       }
     }
   }
+  // the chest itself is an obstacle sphere: Pokémon and the trainer are pushed off it, balls bounce off it (balls.ts emits chestHit)
+  if (chest) obstacles.push({ x: chest.x, y: chest.y, z: chest.z, r: CHEST.RADIUS, kind: 'chest' });
   // Cave in the dark reef: a ring of boulders with a roof, leaving a gap to swim in
   {
     const dz = ZONES.darkReef;
@@ -437,7 +500,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
 
   clearPlayerStart(rng, spawns, groups, playerStart);
 
-  return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, playerStart, summary };
+  return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, elitePredators: !!level.companions, playerStart, chest, summary };
 }
 
 /**
@@ -454,6 +517,7 @@ function clearPlayerStart(rng: RNG, spawns: SpawnSpec[], groups: GroupSpec[], st
   // 1. groups: push the anchor out until the nearest member clears the ring
   groups.forEach((g, gi) => {
     if (g.followsSpawn !== undefined) return; // an entourage follows its leader (step 3)
+    if (g.kind === 'chestGuard') return;      // the chest is placed clear of the start by construction
     const members = spawns.map((sp, i) => [sp, i] as const).filter(([sp]) => sp.groupIndex === gi);
     if (!members.length) return;
     let nearest = Infinity;

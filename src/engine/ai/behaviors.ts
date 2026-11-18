@@ -309,6 +309,7 @@ export function memberThink(e: Entity, g: Group, ctx: SimContext, dt: number) {
 
 /** Group-level simulation: anchor wandering, alarm decay, follow targets. Called at ~4Hz per group. */
 export function groupThink(g: Group, ctx: SimContext, dt: number, lured: boolean) {
+  if (g.kind === 'chestGuard') return; // the chest does not move: its guardians' anchor stays put
   // Alarm decays once the threat is gone / far
   if (g.alarm > 0) {
     let near = false;
@@ -451,9 +452,9 @@ export function guardianThink(e: Entity, g: Group, ctx: SimContext, dt: number) 
   const A = g.anchor;
   const bottomType = s.primary === 'bottom';
 
-  // Detect predators near the group
+  // Detect predators near the group (the chest's guardians guard the CHEST, not the reef: they let predators pass)
   let threat = -1, threatD = Infinity;
-  ctx.hash.query(A.x, A.y, A.z, 34, (o, d2) => {
+  if (g.kind !== 'chestGuard') ctx.hash.query(A.x, A.y, A.z, 34, (o, d2) => {
     if (o === e || !isPredatorLike(o)) return;
     if (o.species.size <= s.size * 0.5) return;
     const r = isHunting(o) ? 34 : 16;

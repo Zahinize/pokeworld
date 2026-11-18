@@ -249,7 +249,6 @@ export function PokemonShadows() {
         if (h > 15) continue;                       // too high up: no shadow reaches the sand
         const closeness = Math.max(0, 1 - h / 15);
         let alpha = 0.5 * Math.pow(closeness, 1.5); // DARKER the nearer the bottom
-        if (e.role === 'partner' && !e.species.skyOnly) alpha *= 1 - session.partnerHideK;
         if (e.state === 'ko') alpha *= Math.max(0, 1 - e.animT / 1.4);
         if (alpha < 0.02) continue;
         // constant footprint, lifted off the sand: a big height-scaled quad gets sliced
@@ -389,8 +388,6 @@ export function PokemonLayer() {
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
-      // companion levels: partners fade out while the trainer is at the surface (catch mode)
-      if (e.role === 'partner' && !e.species.skyOnly && session.partnerHideK > 0.01) alpha *= 1 - session.partnerHideK; // a flyer stays in view over a surfaced trainer
       // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
       if (e.concealT > 0) {
         const into = Math.max(e.concealDur, 0.001) - e.concealT;
@@ -421,9 +418,12 @@ export function PokemonLayer() {
       // they've actually REACHED the bottom (no mid-water somersaults during the descent);
       // passive drifters stay level — their happy surface swirl is the tell
       const atBottom = e.state === 'feed' && e.y - floorY(e.x, e.z) < GAME.FEED_TILT_FLOOR_DIST + e.species.size * 0.5;
-      const tiltTarget = atBottom && e.species.primary !== 'passive'
+      // chase burst (L3/L4 hunters): nose tipped forward into the surge, eased in over the first half second
+      // and eased out as the burst fades, so it reads as lunging at the trainer rather than snapping
+      const surgeTilt = e.boostT > 0 ? f * 0.3 * Math.min(1, e.boostT / 0.5) : 0;
+      const tiltTarget = (atBottom && e.species.primary !== 'passive'
         ? f * (0.5 + Math.sin(time * 2 + e.phase * 11) * 0.14)
-        : 0;
+        : 0) + surgeTilt;
       const tPrev = tiltMemo.get(e.id) ?? 0;
       const tNow = tPrev + (tiltTarget - tPrev) * 0.06;
       tiltMemo.set(e.id, tNow);

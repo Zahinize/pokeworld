@@ -1,4 +1,5 @@
 import type { BallId } from '@/data/types';
+import type { BerrySnapshot } from '@/engine/sim/berries';
 import { STARTING_INVENTORY } from '@/data/balls';
 
 export const SAVE_VERSION = 1;
@@ -22,6 +23,11 @@ export interface CurrentRun {
   total: number;
   /** Lifelines left in this run (COMBAT.PLAYER_LIVES at the start). */
   lives: number;
+  /** The treasure chest was emptied (L1/L2): a resumed run finds it open and bare. */
+  chestLooted?: boolean;
+  /** This heart's berries (bag, floor, drops still owed): a resumed run carries on with them instead of rolling a
+   *  fresh batch. Null while a lifeline is being lost — the next heart starts fresh anyway. */
+  berries?: BerrySnapshot | null;
 }
 
 export interface Settings {
@@ -53,6 +59,9 @@ export interface SaveData {
   currentRun: CurrentRun | null;
   /** Last-used companion party (species ids, ≤6). */
   party: string[];
+  /** Treasure-chest loot (L1/L2): the launcher's magazine, laser rounds, timer charges, blue hearts. Survives
+   *  heart losses, resumes and later dives. */
+  loot: { ballGun: Record<BallId, number> | null; laserGun: number | null; timer: number | null; blueHeart: number | null };
   settings: Settings;
   stats: { totalCaught: number; levelsCompleted: number; ballsThrown: number };
 }
@@ -74,6 +83,7 @@ export function createNewSave(): SaveData {
     collection: {},
     currentRun: null,
     party: [],
+    loot: { ballGun: null, laserGun: null, timer: null, blueHeart: null },
     settings: { ...DEFAULT_SETTINGS },
     stats: { totalCaught: 0, levelsCompleted: 0, ballsThrown: 0 },
   };

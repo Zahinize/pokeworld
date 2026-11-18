@@ -13,6 +13,8 @@ import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT } from '@/data/combatConfig';
 import { combatStatsOf } from '@/pokeapi/client';
 
 type StatKey = 'atk' | 'hp' | 'def';
+/** Roster order: strongest-first by a stat, or only the sky Pokémon you have caught (sorted by Attack). */
+type RosterSort = StatKey | 'sky';
 const STAT_SUFFIX: Record<StatKey, string> = { atk: 'Atk', hp: 'HP', def: 'Def' };
 
 /** The roster-sort stat for a species token — boss trophies show their real (multiplied) battle values. */
@@ -37,19 +39,21 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const savedParty = useStore((s) => s.save.party);
   const setSavedParty = useStore((s) => s.setSavedParty);
   // Roster sort: strongest first by the chosen stat, with its value shown on every cell.
-  const [sortBy, setSortBy] = useState<StatKey>('atk');
+  const [sortBy, setSortBy] = useState<RosterSort>('atk');
+  const statKey: StatKey = sortBy === 'sky' ? 'atk' : sortBy;
   // Regular roster vs Boss Pokémon: bosses (and their shiny forms) are trophies — you may field ONE at a time.
   // every caught reef/sky form, shiny trophies as their own picks beside the plain form
   const caught = useMemo(() => {
     const out: string[] = [];
     for (const sp of SPECIES_LIST) {
       if (sp.bossOnly) continue;
+      if (sortBy === 'sky' && !sp.skyOnly) continue; // the Sky filter: flyers only
       if ((collection[sp.id]?.caught ?? 0) > 0) out.push(sp.id);
       if ((collection[makeToken(sp.id, true)]?.caught ?? 0) > 0) out.push(makeToken(sp.id, true));
     }
     const stage = (t: string) => SPECIES[baseSpeciesId(t)].stage, dex = (t: string) => SPECIES[baseSpeciesId(t)].dexId;
-    return out.sort((a, b) => statOf(b, sortBy) - statOf(a, sortBy) || stage(b) - stage(a) || dex(a) - dex(b));
-  }, [collection, sortBy]);
+    return out.sort((a, b) => statOf(b, statKey) - statOf(a, statKey) || stage(b) - stage(a) || dex(a) - dex(b));
+  }, [collection, sortBy, statKey]);
   const bossTokens = useMemo(() => {
     const out: string[] = [];
     for (const sp of SPECIES_LIST) {
@@ -57,18 +61,28 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
       if ((collection[sp.id]?.caught ?? 0) > 0) out.push(sp.id);
       if ((collection[makeToken(sp.id, true)]?.caught ?? 0) > 0) out.push(makeToken(sp.id, true));
     }
-    return out.sort((a, b) => statOf(b, sortBy) - statOf(a, sortBy));
-  }, [collection, sortBy]);
+    return out.sort((a, b) => statOf(b, statKey) - statOf(a, statKey));
+  }, [collection, statKey]);
   const isBossToken = (t: string) => !!SPECIES[baseSpeciesId(t)]?.bossOnly;
-  const [party, setParty] = useState<string[]>(() => (level.companions ? savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0).slice(0, COMBAT.PARTY_SIZE) : []));
+  const shinyCount = (list: string[]) => list.filter(isShinyToken).length;
+  // at most PARTY_SHINY_MAX shinies per party, a shiny boss included (six shinies steamrolled L3/L4)
+  const capShinies = (list: string[]) => { let n = 0; return list.filter((t) => !isShinyToken(t) || ++n <= COMBAT.PARTY_SHINY_MAX); };
+  const [party, setParty] = useState<string[]>(() => (level.companions ? capShinies(savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0)).slice(0, COMBAT.PARTY_SIZE) : []));
+  const partyShinies = shinyCount(party);
+  // the red "limit reached" note shows only when a FOURTH shiny is actually picked; it clears on the next party
+  // change or after a few seconds
+  const [shinyBlocked, setShinyBlocked] = useState(false);
+  useEffect(() => { if (!shinyBlocked) return; const id = setTimeout(() => setShinyBlocked(false), 4000); return () => clearTimeout(id); }, [shinyBlocked]);
   const toggleParty = (t: string) => {
     Audio.uiClick();
     setParty((prev) => {
-      if (prev.includes(t)) return prev.filter((x) => x !== t);
+      if (prev.includes(t)) { setShinyBlocked(false); return prev.filter((x) => x !== t); }
       if (prev.length >= COMBAT.PARTY_SIZE) return prev;
       // only one Boss Pokémon may be fielded at a time — picking a new one replaces the old
-      if (isBossToken(t)) return [...prev.filter((x) => !isBossToken(x)), t];
-      return [...prev, t];
+      const next = isBossToken(t) ? prev.filter((x) => !isBossToken(x)) : prev;
+      if (isShinyToken(t) && shinyCount(next) >= COMBAT.PARTY_SHINY_MAX) { setShinyBlocked(true); return prev; } // the shiny cap holds
+      setShinyBlocked(false);
+      return [...next, t];
     });
   };
   const enter = () => {
@@ -137,7 +151,9 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
               </>
             )}
             <p className="muted small brief-flavor">
-              The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.
+              {level.companions
+                ? 'The species are drawn fresh for every dive. Your team does the fighting, under the reef and on the swell — a knocked-out wild Pokémon is caught. Elite predators hunt the team.'
+                : 'The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.'}
               {resume ? ' Resuming your previous dive.' : ''}
             </p>
             </div>
@@ -149,10 +165,11 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                     <div className="muted small">Pick up to {COMBAT.PARTY_SIZE} from your collection — the first two swim at your side. Their moves weaken wild Pokémon for easier catches.</div>
                   </div>
                   <div className="row" style={{ gap: 8 }}>
-                    <select className="stat-filter" value={sortBy} aria-label="Sort roster by stat" onChange={(e) => { Audio.uiClick(); setSortBy(e.target.value as StatKey); }}>
+                    <select className="stat-filter" value={sortBy} aria-label="Sort or filter the roster" onChange={(e) => { Audio.uiClick(); setSortBy(e.target.value as RosterSort); }}>
                       <option value="atk">Max Atk</option>
                       <option value="hp">Max HP</option>
                       <option value="def">Max Def</option>
+                      <option value="sky">Sky</option>
                     </select>
                     {party.length > 0 && (
                       <button className="btn ghost" style={{ minHeight: 32, padding: '0 10px' }} onClick={() => { Audio.uiClick(); setParty([]); }}>
@@ -162,7 +179,16 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                     <span className={`badge ${party.length ? 'aqua' : 'red'}`}>{party.length} / {COMBAT.PARTY_SIZE}</span>
                   </div>
                 </div>
-                {caught.length === 0 && bossTokens.length === 0 ? (
+                {partyShinies > 0 && (
+                  <p className={`shiny-note ${shinyBlocked ? 'limit' : ''}`} role="status">
+                    <Ic icon={Shiny} size={12} color="currentColor" /> {shinyBlocked
+                      ? `Shiny limit reached — ${partyShinies} of ${COMBAT.PARTY_SHINY_MAX}. Drop one to pick another shiny.`
+                      : `Shiny limit: up to ${COMBAT.PARTY_SHINY_MAX} shiny Pokémon per party, a shiny Boss Pokémon included (${partyShinies} of ${COMBAT.PARTY_SHINY_MAX}).`}
+                  </p>
+                )}
+                {sortBy === 'sky' && caught.length === 0 ? (
+                  <p className="muted small" style={{ marginTop: 10 }}>No sky Pokémon caught yet — they circle above the waves on every level.</p>
+                ) : caught.length === 0 && bossTokens.length === 0 ? (
                   <p className="muted small" style={{ marginTop: 10 }}>You haven't caught any Pokémon yet — replay an earlier level to build a team.</p>
                 ) : (
                   <div className="party-scroll">
@@ -174,13 +200,13 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                           <button key={t} className={`card clickable party-cell ${shiny ? 'shiny-cell' : ''} ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
                             <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
                             <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
-                            <span className="stat">{statOf(t, sortBy)} {STAT_SUFFIX[sortBy]}</span>
+                            <span className="stat">{statOf(t, statKey)} {STAT_SUFFIX[statKey]}</span>
                             {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                           </button>
                         );
                       })}
                     </div>
-                    {bossTokens.length > 0 && (
+                    {bossTokens.length > 0 && sortBy !== 'sky' && (
                       <>
                         <div className="row between" style={{ marginTop: 14 }}>
                           <div className="eyebrow" style={{ color: 'var(--gold)' }}>Boss Pokémon</div>
@@ -194,7 +220,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                               <button key={t} className={`card clickable party-cell boss-cell ${idx >= 0 ? 'selected' : ''}`} onClick={() => toggleParty(t)} aria-pressed={idx >= 0}>
                                 <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
                                 <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
-                                <span className="stat">{statOf(t, sortBy)} {STAT_SUFFIX[sortBy]}</span>
+                                <span className="stat">{statOf(t, statKey)} {STAT_SUFFIX[statKey]}</span>
                                 {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                               </button>
                             );

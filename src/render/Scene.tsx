@@ -12,10 +12,14 @@ import { TalkMarks } from './fx/TalkMarks';
 import { Balls } from './balls/Balls';
 import { MoveProjectiles, MoveMotes, MoveLights, DamageNumbers } from './fx/MoveFx';
 import { CameraRig } from './player/CameraRig';
+import { WeaponView } from './player/WeaponView';
 import { rebakeAllSheets, bindTextureUploader } from './pokemon/sprites';
 import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
 import { FeedCrumbs } from './env/FeedCrumbs';
+import { BerryLayer } from './env/BerryLayer';
+import { ChestLayer } from './env/ChestLayer';
+import { LaserFx } from './fx/LaserFx';
 import { ThrowArc } from './fx/ThrowArc';
 import { CatchConfetti } from './fx/CatchConfetti';
 import { SKY } from '@/data/sky';
@@ -93,7 +97,10 @@ export function Scene() {
         <SkyWorld clouds={SKY.CLOUDS[resolveQuality(qualitySetting, isTouch)] ?? 3} />
         <SkyLifeLayer />
         <FeedCrumbs />
+        <BerryLayer />
+        <ChestLayer />
         <ThrowArc />
+        <LaserFx />
         <PokemonShadows />
         <PokemonLayer />
         <PartnerTags />
@@ -107,6 +114,7 @@ export function Scene() {
         <DamageNumbers />
       </Suspense>
       <CameraRig />
+      <WeaponView />
     </Canvas>
   );
 }

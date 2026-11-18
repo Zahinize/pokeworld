@@ -19,6 +19,7 @@ import { GAME } from '@/data/gameConfig';
 import { slingDir } from '@/engine/sim/ballPreview';
 import { PokeballIcon } from '../components/common';
 import { Ic, Swords } from '../components/icons';
+import { LOOT } from '@/data/chest';
 
 const DEG = Math.PI / 180;
 
@@ -32,11 +33,14 @@ export function TouchControls() {
   const ballType = useStore((s) => s.hud.ballType);
   const ballCount = useStore((s) => s.save.inventory[s.hud.ballType]);
   const hot = useStore((s) => s.hud.slingHot); // the drawn shot would HIT a wild: show it
-  // companion levels fight underwater and catch at the surface: no slingshot while diving
+  // companion levels fight through the team everywhere: the attack circle replaces the slingshot
   const catchMode = useStore((s) => s.hud.catchMode);
   const attackHot = useStore((s) => s.hud.attackHot); // the attack circle has a target right now
   // companion moves off cooldown — the badge on the attack circle
   const readyMoves = useStore((s) => s.hud.party.active.reduce((n, a) => n + (a ? a.cd.filter((c) => c <= 0).length : 0), 0));
+  // the chest's loot takes the slingshot's place: the launcher aims like the sling, the laser fires on touch
+  const weapon = useStore((s) => s.hud.chest?.weapon ?? 'hands');
+  const weaponAmmo = useStore((s) => { const c = s.hud.chest; if (!c) return 0; return c.weapon === 'laserGun' ? c.laser : c.weapon === 'ballGun' && c.gunAmmo ? c.gunAmmo[s.hud.ballType] : 0; });
 
   useEffect(() => {
     const joy = joyRef.current!, knob = knobRef.current!, look = lookRef.current!, sling = slingRef.current!, attack = attackRef.current!;
@@ -72,6 +76,11 @@ export function TouchControls() {
     const onSlingDown = (e: PointerEvent) => {
       if (slingId !== null || !session.playing || session.recoveringT > 0) return;
       e.preventDefault();
+      if (session.chest.weapon === 'laserGun') { // the laser: no draw, it fires at the crosshair the moment it is touched
+        const [fx, fy, fz] = session.player.forward();
+        if (session.fire(fx, fy, fz)) { navigator.vibrate?.(8); sling.classList.add('fired'); setTimeout(() => sling.classList.remove('fired'), 140); }
+        return;
+      }
       slingId = e.pointerId; sx = e.clientX; sy = e.clientY; st = performance.now();
       aim.active = true; aim.armed = false; aim.yawOff = 0; aim.pitchOff = 0; aim.power = 1;
       try { sling.setPointerCapture(e.pointerId); } catch { /* synthetic/odd pointers: gesture still works */ }
@@ -95,11 +104,11 @@ export function TouchControls() {
       const quick = performance.now() - st < GAME.SLING_TAP_MS;
       if (aim.armed) {
         const [dx, dy, dz] = slingDir(session.player, aim);
-        session.throwBall(dx, dy, dz, GAME.THROW_SPEED * aim.power);
+        session.fire(dx, dy, dz, aim.power); // the launcher ignores the draw's power: it always fires flat out
       } else if (len < GAME.SLING_MIN_DRAG_PX && quick) {
         // tap = classic full-power throw along the view (legendary lead-throws intact)
         const [fx, fy, fz] = session.player.forward();
-        session.throwBall(fx, fy, fz);
+        session.fire(fx, fy, fz);
       }
       clearSling();
     };
@@ -147,10 +156,11 @@ export function TouchControls() {
     <div className="touch-controls">
       <div ref={lookRef} className="zone-look" />
       <div ref={joyRef} className="joy" aria-label="Move"><div ref={knobRef} className="knob" /></div>
-      <button ref={slingRef} className={`sling-anchor ${hot ? 'hot' : ''}`} aria-label="Touch and drag to aim, release to throw"
+      <button ref={slingRef} className={`sling-anchor ${hot ? 'hot' : ''} ${weapon !== 'hands' ? `weapon ${weapon}` : ''}`}
+        aria-label={weapon === 'laserGun' ? 'Tap to fire the Catch Laser at the crosshair' : weapon === 'ballGun' ? 'Ball Launcher: touch and drag to aim, release to fire' : 'Touch and drag to aim, release to throw'}
         style={catchMode ? undefined : { display: 'none' }}>
-        <PokeballIcon ball={ballType} size={34} />
-        <span className="sling-count">{ballCount}</span>
+        {weapon === 'hands' ? <PokeballIcon ball={ballType} size={34} /> : <img className="weapon-icon" src={LOOT[weapon].icon} alt="" draggable={false} />}
+        <span className="sling-count">{weapon === 'hands' ? ballCount : weaponAmmo}</span>
       </button>
       <button ref={attackRef} className={`attack-anchor ${attackHot ? 'hot' : ''} ${readyMoves === 0 ? 'spent' : ''}`}
         aria-label="Attack: fire the best ready companion move at the crosshair"

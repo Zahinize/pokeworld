@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PokeWorld — Boss Music Preview</title>
+    <style>
+      :root { color-scheme: dark; --bg: #061423; --card: #0c2238; --edge: #1e3a56; --text: #e6f1fb; --muted: #8fb0cc; --accent: #38bdf8; --hot: #f59e0b; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at top, #0b2a46 0%, var(--bg) 60%); color: var(--text); font: 15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; padding: 28px 16px 48px; }
+      main { max-width: 860px; margin: 0 auto; }
+      h1 { margin: 0 0 4px; font-size: 26px; letter-spacing: 0.02em; }
+      .sub { color: var(--muted); margin: 0 0 22px; }
+      .cards { display: grid; gap: 14px; }
+      .card { background: var(--card); border: 1px solid var(--edge); border-radius: 14px; padding: 16px 18px; display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: start; transition: border-color 0.2s, box-shadow 0.2s; }
+      .card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 12px 40px -20px var(--accent); }
+      .play { width: 64px; height: 64px; border-radius: 50%; border: 2px solid var(--accent); background: transparent; color: var(--accent); font-size: 24px; cursor: pointer; display: grid; place-items: center; transition: background 0.15s, transform 0.1s; }
+      .play:hover { background: rgba(56, 189, 248, 0.12); } .play:active { transform: scale(0.96); }
+      .card.on .play { background: var(--accent); color: #04121f; }
+      .name { font-size: 19px; font-weight: 700; margin: 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+      .meta { color: var(--muted); font-size: 13px; font-weight: 500; }
+      .tag { margin: 6px 0 4px; }
+      .insp { color: var(--muted); font-size: 13.5px; margin: 0; }
+      .insp b { color: var(--text); font-weight: 600; }
+      .meter { grid-column: 1 / -1; height: 34px; display: flex; gap: 2px; align-items: flex-end; opacity: 0.9; }
+      .meter i { flex: 1; background: linear-gradient(to top, var(--accent), var(--hot)); border-radius: 2px 2px 0 0; min-height: 2px; height: 2px; transition: height 0.06s; }
+      .bar { grid-column: 1 / -1; height: 4px; background: #16324c; border-radius: 2px; overflow: hidden; }
+      .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
+      .foot { display: flex; align-items: center; gap: 14px; margin: 22px 0 0; color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+      input[type=range] { accent-color: var(--accent); width: 180px; }
+      .note { margin-top: 18px; color: var(--muted); font-size: 13px; }
+      .stopall { background: transparent; color: var(--muted); border: 1px solid var(--edge); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+      .stopall:hover { color: var(--text); border-color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Boss battle music — four options</h1>
+      <p class="sub">Original themes for the L3/L4 boss fights, each written in the style of a famous Pokémon battle cue. Press play; the loop runs until you stop it or start another.</p>
+      <div class="cards" id="cards"></div>
+      <div class="foot">
+        <label>Volume <input id="vol" type="range" min="0" max="1" step="0.01" value="0.7" /></label>
+        <button class="stopall" id="stop">Stop</button>
+        <span id="status"></span>
+      </div>
+      <p class="note">Everything is synthesised live in WebAudio from a score — no audio files. The in-game version runs through the same engine, mixed under the reef ambience and SFX.</p>
+    </main>
+    <script type="module" src="/src/audio/musicPreview.ts"></script>
+  </body>
+</html>

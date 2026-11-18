@@ -74,6 +74,8 @@ export const COMBAT = {
   /** Lifelines: hearts under the mission label. Every KO costs one; the fourth wipes the level's
    *  progress — the trainer starts that level from scratch (collection and other levels are safe). */
   PLAYER_LIVES: 4,
+  /** The blue heart (treasure chest loot) can raise lifelines past the starting four, up to this. */
+  PLAYER_LIVES_MAX: 6,
 
   /** Projectile/beam range multiplier by caster stage — evolved Pokémon strike from further away. */
   RANGE_STAGE_MULT: [1, 1.35, 1.7] as const,
@@ -109,6 +111,16 @@ export const COMBAT = {
   /** Companion party. */
   PARTY_SIZE: 6,
   ACTIVE_COMPANIONS: 2,
+  /** At most this many SHINY Pokémon in a party, a shiny Boss Pokémon included — six shinies steamrolled L3/L4. */
+  PARTY_SHINY_MAX: 3,
+  /** Companion levels (L3/L4): every wild predator spawns at these multiples of HP, Attack and swim speed, so it
+   *  can run the trainer and the team down — they must fight it, not outswim it. Bosses have their own tuning.
+   *  2026-11-18 playtest: 2× HP/Attack/speed killed the trainer and team too often — all three cut by 40 % to 1.2×. */
+  ELITE_PREDATORS: { HP: 1.2, ATK: 1.2, SPEED: 1.2 },
+  /** Companion levels (L3/L4): every wild predator AND every mission Pokémon is a hunter — SPEED× faster (on top of
+   *  ELITE_PREDATORS for the predators), move cooldowns × COOLDOWN, and the moment it goes for the trainer or a
+   *  companion it gets a CHASE_SECONDS burst at CHASE_SPEED× with a bubble stream boiling off it. */
+  HUNTERS: { SPEED: 1.2, COOLDOWN: 0.5, CHASE_SPEED: 1.5, CHASE_SECONDS: 5 },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,
@@ -140,7 +152,10 @@ export const BOSS_FIGHT_SPEED_MULT = 1.5;
 /** Swagger, part two: bosses ATTACK this much faster too — move cooldowns tick at this rate and every charge
  *  gap (the opening one, the ordered, dumb and soul-bought ones alike) is divided by it. The charge telegraph
  *  and the recovery stagger are untouched: the warning stays fair and the punish window stays open. */
-export const BOSS_ATTACK_RATE_MULT = 1.5;
+export const BOSS_ATTACK_RATE_MULT = 2.25;   // 1.5 swagger × 1.5 rage (2026-11-18: bosses attack half again as fast once more)
+/** Rage: every wild boss hits this much harder on top of BOSS_TUNING — its moves and its charge alike. Companion
+ *  boss trophies (a caught Dondozo fighting for you) are untouched. */
+export const BOSS_ATK_MULT = 1.5;
 
 /** Milotic calms anger (Pokédex): a predator within this many metres of one will not start a hunt on reef
  *  prey, and one already chasing a fish breaks off. The trainer's posse is unaffected — the hunt for

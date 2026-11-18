@@ -1,5 +1,6 @@
 import { createNewSave, SAVE_VERSION, type SaveData, DEFAULT_SETTINGS } from './schema';
 import { STARTING_INVENTORY } from '@/data/balls';
+import { BERRY_IDS, type BerryId } from '@/data/berries';
 
 /**
  * Migrate/repair any parsed save object into the current schema.
@@ -32,6 +33,7 @@ export function migrateSave(raw: unknown): SaveData {
     collection: isObj(r.collection) ? sanitizeCollection(r.collection) : {},
     currentRun: sanitizeRun(r.currentRun),
     party: Array.isArray(r.party) ? r.party.filter((x: unknown) => typeof x === 'string').slice(0, 6) : [],
+    loot: sanitizeLoot(r.loot),
     settings: { ...DEFAULT_SETTINGS, ...(isObj(r.settings) ? r.settings : {}) },
     stats: {
       totalCaught: clampInt(r.stats?.totalCaught, 0, 1e9, 0),
@@ -44,6 +46,13 @@ export function migrateSave(raw: unknown): SaveData {
 }
 
 function isObj(v: unknown): v is Record<string, any> { return !!v && typeof v === 'object' && !Array.isArray(v); }
+function sanitizeLoot(l: any): SaveData['loot'] {
+  const none: SaveData['loot'] = { ballGun: null, laserGun: null, timer: null, blueHeart: null };
+  if (!isObj(l)) return none;
+  const n = (v: unknown) => (Number.isFinite(v as number) && (v as number) > 0 ? Math.min(999, Math.round(v as number)) : null);
+  const mag = isObj(l.ballGun) ? { pokeball: clampInt(l.ballGun.pokeball, 0, 999, 0), greatball: clampInt(l.ballGun.greatball, 0, 999, 0), ultraball: clampInt(l.ballGun.ultraball, 0, 999, 0), masterball: clampInt(l.ballGun.masterball, 0, 999, 0) } : null;
+  return { ballGun: mag && mag.pokeball + mag.greatball + mag.ultraball + mag.masterball > 0 ? mag : null, laserGun: n(l.laserGun), timer: n(l.timer), blueHeart: n(l.blueHeart) };
+}
 function clampInt(v: unknown, min: number, max: number, dflt: number) {
   return Number.isFinite(v as number) ? Math.max(min, Math.min(max, Math.round(v as number))) : dflt;
 }
@@ -62,5 +71,22 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     objectives: Array.isArray(r.objectives) ? r.objectives.filter((o: any) => isObj(o) && typeof o.id === 'string').map((o: any) => ({ id: o.id, caught: clampInt(o.caught, 0, 99, 0), guardianCaught: !!o.guardianCaught })) : [],
     caught: clampInt(r.caught, 0, 999, 0), total: clampInt(r.total, 0, 999, 0),
     lives: clampInt(r.lives, 1, 9, 4),
+    chestLooted: !!r.chestLooted,
+    berries: sanitizeBerries(r.berries),
+  };
+}
+function sanitizeBerries(b: any): NonNullable<SaveData['currentRun']>['berries'] {
+  if (!isObj(b)) return null;
+  const isBerry = (v: unknown): v is BerryId => typeof v === 'string' && (BERRY_IDS as string[]).includes(v);
+  const num = (v: unknown, dflt = 0) => (Number.isFinite(v as number) ? (v as number) : dflt);
+  const inventory = Object.fromEntries(BERRY_IDS.map((id) => [id, clampInt(b.inventory?.[id], 0, 99, 0)])) as Record<BerryId, number>;
+  const list = (v: unknown) => (Array.isArray(v) ? v : []);
+  return {
+    heartT: Math.max(0, num(b.heartT)),
+    inventory,
+    heldTrainer: isBerry(b.heldTrainer) ? b.heldTrainer : null,
+    floor: list(b.floor).filter((f: any) => isObj(f) && isBerry(f.id) && [f.x, f.y, f.z].every((n) => Number.isFinite(n))).slice(0, 12).map((f: any) => ({ id: f.id, x: f.x, y: f.y, z: f.z })),
+    schedule: list(b.schedule).filter((s: any) => isObj(s) && isBerry(s.id) && Number.isFinite(s.at)).slice(0, 12).map((s: any) => ({ at: s.at, id: s.id })),
+    effects: list(b.effects).filter((f: any) => isObj(f) && isBerry(f.id) && Number.isFinite(f.until) && Number.isFinite(f.total)).slice(0, 8).map((f: any) => ({ id: f.id, until: f.until, total: f.total })),
   };
 }

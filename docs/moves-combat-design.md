@@ -287,7 +287,8 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   (its stand-in reads `removed`). A raid can still end badly against a family or a school volley; a bird
   the reef kills is replaced from the horizon after `FLOCK_REFILL` 45–75 s, one the trainer catches is not.
   **A bird in the water is out of its element**: a ball that connects with any sky Pokémon below the
-  waterline rolls at `RAID.CATCH_MULT` 2× the odds (Wingull 46 → 91 % on a Poké Ball; a shiny raider
+  waterline — the ball's bird hit test runs at every depth, so a raider 5–28 m down is as hittable as a
+  Ducklett on the swell — rolls at `RAID.CATCH_MULT` 2× the odds (Wingull 46 → 91 % on a Poké Ball; a shiny raider
   still resists, 0.35 × 2 = 70 % of plain odds). On Levels 3 and 4 **companions duel raiders**: a raider
   that strikes a companion is dueled by it, one that strikes the trainer or a reef Pokémon is dueled by
   the nearest free companion within `COMBAT.RAID_DUEL_ASSIST_R` 16 m. The duel locks on the bird's
@@ -302,9 +303,22 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   the flock (the circling pursuit is clamped to cruise: a straggler cuts the corner, it never sprints).
   Attack stats are untouched. The KO banner says "Sky Legendary" only for an actual legendary.
 - **Companions** — sky Pokémon can be picked for the party on Levels 3 and 4 (companion levels). A
-  flyer hovers 10 m ahead over the swell, never submerges, breathes air (no surface drain), stays visible
-  when the trainer surfaces, auto-engages sky birds like any surfaced companion, and strikes reef targets
-  from above (a Wing Attack over a submerged target connects when the bird is overhead).
+  flyer **dives the reef with its trainer**: under the water it holds the same formation as a water
+  companion (3.2 m ahead, flanking the crosshair), chases ordered targets at their depth and duels like
+  anyone else; the sand is its floor and nothing is its ceiling. When the trainer surfaces it climbs to
+  hover 5 m ahead over the swell. **Water companions breathe up there too** (2026-11-18: the open-air HP
+  drain is gone): they ride the swell beside a surfaced trainer (their ceiling is `SURFACE_Y + 0.35·size`),
+  auto-engage sky birds (`COMPANION_AIR_REACH_BONUS`) and take orders against raiders and reef Pokémon
+  exactly as under water. **There is no Poké Ball mechanic on L3/L4 at all**: `catchingAllowed` is false
+  for the whole dive, the ball chip never shows, clicks and taps are orders, and a knock-out is a catch —
+  reef rules — for sky legendaries as much as for the reef. Raiders may pick a companion as a victim.
+  **Ordering the team at a bird** (`GameSession.aimedSkyTarget`): when the crosshair holds no reef wild, the
+  camera ray is tested against the sky birds (tolerance `b.r + 0.6 + 0.06·distance`, up to 110 m); the hit
+  bird's stand-in (`SkyCombat.orderShim`, kept `wander` instead of `removed` for 8 s and refreshed while the
+  team focuses it) becomes the order target like any reef wild — `orderCast`, the commanded chase in
+  `partnerThink` and the focus loop resolve ids through `externalCaster`, and every reach check on a stand-in
+  adds `COMPANION_AIR_REACH_BONUS` 14 m. Hits land through `skyHooks.damageExternal` (a companion's KO is a
+  catch). A water companion fires from the swell; a flyer climbs after it.
 
 Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble · Cramorant Air Slash/Water Gun ·
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
@@ -392,7 +406,17 @@ packs and the Carvanha shoal pile on. It escalates from `ESCALATE_FLOOR` 0.5 the
 over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and the sighting range by
 `ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
 escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
-(Level 1 ×1.0 … Level 4 ×1.3). **The team is the prey** (companion levels): a companion is weighed, chased
+(Level 1 ×1.0 … Level 4 ×1.3). **Elite predators** (companion levels, 2026-11-18): every wild predator on
+L3/L4 spawns at `COMBAT.ELITE_PREDATORS` — 1.2× HP, 1.2× Attack and 1.2× swim speed (2× each in the first cut; a
+playtest had them killing the trainer and team too often, so all three were dropped 40 %) (`Entity.spdMul`, applied to the
+steering target and the cruise cap in `integrate`, stacking on a shiny lead's own doubling); bosses are tuned
+separately and never get it. **Hunters** (`COMBAT.HUNTERS`, same levels): every wild predator AND every mission
+Pokémon swims `SPEED` 1.2× faster (predators: on top of the elite 1.2×), its move cooldowns tick at 1/`COOLDOWN`
+= 2× (`Entity.cdRate`), and the frame it turns on the trainer or a companion (`approach`/`circle`/`rush`/`duel`
+with the trainer or a partner as target, or `retaliate` against them) it gets a `CHASE_SECONDS` 5 s surge at
+`CHASE_SPEED` 1.5× (`Entity.boostT`, folded into `spdMul` every frame) with the ferry's bubble stream boiling off
+it (`wakeT` held at 0.7 while the burst runs) and its sprite tipped ~17° nose-forward (`PokemonLayer` `surgeTilt`,
+0.3 rad eased through the existing tilt lerp). They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
 and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
 grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
 member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a
@@ -500,6 +524,137 @@ only roaming (`role: 'solo'`) predators hunt the trainer.
   collection and other levels are safe). Hearts refill to four on every fresh start of a level.
 
 ---
+
+## 8a. Berries — per-heart power-ups
+
+Once the Poké Balls run out, a solo dive turns into hiding until the restock timer ends. Berries are
+the tools for that stretch: a few wash onto the sea floor during every lifeline, the trainer swims onto
+one to pick it up (two-note chirp + toast naming its key), and eats it with **R T Y U I** (or a tap on
+the berry bar on touch). Everything about a berry belongs to the **heart that found it**: held berries,
+running effects and uncollected floor berries all clear when a lifeline is lost, and a fresh batch
+follows the respawn. The heart's berries ARE persisted (`CurrentRun.berries`: bag, floor berries, drops still
+owed, held berry, heart clock, trainer-wide effects): a resumed run carries on where it left off instead of
+rolling a fresh batch, so quitting and resuming cannot farm berries. The run is written on every pickup / eat /
+hold (and every 20 s); while a lifeline is being lost it writes `null`, since the next heart starts fresh anyway.
+Companion buffs (a fired Liechi / Salac) do not survive the resume — the team is re-sent.
+
+### Spawning
+- Per heart **3–5 berries**, each at a random time between 6 s and 120 s after the dive (or respawn),
+  rolled on a `Math.random`-seeded RNG — never the level seed, which is resumable and would make the
+  timings guessable. A toast announces each drop ("A berry washed onto the reef").
+- Placement: a ring 25–95 m from the trainer, inside 115 m of the reef centre, on the sand
+  (`floorY + 0.55`), clear of rocks/coral/caves (40 tries, then best effort). Floor berries render as
+  their 32×32 pixel icons with the shiny glow pulse and a tinted halo (`BerryLayer`).
+- Navigation: a **second, smaller green pointer** (label above the crosshair; the gold mission label
+  stays below) leads to the nearest berry within **50 m**. The mission arrow never disappears.
+
+### Sets (fixed per level pair, slot i ↔ key i)
+| Slot / key | L1–L2 (trainer & wild reef) | L3–L4 (BOTH active companions) |
+|---|---|---|
+| R | **Nanab** — the wild reef swims at 50% speed for 30 s | **Oran** — +40 HP now |
+| T | **Razz** — catch rolls keep only half their miss chance for 45 s | **Sitrus** (held) — +25% HP under 50% |
+| Y | **Oran** — +40 HP now | **Figy** (held) — +33% HP under 25% |
+| U | **Sitrus** (held) — +25% HP under 50% | **Liechi** (held) — +100 Attack for 60 s under 25% |
+| I | **Figy** (held) — +33% HP under 25% | **Salac** (held) — +50 Speed for 60 s under 25% |
+
+- **Nanab** scales every non-partner reef entity's steering target and cruise cap (`Ecosystem.integrate`,
+  `wildSpeedMul`) and the raiding birds' sortie cap (`SkyCombat.capOf`). Companions and the Lapras
+  ferry are exempt; Aqua Jet / Wing Attack rams bypass the cruise clamp as before.
+- **Razz**: `p' = min(cap, 1 − (1 − p) · 0.5)` applied in `rollCatch`/`rollCatchFor` only
+  (`boostCatch`), so `catchProbability` and the sim's catch tables are untouched. A guaranteed Master
+  Ball stays guaranteed; a sky legendary never rises past `SKY.LEGENDARY_CATCH_CAP`.
+- **Held berries** work like main-series held items: the key *arms* them, they are eaten automatically
+  the moment HP drops under the threshold. Arming while already under it eats it at once. A different
+  held berry replaces the current one and **refunds** it; the same one is a dud. Benching a companion
+  refunds its held berry; a KO loses it. In the companion set one berry arms on **both** actives and each
+  fires independently.
+- The trainer's Sitrus/Figy are checked inside `applyPlayerDamage` right after the hit lands, *before*
+  the KO branch — a pinch berry can save the last sliver of a heart (an intentional nod to the fun, not
+  the main series). Companion pinch berries are checked on the `BerrySystem` tick.
+- **Liechi** adds a flat +100 to both Attack and Sp. Atk through `offenseOf()` (the entity's `cs` stays
+  immutable); **Salac** multiplies the companion's formation/chase speed by `(speed + 50) / speed`
+  (capped ×1.8). Both last `BERRY_RULES.PINCH_BUFF_SECONDS` (60 s).
+
+### HUD
+- **Berry bar**: five slots with counts, key hints, a gold ring for a held berry and a conic timer for
+  a running effect. It stacks just above the ball chip (L1/L2, and the surface in L3/L4) and above the
+  companion cards (L3/L4 underwater). Desktop shows it throughout the dive; touch shows it only while
+  there is something in it, to keep the phone HUD minimal. `--berry-h` lifts the swap prompt clear of it.
+- Code: `data/berries.ts` (sets, rules), `engine/sim/berries.ts` (`BerrySystem`, store-free; covered in
+  `npm run sim`), `GameSession.useBerry/handleBerryEvents/syncBerryHud`, `render/env/BerryLayer.tsx`.
+
+---
+
+## 8b. The treasure chest — a guarded loot cache at the heart of the reef (L1/L2)
+
+Berries buy time once the Poké Balls run out; the chest buys *catches*. One chest per solo dive rests at
+the coral centre (the world origin: the "heart of the reef"), jittered a few metres, never within 24 m of
+the trainer's start (L1 starts in that zone; L2 starts 80 m away in the open reef). Two of the level's
+schools are re-anchored 12–16 m from it on the far side from the start (just past the 7 m proximity rule for
+a trainer on the chest), so the chest is always in company.
+No chest in L3/L4.
+
+### Guardians
+- A **shiny Blastoise and a shiny Feraligatr** (`CHEST.GUARDIANS`) patrol the chest, each in its own
+  memberless `chestGuard` group anchored on it (so `guardianThink` gives them orbit, leash and watch for
+  free). No entourage — Feraligatr's Totodile court would muddle "catch both". They never respawn
+  (`Entity.chestGuard` skips the predator respawn queue in `knockOut`/`capture`), do not count toward
+  the level's two shiny pack leads, and do not intercept passing predators (they guard the chest, not the
+  reef — otherwise two shinies thinned the posse and blew the sim's predator-pressure budget).
+- **Aggro**: while either guardian stands, a trainer within `AGGRO_R` (15 m) of the chest is attacked —
+  `Ecosystem.chestAggro` re-arms both into `retaliate` every half second, so the fight lasts as long as
+  the trainer stays; `retaliateThink` lunges, casts and leashes them back. The leash is
+  `GUARD_RADIUS + GUARDIAN_LEASH = AGGRO_R` (a check enforces it) so they do not ping-pong at the edge.
+- **Unlock**: both guardians caught (solo levels catch anywhere, so a Master Ball or a patient Ultra Ball
+  does it; the laser is inside the chest, so it cannot help here). Then the reef takes over: while the trainer is within `SWARM_TRIGGER_R` (12 m), every non-boss wild within `SWARM_R`
+  (25 m) of the chest turns on them in a staggered ripple every 2.5 s (`chestSwarm` event → "The reef
+  defends the chest!"). The swarm stops recruiting once the chest is looted.
+- **Pacing — the chest's own rules** (`CHEST.GUARD_CAST_GAP` 2.5 s, `SWARM_CAST_GAP` 1.5 s, `HIT_CAP`
+  guard 15 % / swarm 12 %): whoever casts at a trainer within `SWARM_R` of the chest — guardians, schools,
+  a hunter sniping from outside the ring — shares ONE gap and a lower per-hit cap, keyed off the *trainer's*
+  distance to the chest, and it outlives the loot. Without it two shinies at 38 a hit killed in six seconds
+  and the schools (which the predators' 4 s gap never covered) landed 17 hits in four. Measured: the guarded
+  approach costs ~15 HP per 2.5 s; an 8 s dwell under the swarm costs ~60 HP from full — a fight, not a wall.
+  The floating damage number now shows the post-cap amount.
+
+### Opening (`ChestSystem`, store-free, covered in `npm run sim`)
+`locked → unlocked → opening → open → looted`. Two ways to open an unlocked chest:
+1. **Dwell**: stay inside a column 3 m wide and 4 m tall above the chest for **8 s** (a gold ring with a
+   countdown sits on the crosshair). Drifting off drains progress at 0.5 s/s rather than resetting it.
+2. **Five Master Balls**: the chest is an obstacle sphere, so balls bounce off it; `BallSystem` emits
+   `chestHit` once per ball and only Master Balls on an unlocked chest count ("3 / 5" floats up). Other
+   balls and a locked chest are rejected with a toast. Hits persist for the dive.
+Opening plays the lid animation (`ChestLayer`, 0.8 s, hinged at the back) with a sparkle burst, a gold
+pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everything at once**.
+
+### Loot (random **two of four**, keys **G H J K**, loot bar above the berry bar)
+| Key | Item | Effect |
+|---|---|---|
+| G | **Ball Launcher** | Its own magazine 10 Poké · 5 Great · 4 Ultra · 3 Master. Fires at **2× speed** (≈ 2× range under the exponential drag) with a **2× hit radius**. Never touches the bag, never starts the restock. Auto/pinned ball choice reads the magazine while equipped. |
+| H | **Catch Laser** | 15 hitscan rounds, 45 m. Each shot takes 1/N of max HP by evolution stage (N = 1/2/3, `laserFraction` rounds up so N shots always finish). The finishing shot **captures** (`Ecosystem.autoCapture`, `by: 'laser'`): collection, mission credit, "Lasered! Caught X". Bosses, companions and the ferry are immune. It is **electric**: a jagged yellow-white arc that re-shapes 48×/s with a pale-blue glow rod, a muzzle flash and impact sparks (`LaserFx`), an electric crack for a sound. |
+| J | **Restock Timer** | **Two charges**, each taking **30 s** off a Poké Ball restock (60 → 30 s, 75 → 45 s, never under 10 s). Charges spend themselves on restock starts — nothing to arm — and **stack**: two timers are four shorter restocks. J during a restock spends a charge on it right now (30 s off what is left, once per restock); J otherwise just reports the charges. |
+| K | **Blue Heart** | **+2 lifelines**, up to `PLAYER_LIVES_MAX` (6); refused (and kept) at the cap. The hearts row grows past four. |
+
+- G/H **toggle** the weapon (`session.fire` dispatches hands / launcher / laser); pressing the equipped
+  key puts it away, and an empty weapon drops back to hands on its own. Desktop: left click fires; a
+  **weapon panel** to the right of the ball chip shows the magazine or rounds. Touch: the launcher takes
+  the slingshot's place (same drag-to-aim, always full power); the laser fires at the crosshair the
+  moment it is touched. The lock-on (`slingHot`) follows the launcher's speed/radius or the laser's ray.
+- **The bag is the save's** (`SaveData.loot`, written whenever it changes): loot survives heart losses,
+  resumes, level completion and later dives — everything found stacks (a second launcher tops up the
+  magazine). `chestLooted` on the run keeps a resumed run from opening the same chest twice. Consequence:
+  replaying a level re-rolls its chest, so loot can be farmed by replaying L1/L2 — accepted for now.
+- **In hand**: an equipped launcher or laser is drawn in first person in the lower right of the view
+  (`WeaponView`: procedural models riding the camera, swim bob, recoil on every shot, muzzle glow on the
+  laser, drawn over the world). The laser's bolt leaves that muzzle.
+- Code: `data/chest.ts` (rules, loot table, keys), `engine/ecosystem/generator.ts` (placement, near-chest
+  schools, guardians, the obstacle clearing), `engine/world/Ecosystem.ts` (`chestAggro`, cast-gap bypass,
+  laser capture), `engine/sim/chest.ts` (`ChestSystem`), `engine/sim/balls.ts` (`chestHit`, `hitMul`),
+  `GameSession.fire/throwBall/fireLaser/useLoot/handleChestEvents/syncChestHud`, `render/env/ChestLayer.tsx`,
+  `render/fx/LaserFx.tsx`, `scripts/lootIcons.mjs` (the 32×32 icons, `npm run icons:loot`).
+
+---
+
 
 ## 9. Companions, duels, and the L3/L4 boss arc
 
@@ -614,14 +769,24 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
 4. **Sea World complete**: special completion screen replaces the normal one — *"Sea World complete! A new
    world is coming soon…"* (celebration + roll-up stats).
 
+**Shiny bosses on demand**: a wave spawns shiny when the level forces it, when the party fields a boss of its own,
+when the party sits at the shiny cap (three shinies — water, sky or mixed), or on the 20 % roll.
+
 ### Boss behavior — stay agile
 **Swagger** (`BOSS_FIGHT_SPEED_MULT` 1.5): while the encounter is on (`bossesActive`), every boss moves
 half again as fast — brawl hold speed (species speed × 1.5 × 1.5), the commander's saddle ride, and the
 charge lunge (`chargeSpeed` × 1.9 × 1.5). The charge telegraph and recovery windows are unchanged, so the
 warning stays fair; a dormant boss in its lair keeps its slow hover. **Attack rate** (`BOSS_ATTACK_RATE_MULT`
-1.5): bosses also attack half again as often — their move cooldowns tick at 1.5× in `Ecosystem.update`, and
-every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps and Basculegion's
-soul recharge) is divided by it. Telegraph and recovery stay as they were. The commander now rides Dondozo's
+2.25 — 1.5 swagger × 1.5 rage, 2026-11-18): bosses attack at 2.25× — their move cooldowns tick at that rate in
+`Ecosystem.update`, and every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps
+and Basculegion's soul recharge) is divided by it. Telegraph and recovery stay as they were. **Rage**
+(`BOSS_ATK_MULT` 1.5): a wild boss's Attack and Sp. Atk are multiplied again on top of `BOSS_TUNING` (2 × 1.5 =
+3×; a shiny boss 4.5×), and its charge damage too (trainer 45–60 before the level cap, companions 90 % of max
+Hp). Companion boss trophies never get it. Honest note: every boss move already sat on the 55 % per-hit damage
+clamp (`MAX_DAMAGE_FRAC`) before the rage — Dondozo's Wave Crash computes to 236 on the trainer and 173 on a
+Kingdra by the formula, clamped to the 36/40 level cap and 67 respectively — so the extra Attack changes no
+per-hit number today; the 2.25× cadence (a damage move every ~1.3 s with both cycling, charges every 5–14 s) is
+what makes the fights harder. Raising the clamp for bosses is the lever if they are still too soft. The commander now rides Dondozo's
 charge: while Dondozo is in `charging` (and Tatsugiri is neither baiting nor sheltered) it is carried on its
 back every frame in `integrate`, so a faster charge cadence can no longer pull the duo apart. **Shadow in the lair**: until the
 trainer reaches the bosses (the 30 m greeting trigger), each one renders as a black silhouette — sprite
@@ -642,6 +807,28 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
 
 ---
 
+### Notifications (USER RULING 2026-11-18)
+Only four toast channels reach the player, on desktop, tablet and phone alike: `ko` (lifeline lost / last
+lifeline, team knock-outs incl. laser finishes, bosses defeated), `berry` (every berry toast), `chest` (every
+treasure-chest toast, the swarm warning included) and `hunt` ("X is hunting you!"). `Toast.channel` carries
+it; `store.pushToast` drops any toast without one, so lore events (ferry, Wishiwashi, Mantine, flocks, boss
+flavour, legendaries, restocks, ball catches — the catch card still shows) are silent.
+
+### No predator tension drone (USER RULING 2026-11-19)
+The soundscape's "predator tension" layer — a 41 Hz pulsing sub tone that swelled while a predator hunted the
+trainer within 50 m — is gone. It surfaced as "a weird sound that starts playing" against the SHINY Basculegion
+boss on L4: Basculegion is the only boss with `predator` behaviour, so it was the only boss that kept the drone
+running for a whole fight. Hunts still announce themselves through the `hunt` toast and the one-shot alarm.
+
+### Boss battle music (USER RULING 2026-11-19)
+"Gym Leader Rush" (`src/audio/bossThemes.ts`, an original 16-bar chiptune loop in E minor at 172 BPM, written in the
+style of the Kanto/Johto Gym Leader battle cue) plays for EVERY L3/L4 boss fight: `Audio.startBossMusic()` on the
+accepted challenge (`startBossBattle`), the reef ambience ducks to 0.3 under it, the pause menu mutes it in place,
+and it fades out when the wave is down, on defeat, on level complete and on leaving the reef. The engine
+(`src/audio/BossMusic.ts`) is a bar-looped WebAudio sequencer with synth instruments and drums — no audio assets.
+The other three candidates (Abyssal Legend, Champion's Tide, Showdown) stay on the dev listening page
+`/dev/music-preview.html` for later picks.
+
 ## 10. HUD additions
 
 - **Party bar** (bottom-left, above the hint area): 2 active portraits with circular HP + two move buttons
@@ -651,6 +838,12 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
 - Touch layout: the attack circle mirrors the joystick (same size and baseline at every breakpoint) and the
   compact companion cards sit between them; everything obeys the existing `.hud.touch` layout rules and
   safe areas.
+- **Berry bar + berry pointer** (§8a): the five-slot bar sits in the same bottom-centre column as the ball
+  chip / companion cards; the smaller green pointer to a berry lives above the crosshair.
+- **Loot bar, weapon panel, chest pointer** (§8b): the four-slot loot bar stacks above the berry bar;
+  the equipped weapon's panel hangs off the right of the ball chip (desktop); a gold chest pointer lives
+  above the berry label and the 8 s dwell ring counts down on the crosshair. On touch the launcher/laser
+  replace the slingshot button. The lifelines row grows to six for blue hearts.
 
 ---
 

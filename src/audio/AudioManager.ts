@@ -1,17 +1,24 @@
 /**
  * Procedural WebAudio soundscape — no audio assets required.
- * Deep-sea drone, water current, bubbles, spatial whale calls, predator tension, and UI/gameplay SFX.
+ * Deep-sea drone, water current, bubbles, spatial whale calls, and UI/gameplay SFX.
+ * No predator "tension" drone (USER RULING 2026-11-19): the pulsing sub tone that swelled while a predator hunted the
+ * trainer was removed from gameplay outright.
  * Silence is valued: the ambience is sparse and the SFX are short.
  */
+import { BossMusicPlayer } from './BossMusic';
+import { bossTheme } from './bossThemes';
+
 export interface WhaleSource { id: number; x: number; y: number; z: number; size: number }
+
+/** Boss music level on the master bus, and how far the reef ambience ducks under it. */
+const MUSIC_LEVEL = 0.55;
+const AMBIENCE_DUCK = 0.3;
 
 class AudioManagerImpl {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private ambGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
-  private tensionGain: GainNode | null = null;
-  private tensionOsc: OscillatorNode | null = null;
   private currentFilter: BiquadFilterNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private enabled = true;
@@ -22,6 +29,8 @@ class AudioManagerImpl {
   private listenerPos = { x: 0, y: 0, z: 0 };
   private ambienceRunning = false;
   private ambNodes: AudioNode[] = [];
+  private music: BossMusicPlayer | null = null;
+  private musicPaused = false;
 
   /** Must be called from a user gesture. Safe to call repeatedly. */
   init() {
@@ -34,7 +43,6 @@ class AudioManagerImpl {
       this.master.connect(this.ctx.destination);
       this.ambGain = this.ctx.createGain(); this.ambGain.gain.value = 0; this.ambGain.connect(this.master);
       this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.9; this.sfxGain.connect(this.master);
-      this.tensionGain = this.ctx.createGain(); this.tensionGain.gain.value = 0; this.tensionGain.connect(this.master);
       this.noiseBuf = this.makeNoise(4);
       this.started = true;
     } catch { this.ctx = null; }
@@ -85,34 +93,45 @@ class AudioManagerImpl {
     src.connect(f).connect(g).connect(this.ambGain!); src.start();
     this.currentFilter = f;
     this.ambNodes.push(src, f, g);
-    // Tension: low pulsing sub tone (predator)
-    const t = ctx.createOscillator(); t.type = 'triangle'; t.frequency.value = 41;
-    const tl = ctx.createOscillator(); tl.frequency.value = 1.6; const tlg = ctx.createGain(); tlg.gain.value = 0.5;
-    const tg = ctx.createGain(); tg.gain.value = 0.5;
-    tl.connect(tlg).connect(tg.gain);
-    t.connect(tg).connect(this.tensionGain!); t.start(); tl.start();
-    this.tensionOsc = t;
-    this.ambNodes.push(t, tl, tlg, tg);
     this.ambGain!.gain.setTargetAtTime(1, ctx.currentTime, 2.5);
   }
 
   stopAmbience() {
+    this.stopBossMusic(0.8);
     if (!this.ctx || !this.ambienceRunning) return;
     this.ambGain!.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
-    this.tensionGain!.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
     const nodes = this.ambNodes; this.ambNodes = [];
     setTimeout(() => { for (const n of nodes) { try { (n as any).stop?.(); } catch { /* */ } n.disconnect(); } }, 2500);
     this.ambienceRunning = false;
   }
 
+  // ------------------------------------------------------------------ Boss music
+
+  /** USER RULING 2026-11-19: "Gym Leader Rush" plays for EVERY L3/L4 boss fight — from the accepted challenge until the
+   *  wave is down, the run is lost or the reef is left. The ambience ducks under it; SFX ride on top. */
+  startBossMusic(themeId = 'gym-rush') {
+    if (!this.ctx || !this.master) return;
+    if (!this.music) this.music = new BossMusicPlayer(this.ctx, this.master);
+    this.music.setVolume(this.musicPaused ? 0 : MUSIC_LEVEL);
+    this.music.play(bossTheme(themeId), 0.8);
+    this.ambGain?.gain.setTargetAtTime(AMBIENCE_DUCK, this.ctx.currentTime, 1.0);
+  }
+  stopBossMusic(fade = 1.5) {
+    if (!this.music?.playing) return;
+    this.music.stop(fade);
+    if (this.ctx && this.ambienceRunning) this.ambGain?.gain.setTargetAtTime(1, this.ctx.currentTime, 1.5);
+  }
+  /** The pause menu mutes the music (the score keeps its place) and the resume brings it back. */
+  setMusicPaused(p: boolean) { this.musicPaused = p; this.music?.setVolume(p ? 0 : MUSIC_LEVEL); }
+  get bossMusicPlaying() { return !!this.music?.playing; }
+
   /** Per-frame-ish (call at ~10 Hz). */
-  update(dt: number, listener: { x: number; y: number; z: number; speed: number }, whales: WhaleSource[], tension: number, nightness: number, time: number) {
+  update(dt: number, listener: { x: number; y: number; z: number; speed: number }, whales: WhaleSource[], nightness: number, time: number) {
     if (!this.ctx || !this.ambienceRunning) return;
     const ctx = this.ctx;
     this.listenerPos = listener;
     // listener orientation is not needed for our distance-based panning
     if (this.currentFilter) this.currentFilter.frequency.setTargetAtTime(260 + listener.speed * 60 - nightness * 80, ctx.currentTime, 0.3);
-    this.tensionGain!.gain.setTargetAtTime(tension * 0.22, ctx.currentTime, 0.8);
     // Occasional bubbles near the listener
     this.nextBubble -= dt;
     if (this.nextBubble <= 0) { this.bubble(0.5 + Math.random()); this.nextBubble = 2 + Math.random() * 6; }
@@ -191,6 +210,26 @@ class AudioManagerImpl {
     this.noiseBurst(1.5, 0.12, 2500, 1, 0.8);
   }
   restore() { [440, 554, 659, 880].forEach((f, i) => this.tone(f, 0.3, 0.12, 'triangle', undefined, 0, i * 0.08)); }
+  /** Berry pickup: a bright two-note chirp. */
+  berryPickup() { this.tone(880, 0.12, 0.1, 'triangle', 1320); this.tone(1320, 0.18, 0.1, 'triangle', 1760, 0, 0.09); }
+  /** The Ball Launcher: a pneumatic thump with a bright release. */
+  launcher() { this.noiseBurst(0.06, 0.22, 500, 0.8); this.tone(180, 0.14, 0.14, 'square', 90); this.tone(1200, 0.08, 0.06, 'triangle', 1800, 0, 0.03); }
+  /** The Catch Laser: an electric crack — a snap of static, a crackling sweep, and a low charge thump. */
+  laser() {
+    this.noiseBurst(0.03, 0.26, 5200, 3);                                   // the snap
+    [0, 0.025, 0.05, 0.08, 0.115].forEach((d, i) => this.noiseBurst(0.02, 0.12 - i * 0.015, 3600 - i * 400, 4, d)); // crackle
+    this.tone(2400, 0.14, 0.08, 'sawtooth', 700);                           // the arc's whine
+    this.tone(3200, 0.07, 0.05, 'square', 1400, 0, 0.02);
+    this.tone(140, 0.16, 0.12, 'sine', 60);                                 // the charge thump
+  }
+  /** A ball clanks off the treasure chest. */
+  chestHit() { this.noiseBurst(0.04, 0.18, 2600, 3); this.tone(520, 0.18, 0.1, 'triangle', 300); }
+  /** The chest's lid swings open: a creak under a rising arpeggio. */
+  chestOpen() { this.noiseBurst(0.35, 0.08, 320, 4); [392, 494, 587, 784, 988].forEach((f, i) => this.tone(f, 0.28, 0.1, 'triangle', undefined, 0, 0.12 + i * 0.07)); }
+  /** Loot taken: two bright chimes. */
+  lootPickup() { this.tone(1046, 0.16, 0.1, 'triangle', 1318); this.tone(1568, 0.26, 0.1, 'triangle', 2093, 0, 0.1); }
+  /** Eating a berry: two soft crunches over a low munch. */
+  berryEat() { this.noiseBurst(0.07, 0.14, 1400, 1.2); this.noiseBurst(0.08, 0.12, 900, 1.0, 0.11); this.tone(260, 0.22, 0.08, 'sine', 180, 0, 0.02); }
 
   /**
    * Move cast sound — per-move signatures for the redesigned moves (timed to their

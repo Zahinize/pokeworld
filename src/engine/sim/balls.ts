@@ -32,6 +32,10 @@ export interface Ball {
   /** When >= 0, the shake target is a sky bird, not an ecosystem entity. */
   skyTargetId: number;
   skySpeciesId: string;
+  /** Hit-radius multiplier (the chest's ball launcher throws at 2×). */
+  hitMul: number;
+  /** This ball already rang the treasure chest. */
+  chestHit: boolean;
 }
 
 export type BallEvent =
@@ -45,17 +49,20 @@ export type BallEvent =
   | { type: 'splash'; ball: Ball; entering: boolean }
   | { type: 'skyHit'; ball: Ball; speciesId: string }
   | { type: 'skyCaught'; ball: Ball; speciesId: string; birdId: number; p: number }
-  | { type: 'skyEscaped'; ball: Ball; speciesId: string; birdId: number; p: number };
+  | { type: 'skyEscaped'; ball: Ball; speciesId: string; birdId: number; p: number }
+  | { type: 'chestHit'; ball: Ball; ballType: BallId };
 
 const SHAKE_INTERVAL = 0.65;
 
 export class BallSystem {
   balls: Ball[] = [];
   events: BallEvent[] = [];
+  /** Razz Berry: fraction of the miss chance every catch roll keeps (1 = no berry). */
+  catchMissMul = 1;
   private nextId = 1;
 
-  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED): Ball {
-    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '' };
+  throw(type: BallId, x: number, y: number, z: number, dx: number, dy: number, dz: number, speed: number = GAME.THROW_SPEED, hitMul = 1): Ball {
+    const b: Ball = { id: this.nextId++, type, x, y, z, vx: dx * speed, vy: dy * speed, vz: dz * speed, state: 'flying', t: 0, targetId: -1, shakes: 0, shakeIndex: 0, success: false, spin: 0, restY: 0, skyTargetId: -1, skySpeciesId: '', hitMul, chestHit: false };
     this.balls.push(b);
     this.events.push({ type: 'thrown', ball: b });
     return b;
@@ -89,8 +96,9 @@ export class BallSystem {
               }
             }
           }
-          // Sky hit test — birds overhead, Ducklett riding the waves
-          if (sky && b.y > -0.5) {
+          // Sky hit test — birds overhead, Ducklett riding the waves, and a raider down in the reef (a bird under
+          // the swell is out of its element: SKY.RAID.CATCH_MULT makes it twice as easy to hold)
+          if (sky) {
             const bird = sky.hitTest(b.x, b.y, b.z);
             if (bird) { this.onSkyHit(b, bird, sky); break; }
           }
@@ -99,7 +107,7 @@ export class BallSystem {
           eco.hash.query(b.x, b.y, b.z, 6, (e, d2) => {
             if (e.state === 'captureAttempt' || e.state === 'ko' || e.state === 'caught') return;
             if (e.role === 'partner') return; // your own companions don't block throws
-            const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS;
+            const r = e.species.size * 0.48 + GAME.BALL_HIT_RADIUS * b.hitMul;
             if (d2 < r * r && d2 < hitD) { hitD = d2; hit = e; }
           });
           if (hit) { this.onHit(b, hit, eco); break; }
@@ -114,6 +122,8 @@ export class BallSystem {
               b.vx -= 1.4 * vn * nx; b.vy -= 1.4 * vn * ny; b.vz -= 1.4 * vn * nz;
               b.vx *= 0.5; b.vy *= 0.5; b.vz *= 0.5;
               b.x = o.x + nx * (o.r + 0.31); b.y = o.y + ny * (o.r + 0.31); b.z = o.z + nz * (o.r + 0.31);
+              // the treasure chest rings once per ball (ChestSystem decides whether a Master Ball counts)
+              if (o.kind === 'chest' && !b.chestHit) { b.chestHit = true; this.events.push({ type: 'chestHit', ball: b, ballType: b.type }); }
             }
           }
           // Floor
@@ -172,7 +182,7 @@ export class BallSystem {
     this.events.push({ type: 'hit', ball: b, entity: e });
     if (GAME.BALL_IMPACT_DAMAGE > 0) eco.damage(e, GAME.BALL_IMPACT_DAMAGE, 'ball', -2);
     else e.hpBarT = GAME.HEALTH_BAR_TTL;
-    const roll = rollCatch(e, b.type, Math.random, eco.ferryActive);
+    const roll = rollCatch(e, b.type, Math.random, eco.ferryActive, this.catchMissMul);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = e.id; b.vx = b.vy = b.vz = 0;
@@ -183,7 +193,7 @@ export class BallSystem {
     this.events.push({ type: 'skyHit', ball: b, speciesId: bird.speciesId });
     // a bird that dived into the reef is out of its element — twice as easy to hold (shinies still resist)
     const inReef = bird.y < GAME.SURFACE_Y;
-    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type, undefined, (bird.shiny ? SKY.SHINY.CATCH_MULT : 1) * (inReef ? SKY.RAID.CATCH_MULT : 1));
+    const roll = rollCatchFor(getSpecies(bird.speciesId), b.type, undefined, (bird.shiny ? SKY.SHINY.CATCH_MULT : 1) * (inReef ? SKY.RAID.CATCH_MULT : 1), this.catchMissMul);
     (b as any)._p = roll.p;
     b.success = roll.success; b.shakes = roll.shakes; b.shakeIndex = 0;
     b.state = 'shaking'; b.t = 0; b.targetId = -1; b.skyTargetId = bird.id; b.skySpeciesId = bird.speciesId;
