@@ -66,7 +66,7 @@ export interface HudState {
   slingHot: boolean;
   /** The touch attack circle would fire right now: the crosshair is on a wild, or the team's quarry is in reach. */
   attackHot: boolean;
-  /** Catching allowed right now: always true in solo levels; in companion levels only at the surface. */
+  /** Catching allowed right now: true on solo levels (L1/L2); never on companion levels, where the team fights everywhere. */
   catchMode: boolean;
   /** First-run tutorial banner: current step + copy; null once done/skipped. */
   tutorial: { step: string; text: string; i: number; n: number } | null;

@@ -15,7 +15,7 @@ import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { SKY, skyPartnerScale } from '@/data/sky';
-import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, BOSS_ATTACK_RATE_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, BOSS_ATTACK_RATE_MULT, BOSS_ATK_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
 import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -84,6 +84,7 @@ export class Ecosystem {
     this.hpOf = hpOf;
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
+    this.elitePredators = gen.elitePredators;
     if (gen.chest) this.chest = { x: gen.chest.x, y: gen.chest.y, z: gen.chest.z, guardIds: [] };
     this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
     const rngFn = () => this.rng.next();
@@ -174,7 +175,7 @@ export class Ecosystem {
     const e: Entity = {
       id: this.nextId++, species: s, behavior, role: sp.role, groupId: sp.groupIndex, objectiveId: sp.objectiveId, ambient: sp.ambient,
       x: sp.pos.x, y: sp.pos.y, z: sp.pos.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, phase: this.rng.next() * Math.PI * 2, scaleMul: 1,
+      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, spdMul: 1, phase: this.rng.next() * Math.PI * 2, scaleMul: 1,
       state: defaultState(), stateT: 0, nextThink: this.rng.next() * 0.3, lod: 0,
       hp: maxHp, maxHp, hpBarT: 0, flashT: 0, animT: 0,
       home: { ...sp.pos }, target: { x: 0, y: sp.pos.y, z: 0 }, wander: { x: this.rng.next() - 0.5, y: 0, z: this.rng.next() - 0.5 },
@@ -201,6 +202,14 @@ export class Ecosystem {
       e.isShiny = true;
       e.maxHp = Math.round(e.maxHp * m); e.hp = e.maxHp;
       e.cs = { ...e.cs, atk: e.cs.atk * m, spAtk: e.cs.spAtk * m };
+    }
+    if (this.elitePredators && behavior === 'predator' && sp.role !== 'partner' && !sp.boss) {
+      // companion levels: every wild predator is an elite — twice the HP and Attack, twice the speed (on top of a
+      // shiny lead's own doubling) — it runs the team down and must be fought
+      const E = COMBAT.ELITE_PREDATORS;
+      e.maxHp = Math.round(e.maxHp * E.HP); e.hp = e.maxHp;
+      e.cs = { ...e.cs, atk: e.cs.atk * E.ATK, spAtk: e.cs.spAtk * E.ATK };
+      e.spdMul = E.SPEED;
     }
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
@@ -548,9 +557,7 @@ export class Ecosystem {
           e.hotAcc = 0;
         }
       }
-      // no healing in open air: a surfaced companion's suffocation drain must bite at full rate
-      const surfacedPartner = e.role === 'partner' && !e.species.skyOnly && e.y > -Math.max(0.8, e.species.size * 0.5);
-      if (e.hp < e.maxHp && e.state !== 'ko' && !surfacedPartner) e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
+      if (e.hp < e.maxHp && e.state !== 'ko') e.hp = Math.min(e.maxHp, e.hp + e.maxHp * GAME.HP_REGEN_PER_SEC * dt);
 
       if (e.state === 'faint') {
         e.faintT -= dt;
@@ -943,7 +950,7 @@ export class Ecosystem {
     const k = Math.min(1, agility * 3.2 * dt);
     // Nanab Berry: the wild reef swims at a fraction of its pace — the steering target AND the cap scale,
     // so a cruiser under its cap slows too (companions and the ferry Lapras keep their stride)
-    const wm = e.role !== 'partner' && this.ctx.ferry !== e ? this.wildSpeedMul : 1;
+    const wm = (e.role !== 'partner' && this.ctx.ferry !== e ? this.wildSpeedMul : 1) * e.spdMul; // …and an elite predator's own pace
     if (!leaping) { e.vx += (e.dx * wm - e.vx) * k; e.vy += (e.dy * wm - e.vy) * k; e.vz += (e.dz * wm - e.vz) * k; }
     else e.vy -= GAME.MANTINE_LEAP.GRAVITY * dt;   // ballistic: gravity only, forward speed carried
     const sp = len3(e.vx, e.vy, e.vz);
@@ -1001,6 +1008,7 @@ export class Ecosystem {
     const fer = this.ctx.ferry;
     const top = e.species.skyOnly ? Infinity   // a flyer is as happy over the swell as under it
       : leaping ? GAME.SURFACE_Y + GAME.MANTINE_LEAP.HEIGHT[1] + e.species.size   // airborne: the arc owns the height
+      : e.role === 'partner' ? GAME.SURFACE_Y + e.species.size * 0.35   // a companion rides the swell beside a surfaced trainer and fights from there
       : !ferrying ? -Math.max(0.8, e.species.size * 0.45)
       : e.aboardT > 0 && fer ? fer.y + fer.species.size * 0.5 + e.species.size   // a rider may sit right up on the shell
       : GAME.SURFACE_Y + e.species.size;
@@ -1154,19 +1162,22 @@ export class Ecosystem {
   wildSpeedMul = 1;
   /** Bosses fight only when awakened (the session flips this after the challenge dialog). */
   bossesActive = true;
+  /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (see spawn). */
+  elitePredators = false;
 
   /** Spawn a boss at a site with its stat multipliers applied. Shiny bosses carry 2× HP & Attack. */
   spawnBoss(speciesId: string, x: number, z: number, shiny = false): Entity {
     const s = getSpecies(speciesId);
     const fy = floorY(x, z);
     const y = Math.max(fy + s.size * 0.7 + 1.5, -(s.depth[0] + s.depth[1]) / 2);
-    const e = this.spawn({ speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z } });
+    const e = this.spawn({ speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z }, boss: true });
     const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
     e.isBoss = true;
     e.isShiny = shiny;
     const shinyMult = shiny ? BOSS_SHINY_MULT : 1;
+    const atkMult = t.atk * shinyMult * BOSS_ATK_MULT; // rage: half again on top of the tuning
     e.maxHp = Math.round(e.maxHp * t.hp * shinyMult); e.hp = e.maxHp;
-    e.cs = { ...e.cs, atk: e.cs.atk * t.atk * shinyMult, spAtk: e.cs.spAtk * t.atk * shinyMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
+    e.cs = { ...e.cs, atk: e.cs.atk * atkMult, spAtk: e.cs.spAtk * atkMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
     e.home = { x, y, z };
     e.state = 'wander'; e.stateT = 0;
     e.t2 = (3 + this.rng.next() * 2) / BOSS_ATTACK_RATE_MULT; // bosses open aggressively — first charge comes fast
@@ -1385,7 +1396,7 @@ export class Ecosystem {
         const pr = e.species.size * 0.55 + 1.1;
         if (len3(p.x - e.x, p.y - e.y, p.z - e.z) < pr && this.time > e.t1) {
           const [lo, hi] = COMBAT.CHARGE_PLAYER_DAMAGE;
-          const dmg = Math.round((lo + this.rng.next() * (hi - lo)) * respect);
+          const dmg = Math.round((lo + this.rng.next() * (hi - lo)) * respect * BOSS_ATK_MULT);
           this.events.push({ type: 'playerHit', casterId: e.id, moveId: 'charge', damage: dmg });
           this.onPlayerDamage(dmg, e.id, 'charge');
           e.t1 = this.time + 1; // one player hit per charge
@@ -1393,7 +1404,7 @@ export class Ecosystem {
         for (const pt of this.alive) {
           if (pt.role !== 'partner' || pt.state === 'ko') continue;
           if (len3(pt.x - e.x, pt.y - e.y, pt.z - e.z) < pr && pt.flashT <= 0) {
-            this.damageAbs(pt, Math.round(pt.maxHp * 0.4 * COMBAT.CHARGE_COMPANION_MULT * respect), e.id);
+            this.damageAbs(pt, Math.round(pt.maxHp * 0.4 * COMBAT.CHARGE_COMPANION_MULT * respect * BOSS_ATK_MULT), e.id);
           }
         }
       } else if (e.stateT < COMBAT.CHARGE_TELEGRAPH + 1.3 + COMBAT.CHARGE_RECOVERY) {

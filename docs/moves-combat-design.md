@@ -305,13 +305,13 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
 - **Companions** — sky Pokémon can be picked for the party on Levels 3 and 4 (companion levels). A
   flyer **dives the reef with its trainer**: under the water it holds the same formation as a water
   companion (3.2 m ahead, flanking the crosshair), chases ordered targets at their depth and duels like
-  anyone else; the sand is its floor and nothing is its ceiling. It breathes air (no surface drain) and
-  stays visible when the trainer surfaces: it climbs to hover 5 m ahead over the swell, auto-engages sky
-  birds (`COMPANION_AIR_REACH_BONUS`) and still takes orders against raiders and reef Pokémon — so with a
-  flyer in the active pair **the surface stays the team's fight** (`catchingAllowed` is false, the ball
-  chip stays away, clicks are orders, raiders may pick the flyer as a victim). Bench the flyer, or lose
-  it, and the surface Poké Ball mechanic returns exactly as before. The water partner of the pair still
-  stands down and waits submerged while the trainer is up.
+  anyone else; the sand is its floor and nothing is its ceiling. When the trainer surfaces it climbs to
+  hover 5 m ahead over the swell. **Water companions breathe up there too** (2026-11-18: the open-air HP
+  drain is gone): they ride the swell beside a surfaced trainer (their ceiling is `SURFACE_Y + 0.35·size`),
+  auto-engage sky birds (`COMPANION_AIR_REACH_BONUS`) and take orders against raiders and reef Pokémon
+  exactly as under water. **There is no Poké Ball mechanic on L3/L4 at all**: `catchingAllowed` is false
+  for the whole dive, the ball chip never shows, clicks and taps are orders, and a knock-out is a catch —
+  reef rules — for sky legendaries as much as for the reef. Raiders may pick a companion as a victim.
 
 Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble · Cramorant Air Slash/Water Gun ·
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
@@ -399,7 +399,10 @@ packs and the Carvanha shoal pile on. It escalates from `ESCALATE_FLOOR` 0.5 the
 over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and the sighting range by
 `ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
 escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
-(Level 1 ×1.0 … Level 4 ×1.3). **The team is the prey** (companion levels): a companion is weighed, chased
+(Level 1 ×1.0 … Level 4 ×1.3). **Elite predators** (companion levels, 2026-11-18): every wild predator on
+L3/L4 spawns at `COMBAT.ELITE_PREDATORS` — 2× HP, 2× Attack and 2× swim speed (`Entity.spdMul`, applied to the
+steering target and the cruise cap in `integrate`, stacking on a shiny lead's own doubling); bosses are tuned
+separately and never get it. They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
 and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
 grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
 member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a
@@ -757,9 +760,16 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
 half again as fast — brawl hold speed (species speed × 1.5 × 1.5), the commander's saddle ride, and the
 charge lunge (`chargeSpeed` × 1.9 × 1.5). The charge telegraph and recovery windows are unchanged, so the
 warning stays fair; a dormant boss in its lair keeps its slow hover. **Attack rate** (`BOSS_ATTACK_RATE_MULT`
-1.5): bosses also attack half again as often — their move cooldowns tick at 1.5× in `Ecosystem.update`, and
-every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps and Basculegion's
-soul recharge) is divided by it. Telegraph and recovery stay as they were. The commander now rides Dondozo's
+2.25 — 1.5 swagger × 1.5 rage, 2026-11-18): bosses attack at 2.25× — their move cooldowns tick at that rate in
+`Ecosystem.update`, and every charge gap (the 3–5 s opener, `chargeEvery`, the commander's ordered / dumb gaps
+and Basculegion's soul recharge) is divided by it. Telegraph and recovery stay as they were. **Rage**
+(`BOSS_ATK_MULT` 1.5): a wild boss's Attack and Sp. Atk are multiplied again on top of `BOSS_TUNING` (2 × 1.5 =
+3×; a shiny boss 4.5×), and its charge damage too (trainer 45–60 before the level cap, companions 90 % of max
+Hp). Companion boss trophies never get it. Honest note: every boss move already sat on the 55 % per-hit damage
+clamp (`MAX_DAMAGE_FRAC`) before the rage — Dondozo's Wave Crash computes to 236 on the trainer and 173 on a
+Kingdra by the formula, clamped to the 36/40 level cap and 67 respectively — so the extra Attack changes no
+per-hit number today; the 2.25× cadence (a damage move every ~1.3 s with both cycling, charges every 5–14 s) is
+what makes the fights harder. Raising the clamp for bosses is the lever if they are still too soft. The commander now rides Dondozo's
 charge: while Dondozo is in `charging` (and Tatsugiri is neither baiting nor sheltered) it is carried on its
 back every frame in `integrate`, so a faster charge cadence can no longer pull the duo apart. **Shadow in the lair**: until the
 trainer reaches the bosses (the 30 m greeting trigger), each one renders as a black silhouette — sprite

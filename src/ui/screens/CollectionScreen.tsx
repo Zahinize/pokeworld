@@ -13,7 +13,7 @@ import { BOSS_TUNING, BOSS_SHINY_MULT } from '@/data/combatConfig';
 const STAT_MAX = 200; // top of the normalized stat curve (see pokeapi/hp.ts)
 
 /** Grid order: the Pokédex, strongest-first by a stat, or the shiny trophies alone. */
-type DexSort = 'dex' | 'hp' | 'atk' | 'speed' | 'shiny';
+type DexSort = 'dex' | 'hp' | 'atk' | 'speed' | 'shiny' | 'sky';
 const SORT_SUFFIX: Record<'hp' | 'atk' | 'speed', string> = { hp: 'HP', atk: 'Atk', speed: 'Spd' };
 
 /** A token's battle stat as the party screen shows it: boss trophies at their tuned values, shinies at double strength. */
@@ -73,11 +73,12 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
   const tokens = useMemo(() => {
     const out: string[] = [];
     for (const sp of list) {
-      if (sortBy !== 'shiny') out.push(sp.id);
+      if (sortBy === 'sky' && !(sp.skyOnly && (collection[sp.id]?.caught ?? 0) > 0)) { if (!sp.skyOnly) continue; } // Sky: the flyers you have caught (their shiny trophies ride along)
+      else if (sortBy !== 'shiny') out.push(sp.id);
       const shinyKey = makeToken(sp.id, true);
       if ((collection[shinyKey]?.caught ?? 0) > 0) out.push(shinyKey);
     }
-    if (sortBy === 'dex' || sortBy === 'shiny') return out;
+    if (sortBy === 'dex' || sortBy === 'shiny' || sortBy === 'sky') return out;
     const have = (t: string) => (collection[t]?.caught ?? 0) > 0;
     const dex = (t: string) => SPECIES[baseSpeciesId(t)].dexId;
     return out.sort((a, b) => Number(have(b)) - Number(have(a)) || (have(a) && have(b) ? dexStat(b, sortBy) - dexStat(a, sortBy) : 0) || dex(a) - dex(b));
@@ -175,6 +176,7 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
             <option value="atk">Max Attack</option>
             <option value="speed">Max Speed</option>
             <option value="shiny">Shiny</option>
+            <option value="sky">Sky</option>
           </select>
           <button className="btn ghost" onClick={() => { Audio.uiClick(); onClose(); }}>{embedded ? '✕ Close' : '← Back'}</button>
         </div>
@@ -182,13 +184,16 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
       {sortBy === 'shiny' && tokens.length === 0 && (
         <p className="muted" style={{ marginBottom: 12 }}>No shiny Pokémon caught yet. Shiny pack leads, flock leaders and the treasure chest's guardians glint gold on the reef.</p>
       )}
+      {sortBy === 'sky' && tokens.length === 0 && (
+        <p className="muted" style={{ marginBottom: 12 }}>No sky Pokémon caught yet. Flocks circle above the waves on every level — surface and throw, or let your team knock a raider out.</p>
+      )}
       <div className="collection-grid">
         {tokens.flatMap((t) => {
           const shiny = isShinyToken(t);
           const sp = SPECIES[baseSpeciesId(t)];
           const e = collection[t];
           const seen = shiny || !!e?.seen, caught = e?.caught ?? 0;
-          const stat = caught > 0 && sortBy !== 'dex' && sortBy !== 'shiny' ? ` · ${dexStat(t, sortBy)} ${SORT_SUFFIX[sortBy]}` : '';
+          const stat = caught > 0 && sortBy !== 'dex' && sortBy !== 'shiny' && sortBy !== 'sky' ? ` · ${dexStat(t, sortBy)} ${SORT_SUFFIX[sortBy]}` : '';
           const cards = [(
             <button key={t} className={`card clickable dex-card ${sel === t ? 'selected' : ''}`} onClick={() => { Audio.uiClick(); setSel(t); }}>
               <SpriteImg id={sp.id} shiny={shiny} size={64} unseen={!seen} className={shiny ? 'shiny-glow' : ''} />

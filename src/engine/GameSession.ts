@@ -72,7 +72,6 @@ export class GameSession {
   camFov = 70;
   camAspect = 0.46;
   private surfaceAtkReady = new Map<number, number>();
-  private surfaceDrainAcc = new Map<number, number>();
   private rampageSurge = false;
   private flockDefendToastAt = 0;
   private orderToastAt = 0;
@@ -247,7 +246,7 @@ export class GameSession {
     if (resume && resume.seed === this.seed) this.applyResume(resume);
     this.balls = new BallSystem();
     this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
-    this.surfaceAtkReady.clear(); this.surfaceDrainAcc.clear();
+    this.surfaceAtkReady.clear();
     const ps = this.gen.playerStart;
     this.player.reset(ps.x, ps.y, ps.z, this.initialYaw(ps.x, ps.z));
     // berries roll on their own random seed: the level seed is resumable, so timings off it would be guessable
@@ -1149,73 +1148,37 @@ export class GameSession {
   get companionsEnabled() { return !!this.level.companions; }
 
   // ---------------------------------------------------------------- companion-level combat mode
-  /** Companion levels battle through partners underwater; balls come out only at the surface — and only when no
-   *  sky companion is out: a flyer in the active pair keeps fighting up there (raiders and reef Pokémon alike), so
-   *  the surface stays the team's fight until it is benched or down. */
-  get catchingAllowed() { return !this.companionsEnabled || (!!this.eco?.playerAtSurface && !this.skyPartnerOut); }
-  /** An alive sky Pokémon in the active pair (it flies with a surfaced trainer instead of standing down). */
-  get skyPartnerOut(): boolean {
-    if (!this.eco) return false;
-    for (const id of this.activePartners) { const e = id >= 0 ? this.eco.byId.get(id) : undefined; if (e && e.species.skyOnly && e.state !== 'ko' && e.state !== 'removed') return true; }
-    return false;
-  }
+  /** Companion levels (L3/L4) battle through the team everywhere — under the reef and on the swell alike. Poké Balls
+   *  never come out: a knocked-out wild is a catch, reef rules. Solo levels catch with balls as always. */
+  get catchingAllowed() { return !this.companionsEnabled; }
   /** The wild the player ordered the team onto: the fight persists until one side drops. */
   focusTargetId = -1;
-  /** 0 = partners fully visible, 1 = hidden (surfaced trainer); render fades with this. */
-  partnerHideK = 0;
   private focusAcc = 0;
-  private wasSurfaced = false;
 
-  /** Surface hand-off: partners stand down and fade; diving brings them straight back. */
+  /** Commanded focus: once the player clicks a target, the team keeps the fight going — re-ordering whenever a
+   *  partner idles — until the target (or the team) drops. */
   private updateCombatMode(dt: number) {
-    if (!this.companionsEnabled || !this.eco) return;
+    if (!this.companionsEnabled || !this.eco || this.focusTargetId < 0) return;
     const eco = this.eco;
-    const surfaced = eco.playerAtSurface;
-    const skyOut = surfaced && this.skyPartnerOut;
-    if (surfaced !== this.wasSurfaced) {
-      this.wasSurfaced = surfaced;
-      if (surfaced) {
-        // stand the WATER partners down: clear duels and orders on BOTH sides so no invisible fights linger —
-        // a flyer stays out over the swell and keeps its fight
-        for (const id of this.activePartners) {
-          const p = id >= 0 ? eco.byId.get(id) : undefined;
-          if (!p || p.species.skyOnly) continue;
-          if (p.duelWith !== -1) {
-            const foe = eco.byId.get(p.duelWith) ?? eco.externalCaster(p.duelWith); // a reef wild, or a raiding bird's stand-in
-            if (foe && foe.duelWith === p.id) { foe.duelWith = -1; if (foe.state === 'duel') { foe.state = 'wander'; foe.stateT = 0; } }
-          }
-          p.duelWith = -1; p.orderTarget = -1; p.orderMove = -1;
-          if (p.state === 'duel') { p.state = 'wander'; p.stateT = 0; }
-        }
-        if (!skyOut) this.focusTargetId = -1; // surfacing is disengaging (unless a flyer carries the fight on)
-      }
-    }
-    const target = surfaced ? 1 : 0;
-    this.partnerHideK += (target - this.partnerHideK) * Math.min(1, dt * 5);
-    // commanded focus: once the player clicks a target, the team keeps the fight going —
-    // re-ordering whenever a partner idles — until the target (or the team) drops
-    if ((!surfaced || skyOut) && this.focusTargetId >= 0) {
-      this.focusAcc += dt;
-      if (this.focusAcc >= 0.6) {
-        this.focusAcc = 0;
-        const t = eco.byId.get(this.focusTargetId);
-        if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') { this.focusTargetId = -1; return; }
-        for (const id of this.activePartners) {
-          const partner = id >= 0 ? eco.byId.get(id) : undefined;
-          if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
-          if (surfaced && !partner.species.skyOnly) continue; // the water partner waits below while the trainer is up
-          if (partner.duelWith !== -1 || partner.orderTarget >= 0) continue; // mid-fight already
-          const kit = kitOf(partner);
-          const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
-          if (slot !== undefined) this.orderCast(partner, slot, t);
-        }
-      }
+    this.focusAcc += dt;
+    if (this.focusAcc < 0.6) return;
+    this.focusAcc = 0;
+    const t = eco.byId.get(this.focusTargetId);
+    if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') { this.focusTargetId = -1; return; }
+    for (const id of this.activePartners) {
+      const partner = id >= 0 ? eco.byId.get(id) : undefined;
+      if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
+      if (partner.duelWith !== -1 || partner.orderTarget >= 0) continue; // mid-fight already
+      const kit = kitOf(partner);
+      const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
+      if (slot !== undefined) this.orderCast(partner, slot, t);
     }
   }
 
   /** Set the party (≤6 species) and send out the first two. Call after prepare(), before/at start. */
   setParty(tokens: string[]) {
     tokens = tokens.filter((t) => this.arena || this.level.companions || !getSpecies(baseSpeciesId(t)).skyOnly); // sky Pokémon fight from the air on companion levels (and in the dojo)
+    if (!this.arena) { let shinies = 0; tokens = tokens.filter((t) => !isShinyToken(t) || ++shinies <= COMBAT.PARTY_SHINY_MAX); } // at most three shinies (the brief enforces it too)
     if (!this.eco) return;
     this.party = tokens.slice(0, COMBAT.PARTY_SIZE);
     // Load the party's sheets in the background; the renderer picks them up when ready
@@ -1467,7 +1430,7 @@ export class GameSession {
     // legendary storm: heavy currents while a rampage lasts (cleared when calm returns)
     if (this.sky?.rampaging) { eco.bossCurrent = Math.max(eco.bossCurrent, SKY.RAMPAGE_STORM); this.rampageSurge = true; }
     else if (this.rampageSurge) { this.rampageSurge = false; if (!this.bossPhaseActive) eco.bossCurrent = 0; }
-    this.updateSurfaceCombat(dt);
+    this.updateSurfaceCombat();
     this.updateCombatMode(dt);
     this.balls.catchMissMul = this.berries.catchMissMul; // Razz Berry
     this.balls.update(dt, eco, this.sky);
@@ -2071,32 +2034,20 @@ export class GameSession {
   }
 
   /**
-   * Companions at the waterline fight the sky (L3/L4): they auto-engage flyers and legendaries
-   * with their own moves — a KO is a catch, reef rules — but the open air drains their HP
-   * (SKY.COMPANION_SURFACE_HP_DRAIN per second), so every second up top is spent deliberately.
+   * Companions at the waterline fight the sky (L3/L4): they auto-engage flyers and legendaries with their own
+   * moves — a KO is a catch, reef rules. Water and sky companions alike breathe fine up here; the swell is just
+   * more of the battlefield.
    */
-  private updateSurfaceCombat(dt: number) {
+  private updateSurfaceCombat() {
     const eco = this.eco, sky = this.sky;
     if (!eco || !sky || !this.companionsEnabled) return;
-    // surfaced trainer = the team is hidden and off-stage: no suffocation drain, no
-    // sky skirmishes — the PLAYER catches sky Pokémon with balls now
-    if (this.catchingAllowed) { this.surfaceDrainAcc.clear(); return; }
-    // a flyer carrying the surface fight for a surfaced trainer: the water partner waits below, off-stage and
-    // hidden — it neither drains nor fights up here
-    const trainerUp = eco.playerAtSurface;
     for (const slot of [0, 1] as const) {
       const id = this.activePartners[slot];
       if (id < 0) continue;
       const e = eco.byId.get(id);
       if (!e || e.state === 'ko' || e.state === 'removed') continue;
       const atSurface = e.y > -Math.max(0.8, e.species.size * 0.5);
-      if (!atSurface || (trainerUp && !e.species.skyOnly)) { this.surfaceDrainAcc.set(id, 0); continue; }
-      if (!e.species.skyOnly) { // a flyer breathes air; a water Pokémon suffocates up here
-        // suffocation drain, applied in whole-HP chunks
-        let acc = (this.surfaceDrainAcc.get(id) ?? 0) + SKY.COMPANION_SURFACE_HP_DRAIN * dt;
-        if (acc >= 1) { const chunk = Math.floor(acc); acc -= chunk; eco.damageAbs(e, chunk, -1); }
-        this.surfaceDrainAcc.set(id, acc);
-      }
+      if (!atSurface) continue;
       if ((e.state as string) === 'ko') continue;
       // auto-engage: nearest sky Pokémon within the strongest damage move's reach
       if (eco.time < (this.surfaceAtkReady.get(id) ?? 0)) continue;
@@ -2421,9 +2372,7 @@ export class GameSession {
     let hint: string | null = null;
     // companion levels underwater: throwing is off, the TEAM fights — hint accordingly
     if (!this.catchingAllowed) {
-      const teamHint = this.eco?.playerAtSurface
-        ? `${isTouch ? 'Tap' : 'Click'} a raider or a reef Pokémon — your flyer fights it from the air · bench it to catch with Poké Balls`
-        : `${isTouch ? 'Tap' : 'Click'} a wild Pokémon — your team fights it until it drops · surface to catch with Poké Balls`;
+      const teamHint = `${isTouch ? 'Tap' : 'Click'} a wild Pokémon or a sky raider — your team fights it until it drops, and a knock-out is a catch`;
       if (this.elapsed > 2 && this.hintStep === 0 && teamHint !== store.hud.hint) store.setHud({ hint: teamHint });
       return;
     }

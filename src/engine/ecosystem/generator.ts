@@ -26,6 +26,8 @@ export interface SpawnSpec {
   shiny?: boolean;
   /** One of the treasure chest's two shiny guardians (src/data/chest.ts). */
   chestGuard?: boolean;
+  /** A level boss (spawned by Ecosystem.spawnBoss): tuned by BOSS_TUNING, never by the elite-predator boost. */
+  boss?: boolean;
 }
 
 export interface GroupSpec {
@@ -67,6 +69,8 @@ export interface GeneratedEcosystem {
   obstacles: Obstacle[];
   objectives: MissionObjective[];
   hasLegendary: boolean;
+  /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (HP, Attack, speed). */
+  elitePredators: boolean;
   playerStart: Vec3;
   /** The treasure chest (L1/L2): where it rests, its two guardian spawns and the groups anchored around it. */
   chest?: { x: number; y: number; z: number; guardSpawnIdx: number[]; schoolGroupIdx: number[] };
@@ -496,7 +500,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
 
   clearPlayerStart(rng, spawns, groups, playerStart);
 
-  return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, playerStart, chest, summary };
+  return { seed, levelId: level.id, groups, spawns, obstacles, objectives, hasLegendary, elitePredators: !!level.companions, playerStart, chest, summary };
 }
 
 /**

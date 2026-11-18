@@ -111,6 +111,11 @@ export const COMBAT = {
   /** Companion party. */
   PARTY_SIZE: 6,
   ACTIVE_COMPANIONS: 2,
+  /** At most this many SHINY Pokémon in a party, a shiny Boss Pokémon included — six shinies steamrolled L3/L4. */
+  PARTY_SHINY_MAX: 3,
+  /** Companion levels (L3/L4): every wild predator spawns at these multiples of HP, Attack and swim speed, so it
+   *  can run the trainer and the team down — they must fight it, not outswim it. Bosses have their own tuning. */
+  ELITE_PREDATORS: { HP: 2, ATK: 2, SPEED: 2 },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,
@@ -142,7 +147,10 @@ export const BOSS_FIGHT_SPEED_MULT = 1.5;
 /** Swagger, part two: bosses ATTACK this much faster too — move cooldowns tick at this rate and every charge
  *  gap (the opening one, the ordered, dumb and soul-bought ones alike) is divided by it. The charge telegraph
  *  and the recovery stagger are untouched: the warning stays fair and the punish window stays open. */
-export const BOSS_ATTACK_RATE_MULT = 1.5;
+export const BOSS_ATTACK_RATE_MULT = 2.25;   // 1.5 swagger × 1.5 rage (2026-11-18: bosses attack half again as fast once more)
+/** Rage: every wild boss hits this much harder on top of BOSS_TUNING — its moves and its charge alike. Companion
+ *  boss trophies (a caught Dondozo fighting for you) are untouched. */
+export const BOSS_ATK_MULT = 1.5;
 
 /** Milotic calms anger (Pokédex): a predator within this many metres of one will not start a hunt on reef
  *  prey, and one already chasing a fish breaks off. The trainer's posse is unaffected — the hunt for

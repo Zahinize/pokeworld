@@ -34,6 +34,8 @@ export interface Entity {
   maxSpeed: number;
   /** Per-entity multipliers for natural variation. */
   speedMul: number;
+  /** Hard speed multiplier on steering and the cruise cap (elite predators on L3/L4 swim at 2×). */
+  spdMul: number;
   phase: number;
   scaleMul: number;
 

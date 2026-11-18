@@ -121,6 +121,8 @@ console.log('Treasure chest');
   if (CHEST.AGGRO_R !== CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH) { bad++; fail(`AGGRO_R ${CHEST.AGGRO_R} must equal GUARD_RADIUS + GUARDIAN_LEASH (${CHEST.GUARD_RADIUS + GAME.GUARDIAN_LEASH}) or the guardians ping-pong at the edge`); }
   if (CHEST.MIN_FROM_START < GAME.PLAYER_START_CLEAR + CHEST.GUARD_RADIUS + 1) { bad++; fail('the chest can sit inside the start clearing'); }
   if (COMBAT.PLAYER_LIVES_MAX < COMBAT.PLAYER_LIVES + CHEST.HEART_LIVES) { bad++; fail('a blue heart could never be used at full starting lives'); }
+  if (!(COMBAT.PARTY_SHINY_MAX >= 1 && COMBAT.PARTY_SHINY_MAX < COMBAT.PARTY_SIZE)) { bad++; fail('the shiny cap must leave room for a plain Pokémon'); }
+  if (!(COMBAT.ELITE_PREDATORS.HP >= 1 && COMBAT.ELITE_PREDATORS.ATK >= 1 && COMBAT.ELITE_PREDATORS.SPEED >= 1)) { bad++; fail('elite predators must not be weaker than plain ones'); }
   if (!(CHEST.LOOT_PER_CHEST >= 1 && CHEST.LOOT_PER_CHEST <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
   if (!(CHEST.TIMER_CUT > 0 && CHEST.TIMER_MIN > 0 && CHEST.TIMER_CUT < 60) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
   if (CHEST.GUARDIANS.length !== 2 || !CHEST.GUARDIANS.every((g) => SPECIES[g]?.stage === 2)) { bad++; fail('the chest needs two fully evolved guardians'); }

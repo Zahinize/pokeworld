@@ -47,7 +47,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
   const shim = {
     id: SHIM_BASE - b.id, species: { ...sp, size: b.vis }, behavior: sp.primary, role: 'solo', groupId: -1, ambient: true,
     x: b.x, y: b.y + b.vis * 0.45, z: b.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-    maxSpeed: sp.speed, speedMul: 1, phase: b.phase, scaleMul: 1,
+    maxSpeed: sp.speed, speedMul: 1, spdMul: 1, phase: b.phase, scaleMul: 1,
     state: 'wander', stateT: 0, nextThink: 0, lod: 0,
     hp: b.hp, maxHp: b.maxHp, hpBarT: 0, flashT: 0, animT: 0,
     home: { ...zero }, target: { ...zero }, wander: { ...zero }, targetId: -1, huntCooldown: 0, curiosityCooldown: 0,

@@ -229,7 +229,7 @@ function PartyBar() {
   const isTouch = useStore((s) => s.isTouch);
   const catchMode = useStore((s) => s.hud.catchMode);
   if (!session.companionsEnabled || party.list.length === 0) return null;
-  if (catchMode) return null; // surfaced: the team stands down and the Poké Balls come out
+  if (catchMode) return null; // solo levels: Poké Balls, no team
   const reserves = party.list.filter((t) => !party.active.some((a) => a?.token === t));
   return (
     <div className="party-bar interactive">

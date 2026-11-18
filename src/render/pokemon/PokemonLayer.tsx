@@ -249,7 +249,6 @@ export function PokemonShadows() {
         if (h > 15) continue;                       // too high up: no shadow reaches the sand
         const closeness = Math.max(0, 1 - h / 15);
         let alpha = 0.5 * Math.pow(closeness, 1.5); // DARKER the nearer the bottom
-        if (e.role === 'partner' && !e.species.skyOnly) alpha *= 1 - session.partnerHideK;
         if (e.state === 'ko') alpha *= Math.max(0, 1 - e.animT / 1.4);
         if (alpha < 0.02) continue;
         // constant footprint, lifted off the sand: a big height-scaled quad gets sliced
@@ -389,8 +388,6 @@ export function PokemonLayer() {
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
-      // companion levels: partners fade out while the trainer is at the surface (catch mode)
-      if (e.role === 'partner' && !e.species.skyOnly && session.partnerHideK > 0.01) alpha *= 1 - session.partnerHideK; // a flyer stays in view over a surfaced trainer
       // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
       if (e.concealT > 0) {
         const into = Math.max(e.concealDur, 0.001) - e.concealT;

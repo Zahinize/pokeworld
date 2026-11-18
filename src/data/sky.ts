@@ -117,8 +117,6 @@ export const SKY = {
     MIN_SPEED: 9,
   },
 
-  /** Water Pokemon suffocate slowly in open air: HP lost per second while a companion is surfaced. */
-  COMPANION_SURFACE_HP_DRAIN: 2,
   /** Extra reach on companion moves fired into the open air (nothing to attenuate them up there). */
   COMPANION_AIR_REACH_BONUS: 14,
 

@@ -219,6 +219,9 @@ a { color: var(--aqua); }
 .party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
 .boss-cell .stat { color: var(--gold); }
 .shiny-cell { border-color: rgba(255,209,102,.5); }
+/* the shiny cap note under the party header: blue while picks remain, red at the cap */
+.shiny-note { margin: 8px 0 0; padding: 6px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; line-height: 1.3; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.4); color: var(--aqua); }
+.shiny-note.limit { background: rgba(255,90,110,.12); border-color: rgba(255,90,110,.5); color: var(--red); }
 .shiny-cell .stat { color: var(--gold); }
 .reef-status { color: var(--dim); }
 .reef-status.ready { color: var(--green); font-weight: 800; }

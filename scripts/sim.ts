@@ -16,6 +16,7 @@ import { computeDamage } from '@/engine/sim/combat';
 import { offenseOf } from '@/engine/sim/moveSystem';
 import { getMove } from '@/data/moves';
 import { SKY } from '@/data/sky';
+import { combatStatsOf as combatStatsOfSim } from '@/pokeapi/client';
 import type { Entity } from '@/engine/ai/types';
 
 const hp = (id: string) => normalizeHp(SPECIES[id].fallbackStats);
@@ -927,6 +928,45 @@ for (const levelId of [1, 2]) {
     if (dived && dUnder < 8 && hovering) ok(`resume: a Swanna companion dives to ${yDive.toFixed(1)} m beside a trainer at −12 m (${dUnder.toFixed(1)} m off) and hovers ${flyer.y.toFixed(1)} m over the swell when the trainer surfaces`);
     else fail(`resume: sky companion — dived ${dived} (y after dive ${yDive.toFixed(1)}), ${dUnder.toFixed(1)} m off, hovering ${hovering} (y ${flyer.y.toFixed(1)})`);
   }
+}
+
+// ---- Companion levels: elite predators (2× HP/Attack/speed), bosses untouched by it, partners ride the swell ----
+{
+  const { COMBAT: CC, BOSS_TUNING: BT, BOSS_ATK_MULT } = await import('@/data/combatConfig');
+  const gen3 = generateEcosystem(getLevel(3), 5);
+  const eco3 = new Ecosystem(gen3, hp);
+  const preds = eco3.alive.filter((e) => e.behavior === 'predator' && !e.isShiny);
+  const shinyPreds = eco3.alive.filter((e) => e.behavior === 'predator' && e.isShiny);
+  const others = eco3.alive.filter((e) => e.behavior !== 'predator');
+  const okPred = preds.length > 0 && preds.every((e) => e.maxHp === Math.round(hp(e.species.id) * CC.ELITE_PREDATORS.HP) && e.spdMul === CC.ELITE_PREDATORS.SPEED && Math.abs(e.cs.atk - combatStatsOfSim(e.species.id).atk * CC.ELITE_PREDATORS.ATK) < 1e-6);
+  const okShiny = shinyPreds.every((e) => e.maxHp === Math.round(Math.round(hp(e.species.id) * CC.PREDATOR_HUNT.SHINY_MULT) * CC.ELITE_PREDATORS.HP));
+  const okOthers = others.every((e) => e.spdMul === 1 && e.maxHp === hp(e.species.id) * (e.isShiny ? CC.PREDATOR_HUNT.SHINY_MULT : 1));
+  if (okPred && okShiny && okOthers) ok(`L3: ${preds.length + shinyPreds.length} predators spawn elite (HP ×${CC.ELITE_PREDATORS.HP}, Atk ×${CC.ELITE_PREDATORS.ATK}, speed ×${CC.ELITE_PREDATORS.SPEED}; shiny leads stack), nobody else does`);
+  else fail(`L3: elite predator boost wrong (pred ${okPred}, shiny ${okShiny}, others ${okOthers})`);
+  const gen1 = generateEcosystem(getLevel(1), 5);
+  const eco1 = new Ecosystem(gen1, hp);
+  if (eco1.alive.every((e) => e.spdMul === 1)) ok('L1: no elite predators on a solo level'); else fail('L1: elite boost leaked into a solo level');
+  // a boss keeps its own tuning (plus rage), never the elite multiplier on top
+  const boss = eco3.spawnBoss('dondozo', gen3.playerStart.x + 10, gen3.playerStart.z, false);
+  const wantHp = Math.round(hp('dondozo') * BT.dondozo.hp);
+  const wantAtk = combatStatsOfSim('dondozo').atk * BT.dondozo.atk * BOSS_ATK_MULT;
+  if (boss.maxHp === wantHp && Math.abs(boss.cs.atk - wantAtk) < 1e-6 && boss.spdMul === 1) ok(`L3: Dondozo spawns at ${boss.maxHp} HP and Attack ×${(BT.dondozo.atk * BOSS_ATK_MULT).toFixed(2)} (tuning × rage), no elite stacking`);
+  else fail(`L3: boss tuning off — hp ${boss.maxHp} (want ${wantHp}), atk ${boss.cs.atk.toFixed(1)} (want ${wantAtk.toFixed(1)}), spdMul ${boss.spdMul}`);
+  // an elite predator really covers ground twice as fast
+  const p3 = { x: gen3.playerStart.x, y: gen3.playerStart.y, z: gen3.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  const pred = preds[0];
+  pred.x = p3.x + 60; pred.y = p3.y; pred.z = p3.z; pred.vx = pred.vy = pred.vz = 0;
+  let far = 0; for (let i = 0; i < 20 * 60; i++) { eco3.update(1 / 60, p3, 0); far = Math.max(far, Math.hypot(pred.vx, pred.vy, pred.vz)); }
+  if (far > pred.species.burst * 1.5) ok(`L3: elite ${pred.species.name} peaked at ${far.toFixed(1)} m/s (burst ${pred.species.burst})`); else fail(`L3: elite ${pred.species.name} never exceeded ${far.toFixed(1)} m/s (burst ${pred.species.burst})`);
+  // a water companion may ride the swell beside a surfaced trainer (no clamp pins it under, no drain) — on a calm
+  // start clearing, so no elite pack muddies the HP reading
+  const ecoCalm = new Ecosystem(gen1, hp);
+  const up = { x: gen1.playerStart.x, y: -0.4, z: gen1.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+  const kd = ecoCalm.addPartner('kingdra', 0);
+  const hp0 = kd.hp;
+  let struck = 0;
+  for (let i = 0; i < 8 * 60; i++) { ecoCalm.update(1 / 60, up, 0); for (const ev of ecoCalm.drainEvents()) if (ev.type === 'hit' && ev.targetId === kd.id) struck++; }
+  if (kd.y > -0.3 && (struck > 0 || kd.hp >= hp0 - 0.01)) ok(`L3: a Kingdra companion rides the swell at y ${kd.y.toFixed(2)} with the trainer up, HP intact (no open-air drain)`); else fail(`L3: surfaced companion y ${kd.y.toFixed(2)}, hp ${kd.hp.toFixed(1)} of ${hp0.toFixed(1)}, hits ${struck}`);
 }
 
 // ---- Berries: per-heart spawns, pickup, Nanab/Razz, held pinch berries ----

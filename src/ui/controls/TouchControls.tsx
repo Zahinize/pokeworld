@@ -33,7 +33,7 @@ export function TouchControls() {
   const ballType = useStore((s) => s.hud.ballType);
   const ballCount = useStore((s) => s.save.inventory[s.hud.ballType]);
   const hot = useStore((s) => s.hud.slingHot); // the drawn shot would HIT a wild: show it
-  // companion levels fight underwater and catch at the surface: no slingshot while diving
+  // companion levels fight through the team everywhere: the attack circle replaces the slingshot
   const catchMode = useStore((s) => s.hud.catchMode);
   const attackHot = useStore((s) => s.hud.attackHot); // the attack circle has a target right now
   // companion moves off cooldown — the badge on the attack circle
