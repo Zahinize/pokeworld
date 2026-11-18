@@ -957,7 +957,7 @@ for (const levelId of [1, 2]) {
   const pred = preds[0];
   pred.x = p3.x + 60; pred.y = p3.y; pred.z = p3.z; pred.vx = pred.vy = pred.vz = 0;
   let far = 0; for (let i = 0; i < 20 * 60; i++) { eco3.update(1 / 60, p3, 0); far = Math.max(far, Math.hypot(pred.vx, pred.vy, pred.vz)); }
-  if (far > pred.species.burst * 1.5) ok(`L3: elite ${pred.species.name} peaked at ${far.toFixed(1)} m/s (burst ${pred.species.burst})`); else fail(`L3: elite ${pred.species.name} never exceeded ${far.toFixed(1)} m/s (burst ${pred.species.burst})`);
+  if (far > pred.species.burst * 1.1) ok(`L3: elite ${pred.species.name} peaked at ${far.toFixed(1)} m/s (burst ${pred.species.burst})`); else fail(`L3: elite ${pred.species.name} never exceeded ${far.toFixed(1)} m/s (burst ${pred.species.burst})`);
   // a water companion may ride the swell beside a surfaced trainer (no clamp pins it under, no drain) — on a calm
   // start clearing, so no elite pack muddies the HP reading
   const ecoCalm = new Ecosystem(gen1, hp);

@@ -114,8 +114,9 @@ export const COMBAT = {
   /** At most this many SHINY Pokémon in a party, a shiny Boss Pokémon included — six shinies steamrolled L3/L4. */
   PARTY_SHINY_MAX: 3,
   /** Companion levels (L3/L4): every wild predator spawns at these multiples of HP, Attack and swim speed, so it
-   *  can run the trainer and the team down — they must fight it, not outswim it. Bosses have their own tuning. */
-  ELITE_PREDATORS: { HP: 2, ATK: 2, SPEED: 2 },
+   *  can run the trainer and the team down — they must fight it, not outswim it. Bosses have their own tuning.
+   *  2026-11-18 playtest: 2× HP/Attack/speed killed the trainer and team too often — all three cut by 40 % to 1.2×. */
+  ELITE_PREDATORS: { HP: 1.2, ATK: 1.2, SPEED: 1.2 },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,

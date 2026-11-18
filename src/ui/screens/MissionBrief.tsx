@@ -147,7 +147,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
             )}
             <p className="muted small brief-flavor">
               {level.companions
-                ? 'The species are drawn fresh for every dive. Your team does the fighting, under the reef and on the swell — a knocked-out wild Pokémon is caught. Elite predators hunt the team at twice the pace.'
+                ? 'The species are drawn fresh for every dive. Your team does the fighting, under the reef and on the swell — a knocked-out wild Pokémon is caught. Elite predators hunt the team.'
                 : 'The species are drawn fresh for every dive. Predators roam the reef — catch what you need before they get there first. Missed Poké Balls are lost.'}
               {resume ? ' Resuming your previous dive.' : ''}
             </p>

@@ -400,7 +400,8 @@ over `ESCALATE_SECONDS` 120 the trainer's weight grows by `ESCALATE_W` (×2) and
 `ESCALATE_R` (×1.5), and a predator that has bitten stays on the hunt with chance `PERSIST` 0.7 ×
 escalation instead of retreating to rest — it means to kill. All of it is scaled by `LEVEL_NASTY`
 (Level 1 ×1.0 … Level 4 ×1.3). **Elite predators** (companion levels, 2026-11-18): every wild predator on
-L3/L4 spawns at `COMBAT.ELITE_PREDATORS` — 2× HP, 2× Attack and 2× swim speed (`Entity.spdMul`, applied to the
+L3/L4 spawns at `COMBAT.ELITE_PREDATORS` — 1.2× HP, 1.2× Attack and 1.2× swim speed (2× each in the first cut; a
+playtest had them killing the trainer and team too often, so all three were dropped 40 %) (`Entity.spdMul`, applied to the
 steering target and the cruise cap in `integrate`, stacking on a shiny lead's own doubling); bosses are tuned
 separately and never get it. They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
 and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
