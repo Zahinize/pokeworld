@@ -13,7 +13,7 @@ import { createTutorial, advanceTutorial, type TutorialState, type TutorialObs }
 import { buildDemoPath, demoPose, buildArcLUT, arcT, type DemoPath } from './sim/demoPath';
 import { DEMO, DEMO_LEVEL } from '@/data/demo';
 import { TUTORIAL, TUTORIAL_STEPS, tutorialText } from '@/data/tutorial';
-import { SkyLife } from './sky/SkyLife';
+import { SkyLife, type SkyBird } from './sky/SkyLife';
 import { SkyCombat } from './sky/SkyCombat';
 import { PlayerController, type InputState } from './player/PlayerController';
 import { createMission, applyCatch, applyBossDefeat, catchPhaseDone, objectiveDone, type MissionState } from './sim/mission';
@@ -24,7 +24,7 @@ import { ChestSystem } from './sim/chest';
 import { CHEST, CHEST_ICONS, LOOT, LOOT_KEYS, LOOT_ORDER, laserFraction, restockFor, type LootId } from '@/data/chest';
 import { maxHpOf, combatStatsOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
-import { useStore } from '@/state/store';
+import { useStore, type Toast } from '@/state/store';
 import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
@@ -734,6 +734,9 @@ export class GameSession {
     return ok;
   }
 
+  /** A notification on one of the allowed channels (everything else is dropped by the store). */
+  private toast(channel: NonNullable<Toast['channel']>, t: Omit<Toast, 'id' | 'channel'>) { useStore.getState().pushToast({ ...t, channel }); }
+
   private handleChestEvents() {
     const evs = this.chest.drainEvents();
     if (!evs.length) return;
@@ -745,7 +748,7 @@ export class GameSession {
       switch (ev.type) {
         case 'unlocked':
           Audio.uiConfirm();
-          store.pushToast({ kind: 'event', title: 'The treasure chest is unguarded!', body: `Stay on top of it for ${CHEST.DWELL_SECONDS} s, or land ${CHEST.MASTER_HITS} Master Balls on it — the reef will defend it.`, icon: CHEST_ICONS.closed, ttl: 7 });
+          this.toast('chest', { kind: 'event', title: 'The treasure chest is unguarded!', body: `Stay on top of it for ${CHEST.DWELL_SECONDS} s, or land ${CHEST.MASTER_HITS} Master Balls on it — the reef will defend it.`, icon: CHEST_ICONS.closed, ttl: 7 });
           break;
         case 'hit':
           Audio.chestHit();
@@ -754,48 +757,48 @@ export class GameSession {
         case 'rejected':
           if (ev.reason === 'open' || this.chestToastT > 0) break;
           this.chestToastT = 6;
-          store.pushToast(ev.reason === 'locked'
+          this.toast('chest', ev.reason === 'locked'
             ? { kind: 'warn', title: 'The chest is guarded', body: 'Catch the shiny Blastoise and the shiny Feraligatr first.', icon: CHEST_ICONS.closed, ttl: 4 }
             : { kind: 'info', title: 'Only Master Balls open it', body: `${CHEST.MASTER_HITS} of them — or stay on the chest for ${CHEST.DWELL_SECONDS} s.`, icon: CHEST_ICONS.closed, ttl: 4 });
           break;
         case 'opening':
           Audio.chestOpen();
           if (c) this.pushFx('catch', c.x, c.y + 0.8, c.z, 1.6);
-          store.pushToast({ kind: 'event', title: ev.how === 'master' ? `${CHEST.MASTER_HITS} Master Balls — the chest opens!` : 'The chest opens!', body: 'Swim to it to take what is inside.', icon: CHEST_ICONS.open, ttl: 5 });
+          this.toast('chest', { kind: 'event', title: ev.how === 'master' ? `${CHEST.MASTER_HITS} Master Balls — the chest opens!` : 'The chest opens!', body: 'Swim to it to take what is inside.', icon: CHEST_ICONS.open, ttl: 5 });
           break;
         case 'open': break;
         case 'looted':
           Audio.lootPickup();
-          for (const id of ev.loot) store.pushToast({ kind: 'catch', title: `${LOOT[id].name} acquired`, body: `${how(id)} · ${LOOT[id].blurb}`, icon: LOOT[id].icon, ttl: 7 });
+          for (const id of ev.loot) this.toast('chest', { kind: 'catch', title: `${LOOT[id].name} acquired`, body: `${how(id)} · ${LOOT[id].blurb}`, icon: LOOT[id].icon, ttl: 7 });
           break;
         case 'equip':
           Audio.uiClick();
-          if (ev.weapon === 'hands') store.pushToast({ kind: 'info', title: 'Back to throwing by hand', ttl: 2.5 });
-          else store.pushToast({ kind: 'info', title: `${LOOT[ev.weapon].name} equipped`, icon: LOOT[ev.weapon].icon, ttl: 4,
+          if (ev.weapon === 'hands') this.toast('chest', { kind: 'info', title: 'Back to throwing by hand', ttl: 2.5 });
+          else this.toast('chest', { kind: 'info', title: `${LOOT[ev.weapon].name} equipped`, icon: LOOT[ev.weapon].icon, ttl: 4,
             body: ev.weapon === 'ballGun' ? (store.isTouch ? 'Drag the launcher to aim, release to fire' : 'Left click fires · 1–4 still pick the ball') : (store.isTouch ? 'Tap the laser to fire at the crosshair' : 'Left click fires at the crosshair') });
           break;
         case 'use':
           if (ev.id === 'blueHeart') {
             Audio.restore();
             this.pushNumber(`+${CHEST.HEART_LIVES} ♥`, '#60a5fa', p.x + fx * 2, p.y + fy * 2 - 0.2, p.z + fz * 2, true);
-            store.pushToast({ kind: 'catch', title: 'Blue Heart', body: `${ev.lives} lifelines now`, icon: LOOT.blueHeart.icon, ttl: 4 });
+            this.toast('chest', { kind: 'catch', title: 'Blue Heart', body: `${ev.lives} lifelines now`, icon: LOOT.blueHeart.icon, ttl: 4 });
           } else if (ev.id === 'timer') {
             Audio.uiConfirm();
             const left = ev.left ?? 0;
-            store.pushToast(ev.cut
+            this.toast('chest', ev.cut
               ? { kind: 'info', title: `Restock Timer · −${CHEST.TIMER_CUT} s`, body: `${left} charge${left === 1 ? '' : 's'} left — each later restock starts ${CHEST.TIMER_CUT} s shorter on its own.`, icon: LOOT.timer.icon, ttl: 4 }
               : { kind: 'info', title: `Restock Timer · ${left} charge${left === 1 ? '' : 's'}`, body: `Your next ${left} Poké Ball restock${left === 1 ? ' is' : 's are'} ${CHEST.TIMER_CUT} s shorter — press J during a restock to cut it now.`, icon: LOOT.timer.icon, ttl: 4 });
           }
           break;
         case 'blocked':
           Audio.uiClick();
-          store.pushToast(ev.reason === 'empty'
+          this.toast('chest', ev.reason === 'empty'
             ? { kind: 'warn', title: `No ${LOOT[ev.id].name}`, body: 'Open the treasure chest at the heart of the reef.', icon: LOOT[ev.id].icon, ttl: 3 }
             : { kind: 'warn', title: 'Lifelines are full', body: `You already have ${COMBAT.PLAYER_LIVES_MAX} — the heart keeps.`, icon: LOOT.blueHeart.icon, ttl: 3 });
           break;
         case 'weaponEmpty':
           Audio.uiClick();
-          store.pushToast({ kind: 'info', title: `${LOOT[ev.weapon as LootId].name} is empty`, body: 'Back to throwing by hand.', icon: LOOT[ev.weapon as LootId].icon, ttl: 3 });
+          this.toast('chest', { kind: 'info', title: `${LOOT[ev.weapon as LootId].name} is empty`, body: 'Back to throwing by hand.', icon: LOOT[ev.weapon as LootId].icon, ttl: 3 });
           break;
       }
     }
@@ -861,8 +864,8 @@ export class GameSession {
     }
     this.persistRun();
     store0.pushToast(this.lives === 1
-      ? { kind: 'alert', title: 'Last lifeline!', body: `One more fall and Level ${this.level.id} starts over — every catch here undone.`, ttl: 7 }
-      : { kind: 'warn', title: 'Lifeline lost', body: `${this.lives} left. Lose them all and this level resets.`, ttl: 6 });
+      ? { channel: 'ko', kind: 'alert', title: 'Last lifeline!', body: `One more fall and Level ${this.level.id} starts over — every catch here undone.`, ttl: 7 }
+      : { channel: 'ko', kind: 'warn', title: 'Lifeline lost', body: `${this.lives} left. Lose them all and this level resets.`, ttl: 6 });
     this.recoveringT = COMBAT.PLAYER_RECOVERY_SECONDS;
     this.input.forward = this.input.strafe = this.input.up = 0;
     Audio.ko();
@@ -922,19 +925,19 @@ export class GameSession {
       const B = BERRIES[ev.id]; const fxc = B.effect;
       switch (ev.type) {
         case 'spawn':
-          store.pushToast({ kind: 'event', title: 'A berry washed onto the reef', body: 'Search the sea floor — a green pointer picks it up within 50 m.', icon: B.icon, ttl: 5 });
+          this.toast('berry', { kind: 'event', title: 'A berry washed onto the reef', body: 'Search the sea floor — a green pointer picks it up within 50 m.', icon: B.icon, ttl: 5 });
           break;
         case 'pickup':
           Audio.berryPickup();
           this.pushFx('lure', ev.x, ev.y + 0.3, ev.z, 0.7, B.color);
-          store.pushToast({ kind: 'catch', title: `${B.name} acquired`, body: `${store.isTouch ? 'Tap it in the berry bar' : `Press ${keyOf(ev.id)}`} · ${B.blurb}`, icon: B.icon, ttl: 5 });
+          this.toast('berry', { kind: 'catch', title: `${B.name} acquired`, body: `${store.isTouch ? 'Tap it in the berry bar' : `Press ${keyOf(ev.id)}`} · ${B.blurb}`, icon: B.icon, ttl: 5 });
           break;
         case 'apply':
-          if (once(`apply:${ev.id}`)) { Audio.berryEat(); store.pushToast({ kind: 'info', title: `${B.name} eaten`, body: fxc.type === 'healNow' ? (team ? 'Both companions +40 HP' : '+40 HP') : B.blurb, icon: B.icon, ttl: 4 }); }
+          if (once(`apply:${ev.id}`)) { Audio.berryEat(); this.toast('berry', { kind: 'info', title: `${B.name} eaten`, body: fxc.type === 'healNow' ? (team ? 'Both companions +40 HP' : '+40 HP') : B.blurb, icon: B.icon, ttl: 4 }); }
           if (ev.amount) { if (ev.targetKind === 'trainer') trainerNumber(`+${ev.amount}`, '#4ade80'); else entityNumber(ev.targetId, `+${ev.amount}`, '#4ade80'); }
           break;
         case 'held':
-          if (once(`held:${ev.id}`)) { Audio.berryEat(); store.pushToast({ kind: 'info', title: `${B.name} held`, body: `${team ? 'Both companions hold it — ' : ''}${B.blurb.replace('Held: ', '')}`, icon: B.icon, ttl: 4 }); }
+          if (once(`held:${ev.id}`)) { Audio.berryEat(); this.toast('berry', { kind: 'info', title: `${B.name} held`, body: `${team ? 'Both companions hold it — ' : ''}${B.blurb.replace('Held: ', '')}`, icon: B.icon, ttl: 4 }); }
           break;
         case 'consume': {
           Audio.berryEat();
@@ -943,18 +946,18 @@ export class GameSession {
           if (ev.targetKind === 'trainer') trainerNumber(label, color); else entityNumber(ev.targetId, label, color);
           const who = ev.targetKind === 'trainer' ? 'You' : (ev.targetId !== undefined ? eco?.byId.get(ev.targetId)?.species.name : undefined) ?? 'A companion';
           const what = fxc.type === 'healHeld' ? `+${ev.amount} HP` : fxc.type === 'atkHeld' ? `+${ev.amount} Attack for ${fxc.duration} s` : fxc.type === 'spdHeld' ? `+${ev.amount} Speed for ${fxc.duration} s` : '';
-          store.pushToast({ kind: 'info', title: `${B.name} kicked in`, body: `${who === 'You' ? 'You ate it' : `${who} ate it`} · ${what}`, icon: B.icon, ttl: 4 });
+          this.toast('berry', { kind: 'info', title: `${B.name} kicked in`, body: `${who === 'You' ? 'You ate it' : `${who} ate it`} · ${what}`, icon: B.icon, ttl: 4 });
           break;
         }
         case 'refund':
-          store.pushToast({ kind: 'info', title: `${B.name} back in the bag`, body: 'A held berry only waits on one Pokémon at a time.', icon: B.icon, ttl: 3 });
+          this.toast('berry', { kind: 'info', title: `${B.name} back in the bag`, body: 'A held berry only waits on one Pokémon at a time.', icon: B.icon, ttl: 3 });
           break;
         case 'expire':
-          if (once(`expire:${ev.id}`)) store.pushToast({ kind: 'info', title: `${B.name} wore off`, icon: B.icon, ttl: 3 });
+          if (once(`expire:${ev.id}`)) this.toast('berry', { kind: 'info', title: `${B.name} wore off`, icon: B.icon, ttl: 3 });
           break;
         case 'blocked':
           Audio.uiClick();
-          if (once(`blocked:${ev.id}:${ev.reason}`)) store.pushToast({
+          if (once(`blocked:${ev.id}:${ev.reason}`)) this.toast('berry', {
             kind: 'warn', icon: B.icon, ttl: 2.5,
             title: ev.reason === 'empty' ? `No ${B.name}` : ev.reason === 'noTarget' ? 'No companion in the water' : `${B.name} already held`,
             body: ev.reason === 'empty' ? 'Berries wash onto the sea floor during each lifeline — follow the green pointer.' : ev.reason === 'noTarget' ? 'Send a companion out first.' : undefined,
@@ -1084,8 +1087,10 @@ export class GameSession {
     // ~20% of encounters roll shiny (3x HP & Attack, separate trophy) — some waves force it,
     // and bringing a BOSS of your own provokes them: every boss rises SHINY for a fair fight
     const partyHasBoss = this.party.some((t) => getSpecies(baseSpeciesId(t)).bossOnly);
+    // ...and so does a party at the shiny cap (three shinies, water, sky or mixed): every boss rises SHINY
+    const partyFullShiny = this.party.filter(isShinyToken).length >= COMBAT.PARTY_SHINY_MAX;
     this.bossIds = wave.bosses.map((b, i) => {
-      const shiny = !!wave.shiny || partyHasBoss || Math.random() < 0.2;
+      const shiny = !!wave.shiny || partyHasBoss || partyFullShiny || Math.random() < 0.2;
       if (shiny) loadSpriteSheet(b, 'shiny').then((sh) => { this.sheets.set(sheetKey(b, 'shiny'), sh); });
       return eco.spawnBoss(b, site.cx + (i - (wave.bosses.length - 1) / 2) * 6, site.cz + (i % 2) * 4, shiny).id;
     });
@@ -1158,17 +1163,21 @@ export class GameSession {
   /** Commanded focus: once the player clicks a target, the team keeps the fight going — re-ordering whenever a
    *  partner idles — until the target (or the team) drops. */
   private updateCombatMode(dt: number) {
-    if (!this.companionsEnabled || !this.eco || this.focusTargetId < 0) return;
+    if (!this.companionsEnabled || !this.eco || this.focusTargetId === -1) return; // -1 = no quarry (a bird's stand-in has a NEGATIVE id)
     const eco = this.eco;
     this.focusAcc += dt;
     if (this.focusAcc < 0.6) return;
     this.focusAcc = 0;
-    const t = eco.byId.get(this.focusTargetId);
+    const t = eco.byId.get(this.focusTargetId) ?? eco.externalCaster(this.focusTargetId);
     if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') { this.focusTargetId = -1; return; }
+    if (t.id <= -1000 && this.sky && this.skyCombat) { // a bird: keep its stand-in targetable while the team is on it
+      const b = this.sky.birds.find((x) => x.id === this.skyCombat!.birdIdOf(t.id));
+      if (b) this.skyCombat.orderShim(b);
+    }
     for (const id of this.activePartners) {
       const partner = id >= 0 ? eco.byId.get(id) : undefined;
       if (!partner || partner.state === 'ko' || partner.state === 'removed') continue;
-      if (partner.duelWith !== -1 || partner.orderTarget >= 0) continue; // mid-fight already
+      if (partner.duelWith !== -1 || partner.orderTarget !== -1) continue; // mid-fight already
       const kit = kitOf(partner);
       const slot = ([0, 1] as const).find((i) => eco.moves.ready(partner, i) && kit[i].kind === 'damage');
       if (slot !== undefined) this.orderCast(partner, slot, t);
@@ -1265,10 +1274,11 @@ export class GameSession {
   commandAttack(forgiving = false): boolean {
     if (!this.playing || !this.eco || this.recoveringT > 0) return false;
     const eco = this.eco;
-    const target = this.attackTarget(forgiving);
+    const target = this.attackTarget(forgiving) ?? this.aimedSkyTarget();
     if (!target) return false;
     // companion levels: the click marks the team's quarry — they fight it until it drops
     if (this.companionsEnabled && !this.catchingAllowed) this.focusTargetId = target.id;
+    const air = target.id <= -1000 ? SKY.COMPANION_AIR_REACH_BONUS : 0; // a bird: moves carry further into open air
     let best: { partner: Entity; slot: 0 | 1; score: number } | null = null;
     for (const id of this.activePartners) {
       const partner = id >= 0 ? eco.byId.get(id) : undefined;
@@ -1279,7 +1289,7 @@ export class GameSession {
         if (!eco.moves.ready(partner, slot)) continue;
         const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
         // prefer power, then moves already in range (no chase delay)
-        const score = kit[slot].power + (d <= effectiveRange(partner, kit[slot]) + partner.species.size * 0.5 ? 25 : 0);
+        const score = kit[slot].power + (d <= effectiveRange(partner, kit[slot]) + air + partner.species.size * 0.5 ? 25 : 0);
         if (!best || score > best.score) best = { partner, slot, score };
       }
     }
@@ -1296,8 +1306,8 @@ export class GameSession {
    *  while it is still alive and within reach, so repeat taps keep firing without a pixel-perfect aim. */
   private attackTarget(forgiving: boolean): Entity | null {
     const aimed = this.aimedEntity(45);
-    if (aimed || !forgiving || !this.eco || this.focusTargetId < 0) return aimed;
-    const t = this.eco.byId.get(this.focusTargetId);
+    if (aimed || !forgiving || !this.eco || this.focusTargetId === -1) return aimed;
+    const t = this.eco.byId.get(this.focusTargetId) ?? this.eco.externalCaster(this.focusTargetId);
     if (!t || t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'faint') return null;
     const p = this.player;
     return Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z) <= 45 ? t : null;
@@ -1330,12 +1340,33 @@ export class GameSession {
     if (partner.duelWith !== -1 && partner.duelWith !== target.id) return false; // locked in its own fight
     const move = kitOf(partner)[moveSlot];
     const d = Math.hypot(target.x - partner.x, target.y - partner.y, target.z - partner.z);
-    if (d <= effectiveRange(partner, move) + partner.species.size * 0.5) {
+    const air = target.id <= -1000 ? SKY.COMPANION_AIR_REACH_BONUS : 0; // a bird's stand-in: moves carry further into open air
+    if (d <= effectiveRange(partner, move) + air + partner.species.size * 0.5) {
       eco.moves.cast(partner, moveSlot, { kind: 'entity', id: target.id });
     } else {
       partner.orderTarget = target.id; partner.orderMove = moveSlot; partner.nextThink = eco.time;
     }
     return true;
+  }
+
+  /** The sky Pokémon under the crosshair (companion levels): its stand-in, kept targetable while the order lasts, so the
+   *  team can be sent at a bird in the air exactly like at a reef wild — a KO is a catch. The ray tolerance widens
+   *  with distance: birds are small and far. */
+  private aimedSkyTarget(maxDist = 110): Entity | null {
+    if (!this.companionsEnabled || !this.sky || !this.skyCombat) return null;
+    const p = this.player;
+    const [fx, fy, fz] = p.forward();
+    let best: SkyBird | null = null, bestT = maxDist;
+    for (const b of this.sky.birds) {
+      if ((b.state !== 'flying' && b.state !== 'swimming' && b.state !== 'attacking' && b.state !== 'diving' && b.state !== 'rampage') || b.fade < 0.5) continue;
+      const dx = b.x - p.x, dy = b.y + b.vis * 0.45 - p.y, dz = b.z - p.z;
+      const t = dx * fx + dy * fy + dz * fz;
+      if (t < 0.5 || t > bestT) continue;
+      const px = dx - fx * t, py = dy - fy * t, pz = dz - fz * t;
+      const r = b.r + 0.6 + t * 0.06;
+      if (px * px + py * py + pz * pz <= r * r) { best = b; bestT = t; }
+    }
+    return best ? this.skyCombat.orderShim(best) : null;
   }
 
   /** First wild Pokémon intersecting the camera ray (within maxDist). */
@@ -1755,7 +1786,7 @@ export class GameSession {
           const pred = eco.byId.get(ev.predatorId), t = eco.byId.get(ev.targetId);
           if (pred && ev.targetId === -2 && this.huntToastCooldown <= 0) {
             // the predator is hunting YOU
-            store.pushToast({ kind: 'warn', title: `${pred.isShiny ? 'SHINY ' : ''}${pred.species.name} is hunting you!`, body: pred.isShiny ? 'Twice the bite, twice the HP, and it will not stop. Catch it, or let your team deal with it.' : 'Catch it, fight it with your team, or get out of its water.', speciesId: pred.species.id, ttl: 4 });
+            store.pushToast({ channel: 'hunt', kind: 'warn', title: `${pred.isShiny ? 'SHINY ' : ''}${pred.species.name} is hunting you!`, body: pred.isShiny ? 'Twice the bite, twice the HP, and it will not stop. Catch it, or let your team deal with it.' : 'Catch it, fight it with your team, or get out of its water.', speciesId: pred.species.id, ttl: 4 });
             this.huntToastCooldown = 12;
           }
           // a hunt on a fish or a school is not announced (user ruling): the predator alert chip and the
@@ -1801,7 +1832,7 @@ export class GameSession {
           if (ev.count >= 3 && this.chestSwarmToastT <= 0) {
             this.chestSwarmToastT = 12;
             Audio.alarm();
-            store.pushToast({ kind: 'alert', title: 'The reef defends the chest!', body: `${ev.count} Pokémon turn on you — open it fast, or back off.`, icon: CHEST_ICONS.closed, ttl: 5 });
+            store.pushToast({ channel: 'chest', kind: 'alert', title: 'The reef defends the chest!', body: `${ev.count} Pokémon turn on you — open it fast, or back off.`, icon: CHEST_ICONS.closed, ttl: 5 });
           }
           break;
         }
@@ -1901,7 +1932,7 @@ export class GameSession {
           store.setLastCatch({ speciesId: sp.id, shiny: ev.shiny, missionTarget: true, objectiveLabel: ev.shiny ? 'SHINY boss defeated' : 'Boss defeated' });
           Audio.levelComplete();
           Audio.playCry(sp.dexId, 0.25, 0.4); // a last, low cry as it sinks
-          store.pushToast({ kind: 'catch', title: `${tokenLabel(token)} defeated — added to your collection!`, body: ev.shiny ? 'A SHINY trophy — its full power now fights for you.' : 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, shiny: ev.shiny, missionTarget: true, ttl: 6 });
+          store.pushToast({ channel: 'ko', kind: 'catch', title: `${tokenLabel(token)} defeated — added to your collection!`, body: ev.shiny ? 'A SHINY trophy — its full power now fights for you.' : 'Wear it proudly: defeated bosses can join your party in future dives.', speciesId: sp.id, shiny: ev.shiny, missionTarget: true, ttl: 6 });
           this.pushFx('catch', eco.byId.get(ev.entityId)?.x ?? 0, eco.byId.get(ev.entityId)?.y ?? 0, eco.byId.get(ev.entityId)?.z ?? 0, sp.size);
           if (this.mission?.complete && this.phase === 'playing') { this.phase = 'completing'; this.completeTimer = 2.2; }
           // the commander falls first: Dondozo is lost without it (COMBAT.COMMANDER — slow, dumb, aimless)
@@ -1973,6 +2004,7 @@ export class GameSession {
     store.setLastCatch({ speciesId: sp.id, missionTarget: false, objectiveLabel: undefined });
     const legendary = sp.rarity === 'legendary';
     store.pushToast({
+      channel: byCompanion ? 'ko' : undefined, // a team KO is a knock-out notification; a ball catch has its own card
       kind: 'catch',
       title: byCompanion ? `KO! ${sp.name} joins your collection` : legendary ? `LEGENDARY! Caught ${sp.name}!` : shiny ? `SHINY! Caught ${sp.name}!` : `Caught ${sp.name}!`,
       body: 'Sky Pokémon — flies with your team on Levels 3 and 4',
@@ -2234,7 +2266,7 @@ export class GameSession {
       store.setMission(this.mission);
     }
     store.setLastCatch({ speciesId: e.species.id, shiny: e.isShiny, missionTarget, objectiveLabel: label });
-    store.pushToast({ kind: 'catch', title: byLaser ? `Lasered! Caught ${e.isShiny ? 'SHINY ' : ''}${e.species.name}!` : byCompanion ? `KO! ${tokenLabel(token)} joins your collection` : e.isShiny ? `SHINY! Caught ${e.species.name}!` : `Caught ${e.species.name}!`, body: missionTarget ? label : e.isShiny ? 'A SHINY trophy — it fights for you at double strength' : 'Added to collection · not a mission target', speciesId: e.species.id, shiny: e.isShiny, missionTarget, ttl: e.isShiny ? 6 : 4 });
+    store.pushToast({ channel: byCompanion || byLaser ? 'ko' : undefined, kind: 'catch', title: byLaser ? `Lasered! Caught ${e.isShiny ? 'SHINY ' : ''}${e.species.name}!` : byCompanion ? `KO! ${tokenLabel(token)} joins your collection` : e.isShiny ? `SHINY! Caught ${e.species.name}!` : `Caught ${e.species.name}!`, body: missionTarget ? label : e.isShiny ? 'A SHINY trophy — it fights for you at double strength' : 'Added to collection · not a mission target', speciesId: e.species.id, shiny: e.isShiny, missionTarget, ttl: e.isShiny ? 6 : 4 });
     this.persistRun();
     if (this.mission?.complete && this.phase === 'playing') {
       this.phase = 'completing'; this.completeTimer = 1.6;

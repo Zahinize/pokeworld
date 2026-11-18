@@ -24,6 +24,9 @@ export interface Toast {
   /** Item icon (a berry) shown in place of a sprite. */
   icon?: string;
   ttl: number;
+  /** Which notifications reach the player (USER RULING 2026-11-18): only KOs, berries, the treasure chest and
+   *  "X is hunting you!" — a toast without a channel is dropped on every platform. */
+  channel?: 'ko' | 'berry' | 'chest' | 'hunt';
 }
 
 export interface HudState {
@@ -205,6 +208,7 @@ export const useStore = create<AppState>((set, get) => ({
   setLevel(levelId, seed) { set({ levelId, seed }); },
   setHud(patch) { set({ hud: { ...get().hud, ...patch } }); },
   pushToast(t) {
+    if (!t.channel) return; // only the four allowed channels show (see Toast.channel)
     const id = toastId++;
     const toasts = [...get().toasts, { ...t, id }].slice(-5);
     set({ toasts });

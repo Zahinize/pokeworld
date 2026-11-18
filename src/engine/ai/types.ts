@@ -34,8 +34,18 @@ export interface Entity {
   maxSpeed: number;
   /** Per-entity multipliers for natural variation. */
   speedMul: number;
-  /** Hard speed multiplier on steering and the cruise cap (elite predators on L3/L4 swim at 2×). */
+  /** Hard speed multiplier on steering and the cruise cap, recomputed every frame: spdBase × the chase burst. */
   spdMul: number;
+  /** Permanent part of spdMul (elite predators and hunters on L3/L4). */
+  spdBase: number;
+  /** Move cooldowns tick at this rate (hunters on L3/L4: 2). */
+  cdRate: number;
+  /** A hunter (L3/L4 predator or mission Pokémon): gets the chase burst when it goes for the trainer or the team. */
+  hunter: boolean;
+  /** Chase burst left (s) — CHASE_SPEED× speed and a bubble stream while it runs. */
+  boostT: number;
+  /** Was it going for the trainer / a companion last frame (the burst fires on the rising edge). */
+  wasChasing: boolean;
   phase: number;
   scaleMul: number;
 

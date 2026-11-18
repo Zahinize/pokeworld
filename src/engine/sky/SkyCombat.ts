@@ -47,7 +47,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
   const shim = {
     id: SHIM_BASE - b.id, species: { ...sp, size: b.vis }, behavior: sp.primary, role: 'solo', groupId: -1, ambient: true,
     x: b.x, y: b.y + b.vis * 0.45, z: b.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-    maxSpeed: sp.speed, speedMul: 1, spdMul: 1, phase: b.phase, scaleMul: 1,
+    maxSpeed: sp.speed, speedMul: 1, spdMul: 1, spdBase: 1, cdRate: 1, hunter: false, boostT: 0, wasChasing: false, phase: b.phase, scaleMul: 1,
     state: 'wander', stateT: 0, nextThink: 0, lod: 0,
     hp: b.hp, maxHp: b.maxHp, hpBarT: 0, flashT: 0, animT: 0,
     home: { ...zero }, target: { ...zero }, wander: { ...zero }, targetId: -1, huntCooldown: 0, curiosityCooldown: 0,
@@ -88,6 +88,16 @@ export class SkyCombat {
   birdIdOf(shimId: number): number { return SHIM_BASE - shimId; }
   /** True while this bird is under the swell picking fights. */
   isRaiding(birdId: number): boolean { return this.attackers.some((a) => a.birdId === birdId && a.mode === 'raid'); }
+
+  /** Birds the trainer ordered the team onto: their stand-ins stay targetable in the air until this time. */
+  private ordered = new Map<number, number>();
+  /** The trainer clicked a bird: its stand-in becomes an orderable target (companion moves reach into the air) for `seconds`. */
+  orderShim(b: SkyBird, seconds = 8): Entity {
+    this.ordered.set(b.id, this.now + seconds);
+    const s = this.shimFor(b);
+    if (s.state === 'removed') s.state = 'wander';
+    return s;
+  }
 
   private shimFor(b: SkyBird): Entity {
     let s = this.shims.get(b.id);
@@ -216,7 +226,7 @@ export class SkyCombat {
       if (b.state !== 'attacking') {
         s.x = b.x; s.y = b.y + b.vis * 0.45; s.z = b.z; s.vx = b.vx; s.vy = b.vy; s.vz = b.vz;
         // a bird back in the air is out of the reef's reach: moves aimed at its stand-in lose their target
-        s.state = b.y > 0.3 && !b.legendary ? 'removed' : 'wander'; // a legendary's stand-in casts from the air
+        s.state = b.y > 0.3 && !b.legendary && !((this.ordered.get(birdId) ?? 0) > now) ? 'removed' : 'wander'; // a legendary's stand-in casts from the air; an ordered bird stays a target
       } else s.state = 'wander';
     }
     for (let i = this.attackers.length - 1; i >= 0; i--) {

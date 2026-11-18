@@ -938,14 +938,31 @@ for (const levelId of [1, 2]) {
   const preds = eco3.alive.filter((e) => e.behavior === 'predator' && !e.isShiny);
   const shinyPreds = eco3.alive.filter((e) => e.behavior === 'predator' && e.isShiny);
   const others = eco3.alive.filter((e) => e.behavior !== 'predator');
-  const okPred = preds.length > 0 && preds.every((e) => e.maxHp === Math.round(hp(e.species.id) * CC.ELITE_PREDATORS.HP) && e.spdMul === CC.ELITE_PREDATORS.SPEED && Math.abs(e.cs.atk - combatStatsOfSim(e.species.id).atk * CC.ELITE_PREDATORS.ATK) < 1e-6);
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+  const okPred = preds.length > 0 && preds.every((e) => e.maxHp === Math.round(hp(e.species.id) * CC.ELITE_PREDATORS.HP) && near(e.spdBase, CC.ELITE_PREDATORS.SPEED * CC.HUNTERS.SPEED) && e.hunter && near(e.cdRate, 1 / CC.HUNTERS.COOLDOWN) && near(e.cs.atk, combatStatsOfSim(e.species.id).atk * CC.ELITE_PREDATORS.ATK));
   const okShiny = shinyPreds.every((e) => e.maxHp === Math.round(Math.round(hp(e.species.id) * CC.PREDATOR_HUNT.SHINY_MULT) * CC.ELITE_PREDATORS.HP));
-  const okOthers = others.every((e) => e.spdMul === 1 && e.maxHp === hp(e.species.id) * (e.isShiny ? CC.PREDATOR_HUNT.SHINY_MULT : 1));
-  if (okPred && okShiny && okOthers) ok(`L3: ${preds.length + shinyPreds.length} predators spawn elite (HP ×${CC.ELITE_PREDATORS.HP}, Atk ×${CC.ELITE_PREDATORS.ATK}, speed ×${CC.ELITE_PREDATORS.SPEED}; shiny leads stack), nobody else does`);
-  else fail(`L3: elite predator boost wrong (pred ${okPred}, shiny ${okShiny}, others ${okOthers})`);
+  const minStage = gen3.objectives.find((o) => o.kind === 'stageCatch')?.minStage ?? 99;
+  const isMission = (e: Entity) => !!e.objectiveId || e.species.stage >= minStage;
+  const mission = others.filter(isMission), bystanders = others.filter((e) => !isMission(e));
+  const okMission = mission.length > 0 && mission.every((e) => e.hunter && near(e.spdBase, CC.HUNTERS.SPEED) && near(e.cdRate, 1 / CC.HUNTERS.COOLDOWN) && e.maxHp === hp(e.species.id));
+  const okOthers = bystanders.every((e) => !e.hunter && e.spdBase === 1 && e.cdRate === 1 && e.maxHp === hp(e.species.id) * (e.isShiny ? CC.PREDATOR_HUNT.SHINY_MULT : 1));
+  if (okPred && okShiny && okMission && okOthers) ok(`L3: ${preds.length + shinyPreds.length} predators spawn elite (HP ×${CC.ELITE_PREDATORS.HP}, Atk ×${CC.ELITE_PREDATORS.ATK}, speed ×${CC.ELITE_PREDATORS.SPEED}) and, with ${mission.length} mission Pokémon, hunters (speed ×${CC.HUNTERS.SPEED}, cooldowns ×${CC.HUNTERS.COOLDOWN}); ${bystanders.length} bystanders untouched`);
+  else fail(`L3: hunter/elite boost wrong (pred ${okPred}, shiny ${okShiny}, mission ${okMission}, others ${okOthers})`);
   const gen1 = generateEcosystem(getLevel(1), 5);
   const eco1 = new Ecosystem(gen1, hp);
-  if (eco1.alive.every((e) => e.spdMul === 1)) ok('L1: no elite predators on a solo level'); else fail('L1: elite boost leaked into a solo level');
+  if (eco1.alive.every((e) => e.spdMul === 1 && !e.hunter && e.cdRate === 1)) ok('L1: no elite predators or hunters on a solo level'); else fail('L1: elite/hunter boost leaked into a solo level');
+  // the chase burst: a mission Pokémon turned on the trainer surges for CHASE_SECONDS at CHASE_SPEED× with bubbles
+  {
+    const m0 = mission.find((e) => e.state !== 'ko');
+    const pm = { x: m0!.x + 3, y: m0!.y, z: m0!.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };
+    eco3.update(1 / 60, pm, 0);
+    m0!.state = 'retaliate'; m0!.stateT = 0; m0!.retaliateTarget = -2; m0!.nextThink = eco3.time;
+    eco3.update(1 / 60, pm, 0);
+    const b0 = m0!.boostT, mul0 = m0!.spdMul, wake0 = m0!.wakeT;
+    for (let i = 0; i < 6 * 60; i++) eco3.update(1 / 60, pm, 0);
+    if (b0 > CC.HUNTERS.CHASE_SECONDS - 0.1 && near(mul0, CC.HUNTERS.SPEED * CC.HUNTERS.CHASE_SPEED) && wake0 > 0 && m0!.boostT <= 0 && near(m0!.spdMul, m0!.spdBase)) ok(`L3: ${m0!.species.name} turned on the trainer — ${CC.HUNTERS.CHASE_SECONDS} s burst at ×${mul0.toFixed(2)} with a bubble stream, back to ×${m0!.spdMul.toFixed(2)} after`);
+    else fail(`L3: chase burst wrong (boostT ${b0.toFixed(1)}, spdMul ${mul0.toFixed(2)}, wake ${wake0.toFixed(2)}, after ${m0!.boostT.toFixed(1)}/${m0!.spdMul.toFixed(2)})`);
+  }
   // a boss keeps its own tuning (plus rage), never the elite multiplier on top
   const boss = eco3.spawnBoss('dondozo', gen3.playerStart.x + 10, gen3.playerStart.z, false);
   const wantHp = Math.round(hp('dondozo') * BT.dondozo.hp);

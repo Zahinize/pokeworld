@@ -312,6 +312,13 @@ gets a stand-in Entity the MoveSystem casts from (`CombatHost.externalCaster`), 
   exactly as under water. **There is no Poké Ball mechanic on L3/L4 at all**: `catchingAllowed` is false
   for the whole dive, the ball chip never shows, clicks and taps are orders, and a knock-out is a catch —
   reef rules — for sky legendaries as much as for the reef. Raiders may pick a companion as a victim.
+  **Ordering the team at a bird** (`GameSession.aimedSkyTarget`): when the crosshair holds no reef wild, the
+  camera ray is tested against the sky birds (tolerance `b.r + 0.6 + 0.06·distance`, up to 110 m); the hit
+  bird's stand-in (`SkyCombat.orderShim`, kept `wander` instead of `removed` for 8 s and refreshed while the
+  team focuses it) becomes the order target like any reef wild — `orderCast`, the commanded chase in
+  `partnerThink` and the focus loop resolve ids through `externalCaster`, and every reach check on a stand-in
+  adds `COMPANION_AIR_REACH_BONUS` 14 m. Hits land through `skyHooks.damageExternal` (a companion's KO is a
+  catch). A water companion fires from the swell; a flyer climbs after it.
 
 Current sky kits: Wingull Gust/Wing Attack · Pelipper Air Slash/Gust · Ducklett Wing Attack/Bubble · Cramorant Air Slash/Water Gun ·
 Swanna Air Slash/Wing Attack · Articuno Ice Beam/Gust · Lugia Aeroblast/Air Slash · Ho-Oh Sacred
@@ -403,7 +410,12 @@ escalation instead of retreating to rest — it means to kill. All of it is scal
 L3/L4 spawns at `COMBAT.ELITE_PREDATORS` — 1.2× HP, 1.2× Attack and 1.2× swim speed (2× each in the first cut; a
 playtest had them killing the trainer and team too often, so all three were dropped 40 %) (`Entity.spdMul`, applied to the
 steering target and the cruise cap in `integrate`, stacking on a shiny lead's own doubling); bosses are tuned
-separately and never get it. They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
+separately and never get it. **Hunters** (`COMBAT.HUNTERS`, same levels): every wild predator AND every mission
+Pokémon swims `SPEED` 1.2× faster (predators: on top of the elite 1.2×), its move cooldowns tick at 1/`COOLDOWN`
+= 2× (`Entity.cdRate`), and the frame it turns on the trainer or a companion (`approach`/`circle`/`rush`/`duel`
+with the trainer or a partner as target, or `retaliate` against them) it gets a `CHASE_SECONDS` 5 s surge at
+`CHASE_SPEED` 1.5× (`Entity.boostT`, folded into `spdMul` every frame) with the ferry's bubble stream boiling off
+it (`wakeT` held at 0.7 while the burst runs). They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
 and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
 grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
 member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a
@@ -756,6 +768,9 @@ Cap: ≤4 concurrent duels (2 companions + 2 auto-defenses); further hits queue 
 4. **Sea World complete**: special completion screen replaces the normal one — *"Sea World complete! A new
    world is coming soon…"* (celebration + roll-up stats).
 
+**Shiny bosses on demand**: a wave spawns shiny when the level forces it, when the party fields a boss of its own,
+when the party sits at the shiny cap (three shinies — water, sky or mixed), or on the 20 % roll.
+
 ### Boss behavior — stay agile
 **Swagger** (`BOSS_FIGHT_SPEED_MULT` 1.5): while the encounter is on (`bossesActive`), every boss moves
 half again as fast — brawl hold speed (species speed × 1.5 × 1.5), the commander's saddle ride, and the
@@ -790,6 +805,13 @@ The same screen carries the **lifelines defeat** (§8) on every level, with a he
 "Out of lifelines" and **[Start Level N over]** — the run's progress is gone, nothing else is.
 
 ---
+
+### Notifications (USER RULING 2026-11-18)
+Only four toast channels reach the player, on desktop, tablet and phone alike: `ko` (lifeline lost / last
+lifeline, team knock-outs incl. laser finishes, bosses defeated), `berry` (every berry toast), `chest` (every
+treasure-chest toast, the swarm warning included) and `hunt` ("X is hunting you!"). `Toast.channel` carries
+it; `store.pushToast` drops any toast without one, so lore events (ferry, Wishiwashi, Mantine, flocks, boss
+flavour, legendaries, restocks, ball catches — the catch card still shows) are silent.
 
 ## 10. HUD additions
 

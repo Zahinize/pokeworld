@@ -85,6 +85,7 @@ export class Ecosystem {
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
     this.elitePredators = gen.elitePredators;
+    this.missionMinStage = gen.objectives.find((o) => o.kind === 'stageCatch')?.minStage ?? null;
     if (gen.chest) this.chest = { x: gen.chest.x, y: gen.chest.y, z: gen.chest.z, guardIds: [] };
     this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
     const rngFn = () => this.rng.next();
@@ -175,7 +176,7 @@ export class Ecosystem {
     const e: Entity = {
       id: this.nextId++, species: s, behavior, role: sp.role, groupId: sp.groupIndex, objectiveId: sp.objectiveId, ambient: sp.ambient,
       x: sp.pos.x, y: sp.pos.y, z: sp.pos.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, spdMul: 1, phase: this.rng.next() * Math.PI * 2, scaleMul: 1,
+      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, spdMul: 1, spdBase: 1, cdRate: 1, hunter: false, boostT: 0, wasChasing: false, phase: this.rng.next() * Math.PI * 2, scaleMul: 1,
       state: defaultState(), stateT: 0, nextThink: this.rng.next() * 0.3, lod: 0,
       hp: maxHp, maxHp, hpBarT: 0, flashT: 0, animT: 0,
       home: { ...sp.pos }, target: { x: 0, y: sp.pos.y, z: 0 }, wander: { x: this.rng.next() - 0.5, y: 0, z: this.rng.next() - 0.5 },
@@ -209,8 +210,16 @@ export class Ecosystem {
       const E = COMBAT.ELITE_PREDATORS;
       e.maxHp = Math.round(e.maxHp * E.HP); e.hp = e.maxHp;
       e.cs = { ...e.cs, atk: e.cs.atk * E.ATK, spAtk: e.cs.spAtk * E.ATK };
-      e.spdMul = E.SPEED;
+      e.spdBase = E.SPEED;
     }
+    const missionTarget = !!sp.objectiveId || (this.missionMinStage !== null && s.stage >= this.missionMinStage); // a mission group member, or any wild the stage-catch counts
+    if (this.elitePredators && (behavior === 'predator' || missionTarget) && sp.role !== 'partner' && !sp.boss) {
+      // companion levels: predators and mission Pokémon are hunters — faster, quicker on the trigger, and they
+      // get a chase burst (with a bubble stream) the moment they go for the trainer or the team
+      const H = COMBAT.HUNTERS;
+      e.hunter = true; e.spdBase *= H.SPEED; e.cdRate = 1 / H.COOLDOWN;
+    }
+    e.spdMul = e.spdBase;
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
       const g = this.groups[sp.groupIndex];
@@ -522,7 +531,16 @@ export class Ecosystem {
       // Timers
       if (e.hpBarT > 0) e.hpBarT -= dt;
       if (e.flashT > 0) e.flashT -= dt;
-      const cdt = e.isBoss ? dt * BOSS_ATTACK_RATE_MULT : dt; // swagger: a boss's moves come back half again as fast
+      const cdt = dt * (e.isBoss ? BOSS_ATTACK_RATE_MULT : e.cdRate); // swagger: a boss's moves come back faster; hunters (L3/L4) at 2×
+      if (e.hunter) {
+        // the chase burst: fires once as the hunter turns on the trainer (-2) or a companion, runs CHASE_SECONDS
+        const tgt = e.state === 'retaliate' ? e.retaliateTarget : (e.state === 'approach' || e.state === 'circle' || e.state === 'rush' || e.state === 'duel') ? (e.state === 'duel' ? e.duelWith : e.targetId) : -1;
+        const chasing = tgt === -2 || (tgt >= 0 && this.byId.get(tgt)?.role === 'partner');
+        if (chasing && !e.wasChasing) e.boostT = COMBAT.HUNTERS.CHASE_SECONDS;
+        e.wasChasing = chasing;
+        if (e.boostT > 0) { e.boostT -= dt; e.wakeT = Math.max(e.wakeT, 0.7); } // bubbles boil off it while it surges
+        e.spdMul = e.spdBase * (e.boostT > 0 ? COMBAT.HUNTERS.CHASE_SPEED : 1);
+      }
       if (e.mcd[0] > 0) e.mcd[0] -= cdt;
       if (e.mcd[1] > 0) e.mcd[1] -= cdt;
       if (e.stunT > 0) e.stunT -= dt;
@@ -711,14 +729,15 @@ export class Ecosystem {
       return;
     }
     // Commanded cast: chase the ordered target until the move is in range
-    if (e.orderTarget >= 0 && e.orderMove !== -1) {
-      const t = this.byId.get(e.orderTarget);
+    if (e.orderTarget !== -1 && e.orderMove !== -1) {
+      const t = this.byId.get(e.orderTarget) ?? this.externalCaster(e.orderTarget); // a reef wild, or a bird's stand-in the trainer pointed at
       if (!t || t.state === 'removed' || t.state === 'caught' || t.state === 'ko' || t.state === 'captureAttempt' || t.shelterT > 0) { e.orderTarget = -1; e.orderMove = -1; }
       else {
         const kit = kitOf(e);
         const move = kit[e.orderMove];
         const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
-        if (d <= effectiveRange(e, move) + e.species.size * 0.5) {
+        const air = e.orderTarget <= -1000 ? SKY.COMPANION_AIR_REACH_BONUS : 0; // moves carry further into open air
+        if (d <= effectiveRange(e, move) + air + e.species.size * 0.5) {
           if (this.moves.cast(e, e.orderMove, { kind: 'entity', id: t.id })) { e.orderTarget = -1; e.orderMove = -1; }
         } else {
           // a flyer dives after its target like any companion: the reef is its hunting ground too
@@ -1164,6 +1183,8 @@ export class Ecosystem {
   bossesActive = true;
   /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (see spawn). */
   elitePredators = false;
+  /** The level's stage-catch objective, if any: every wild at or above this stage is a mission Pokémon (a hunter on L3/L4). */
+  missionMinStage: number | null = null;
 
   /** Spawn a boss at a site with its stat multipliers applied. Shiny bosses carry 2× HP & Attack. */
   spawnBoss(speciesId: string, x: number, z: number, shiny = false): Entity {

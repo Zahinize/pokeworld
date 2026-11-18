@@ -117,6 +117,10 @@ export const COMBAT = {
    *  can run the trainer and the team down — they must fight it, not outswim it. Bosses have their own tuning.
    *  2026-11-18 playtest: 2× HP/Attack/speed killed the trainer and team too often — all three cut by 40 % to 1.2×. */
   ELITE_PREDATORS: { HP: 1.2, ATK: 1.2, SPEED: 1.2 },
+  /** Companion levels (L3/L4): every wild predator AND every mission Pokémon is a hunter — SPEED× faster (on top of
+   *  ELITE_PREDATORS for the predators), move cooldowns × COOLDOWN, and the moment it goes for the trainer or a
+   *  companion it gets a CHASE_SECONDS burst at CHASE_SPEED× with a bubble stream boiling off it. */
+  HUNTERS: { SPEED: 1.2, COOLDOWN: 0.5, CHASE_SPEED: 1.5, CHASE_SECONDS: 5 },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,
