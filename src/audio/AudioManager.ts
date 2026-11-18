@@ -1,6 +1,8 @@
 /**
  * Procedural WebAudio soundscape — no audio assets required.
- * Deep-sea drone, water current, bubbles, spatial whale calls, predator tension, and UI/gameplay SFX.
+ * Deep-sea drone, water current, bubbles, spatial whale calls, and UI/gameplay SFX.
+ * No predator "tension" drone (USER RULING 2026-11-19): the pulsing sub tone that swelled while a predator hunted the
+ * trainer was removed from gameplay outright.
  * Silence is valued: the ambience is sparse and the SFX are short.
  */
 export interface WhaleSource { id: number; x: number; y: number; z: number; size: number }
@@ -10,8 +12,6 @@ class AudioManagerImpl {
   private master: GainNode | null = null;
   private ambGain: GainNode | null = null;
   private sfxGain: GainNode | null = null;
-  private tensionGain: GainNode | null = null;
-  private tensionOsc: OscillatorNode | null = null;
   private currentFilter: BiquadFilterNode | null = null;
   private noiseBuf: AudioBuffer | null = null;
   private enabled = true;
@@ -34,7 +34,6 @@ class AudioManagerImpl {
       this.master.connect(this.ctx.destination);
       this.ambGain = this.ctx.createGain(); this.ambGain.gain.value = 0; this.ambGain.connect(this.master);
       this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = 0.9; this.sfxGain.connect(this.master);
-      this.tensionGain = this.ctx.createGain(); this.tensionGain.gain.value = 0; this.tensionGain.connect(this.master);
       this.noiseBuf = this.makeNoise(4);
       this.started = true;
     } catch { this.ctx = null; }
@@ -85,34 +84,24 @@ class AudioManagerImpl {
     src.connect(f).connect(g).connect(this.ambGain!); src.start();
     this.currentFilter = f;
     this.ambNodes.push(src, f, g);
-    // Tension: low pulsing sub tone (predator)
-    const t = ctx.createOscillator(); t.type = 'triangle'; t.frequency.value = 41;
-    const tl = ctx.createOscillator(); tl.frequency.value = 1.6; const tlg = ctx.createGain(); tlg.gain.value = 0.5;
-    const tg = ctx.createGain(); tg.gain.value = 0.5;
-    tl.connect(tlg).connect(tg.gain);
-    t.connect(tg).connect(this.tensionGain!); t.start(); tl.start();
-    this.tensionOsc = t;
-    this.ambNodes.push(t, tl, tlg, tg);
     this.ambGain!.gain.setTargetAtTime(1, ctx.currentTime, 2.5);
   }
 
   stopAmbience() {
     if (!this.ctx || !this.ambienceRunning) return;
     this.ambGain!.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
-    this.tensionGain!.gain.setTargetAtTime(0, this.ctx.currentTime, 0.3);
     const nodes = this.ambNodes; this.ambNodes = [];
     setTimeout(() => { for (const n of nodes) { try { (n as any).stop?.(); } catch { /* */ } n.disconnect(); } }, 2500);
     this.ambienceRunning = false;
   }
 
   /** Per-frame-ish (call at ~10 Hz). */
-  update(dt: number, listener: { x: number; y: number; z: number; speed: number }, whales: WhaleSource[], tension: number, nightness: number, time: number) {
+  update(dt: number, listener: { x: number; y: number; z: number; speed: number }, whales: WhaleSource[], nightness: number, time: number) {
     if (!this.ctx || !this.ambienceRunning) return;
     const ctx = this.ctx;
     this.listenerPos = listener;
     // listener orientation is not needed for our distance-based panning
     if (this.currentFilter) this.currentFilter.frequency.setTargetAtTime(260 + listener.speed * 60 - nightness * 80, ctx.currentTime, 0.3);
-    this.tensionGain!.gain.setTargetAtTime(tension * 0.22, ctx.currentTime, 0.8);
     // Occasional bubbles near the listener
     this.nextBubble -= dt;
     if (this.nextBubble <= 0) { this.bubble(0.5 + Math.random()); this.nextBubble = 2 + Math.random() * 6; }

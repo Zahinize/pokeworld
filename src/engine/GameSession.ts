@@ -2373,10 +2373,8 @@ export class GameSession {
     const eco = this.eco!; const p = this.player;
     const whales: WhaleSource[] = [];
     for (const e of eco.alive) if (e.behavior === 'giant' && e.species.size >= 2.8) whales.push({ id: e.id, x: e.x, y: e.y, z: e.z, size: e.species.size });
-    const hunter = eco.huntingNear(50);
-    let tension = 0;
-    if (hunter) { const d = len3(hunter.x - p.x, hunter.y - p.y, hunter.z - p.z); tension = Math.max(0, 1 - d / 50); }
-    Audio.update(dt, { x: p.x, y: p.y, z: p.z, speed: p.speed }, whales, tension, this.lighting.nightness, eco.time);
+    // no predator tension drone: a hunting predator makes no sound of its own (USER RULING 2026-11-19)
+    Audio.update(dt, { x: p.x, y: p.y, z: p.z, speed: p.speed }, whales, this.lighting.nightness, eco.time);
   }
 
   private updateSeen() {

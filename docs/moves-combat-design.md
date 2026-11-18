@@ -814,6 +814,12 @@ treasure-chest toast, the swarm warning included) and `hunt` ("X is hunting you!
 it; `store.pushToast` drops any toast without one, so lore events (ferry, Wishiwashi, Mantine, flocks, boss
 flavour, legendaries, restocks, ball catches — the catch card still shows) are silent.
 
+### No predator tension drone (USER RULING 2026-11-19)
+The soundscape's "predator tension" layer — a 41 Hz pulsing sub tone that swelled while a predator hunted the
+trainer within 50 m — is gone. It surfaced as "a weird sound that starts playing" against the SHINY Basculegion
+boss on L4: Basculegion is the only boss with `predator` behaviour, so it was the only boss that kept the drone
+running for a whole fight. Hunts still announce themselves through the `hunt` toast and the one-shot alarm.
+
 ## 10. HUD additions
 
 - **Party bar** (bottom-left, above the hint area): 2 active portraits with circular HP + two move buttons

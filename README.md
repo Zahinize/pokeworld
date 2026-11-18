@@ -122,7 +122,7 @@ src/
   render/         R3F: instanced billboard sprites (GIF → spritesheet, shader-animated), reef environment,
                   health bars, balls + FX, camera rig + desktop input
   ui/             screens (trainer, menu, levels, brief, complete, collection, settings), HUD, touch controls
-  audio/          procedural WebAudio soundscape (drone, current, bubbles, whale calls, predator tension, SFX)
+  audio/          procedural WebAudio soundscape (drone, current, bubbles, whale calls, SFX)
 ```
 
 Key design rules: AI decisions are throttled (10 / 4 / 1.5 Hz by distance), movement interpolates every frame,
