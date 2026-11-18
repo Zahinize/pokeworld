@@ -820,6 +820,15 @@ trainer within 50 m — is gone. It surfaced as "a weird sound that starts playi
 boss on L4: Basculegion is the only boss with `predator` behaviour, so it was the only boss that kept the drone
 running for a whole fight. Hunts still announce themselves through the `hunt` toast and the one-shot alarm.
 
+### Boss battle music (USER RULING 2026-11-19)
+"Gym Leader Rush" (`src/audio/bossThemes.ts`, an original 16-bar chiptune loop in E minor at 172 BPM, written in the
+style of the Kanto/Johto Gym Leader battle cue) plays for EVERY L3/L4 boss fight: `Audio.startBossMusic()` on the
+accepted challenge (`startBossBattle`), the reef ambience ducks to 0.3 under it, the pause menu mutes it in place,
+and it fades out when the wave is down, on defeat, on level complete and on leaving the reef. The engine
+(`src/audio/BossMusic.ts`) is a bar-looped WebAudio sequencer with synth instruments and drums — no audio assets.
+The other three candidates (Abyssal Legend, Champion's Tide, Showdown) stay on the dev listening page
+`/dev/music-preview.html` for later picks.
+
 ## 10. HUD additions
 
 - **Party bar** (bottom-left, above the hint area): 2 active portraits with circular HP + two move buttons

@@ -5,7 +5,14 @@
  * trainer was removed from gameplay outright.
  * Silence is valued: the ambience is sparse and the SFX are short.
  */
+import { BossMusicPlayer } from './BossMusic';
+import { bossTheme } from './bossThemes';
+
 export interface WhaleSource { id: number; x: number; y: number; z: number; size: number }
+
+/** Boss music level on the master bus, and how far the reef ambience ducks under it. */
+const MUSIC_LEVEL = 0.55;
+const AMBIENCE_DUCK = 0.3;
 
 class AudioManagerImpl {
   private ctx: AudioContext | null = null;
@@ -22,6 +29,8 @@ class AudioManagerImpl {
   private listenerPos = { x: 0, y: 0, z: 0 };
   private ambienceRunning = false;
   private ambNodes: AudioNode[] = [];
+  private music: BossMusicPlayer | null = null;
+  private musicPaused = false;
 
   /** Must be called from a user gesture. Safe to call repeatedly. */
   init() {
@@ -88,12 +97,33 @@ class AudioManagerImpl {
   }
 
   stopAmbience() {
+    this.stopBossMusic(0.8);
     if (!this.ctx || !this.ambienceRunning) return;
     this.ambGain!.gain.setTargetAtTime(0, this.ctx.currentTime, 0.6);
     const nodes = this.ambNodes; this.ambNodes = [];
     setTimeout(() => { for (const n of nodes) { try { (n as any).stop?.(); } catch { /* */ } n.disconnect(); } }, 2500);
     this.ambienceRunning = false;
   }
+
+  // ------------------------------------------------------------------ Boss music
+
+  /** USER RULING 2026-11-19: "Gym Leader Rush" plays for EVERY L3/L4 boss fight — from the accepted challenge until the
+   *  wave is down, the run is lost or the reef is left. The ambience ducks under it; SFX ride on top. */
+  startBossMusic(themeId = 'gym-rush') {
+    if (!this.ctx || !this.master) return;
+    if (!this.music) this.music = new BossMusicPlayer(this.ctx, this.master);
+    this.music.setVolume(this.musicPaused ? 0 : MUSIC_LEVEL);
+    this.music.play(bossTheme(themeId), 0.8);
+    this.ambGain?.gain.setTargetAtTime(AMBIENCE_DUCK, this.ctx.currentTime, 1.0);
+  }
+  stopBossMusic(fade = 1.5) {
+    if (!this.music?.playing) return;
+    this.music.stop(fade);
+    if (this.ctx && this.ambienceRunning) this.ambGain?.gain.setTargetAtTime(1, this.ctx.currentTime, 1.5);
+  }
+  /** The pause menu mutes the music (the score keeps its place) and the resume brings it back. */
+  setMusicPaused(p: boolean) { this.musicPaused = p; this.music?.setVolume(p ? 0 : MUSIC_LEVEL); }
+  get bossMusicPlaying() { return !!this.music?.playing; }
 
   /** Per-frame-ish (call at ~10 Hz). */
   update(dt: number, listener: { x: number; y: number; z: number; speed: number }, whales: WhaleSource[], nightness: number, time: number) {

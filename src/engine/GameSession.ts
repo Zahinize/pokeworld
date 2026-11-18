@@ -346,8 +346,8 @@ export class GameSession {
     this.persistRun();
     this.emit();
   }
-  pause() { if (this.phase === 'playing') { this.phase = 'paused'; this.clearSlingAim(); useStore.getState().setPaused(true); this.emit(); } }
-  resume() { if (this.phase === 'paused') { this.phase = 'playing'; useStore.getState().setPaused(false); this.emit(); } }
+  pause() { if (this.phase === 'playing') { this.phase = 'paused'; this.clearSlingAim(); Audio.setMusicPaused(true); useStore.getState().setPaused(true); this.emit(); } }
+  resume() { if (this.phase === 'paused') { this.phase = 'playing'; Audio.setMusicPaused(false); useStore.getState().setPaused(false); this.emit(); } }
   end() {
     disposeSheetsExcept(new Set());   // leaving the reef: give back every sheet
     this.sheets.clear();
@@ -1069,6 +1069,7 @@ export class GameSession {
       this.bossIds = [];
       eco.bossCurrent = 0;
       this.bossWave++;
+      Audio.stopBossMusic(2);
       useStore.getState().setHud({ bossBar: null });
     } else {
       // strongest living boss on the bar
@@ -1131,6 +1132,7 @@ export class GameSession {
     const store = useStore.getState();
     store.setHud({ bossIntro: null });
     this.resume();
+    Audio.startBossMusic(); // USER RULING 2026-11-19: Gym Leader Rush for every L3/L4 boss fight
     this.emit();
   }
 
@@ -1140,6 +1142,7 @@ export class GameSession {
     this.phase = 'defeated';
     this.recoveringT = 0; this.calmT = 0;
     releasePointer();
+    Audio.stopBossMusic(1.2);
     Audio.escape(); Audio.ko();
     const store = useStore.getState();
     store.setHud({ bossBar: null });
@@ -2278,6 +2281,7 @@ export class GameSession {
     const store = useStore.getState();
     this.phase = 'complete';
     releasePointer();
+    Audio.stopBossMusic(2);
     Audio.levelComplete();
     const roster = this.companionsEnabled
       ? this.party.map((t) => ({ speciesId: t, ...( this.battleStats.get(t) ?? { dealt: 0, taken: 0, kills: 0, assists: 0 }) }))
