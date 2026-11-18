@@ -415,7 +415,8 @@ Pokémon swims `SPEED` 1.2× faster (predators: on top of the elite 1.2×), its 
 = 2× (`Entity.cdRate`), and the frame it turns on the trainer or a companion (`approach`/`circle`/`rush`/`duel`
 with the trainer or a partner as target, or `retaliate` against them) it gets a `CHASE_SECONDS` 5 s surge at
 `CHASE_SPEED` 1.5× (`Entity.boostT`, folded into `spdMul` every frame) with the ferry's bubble stream boiling off
-it (`wakeT` held at 0.7 while the burst runs). They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
+it (`wakeT` held at 0.7 while the burst runs) and its sprite tipped ~17° nose-forward (`PokemonLayer` `surgeTilt`,
+0.3 rad eased through the existing tilt lerp). They run the team down; the team must fight them. **The team is the prey** (companion levels): a companion is weighed, chased
 and persisted on exactly like the trainer (`ctx.partners`, `huntingTeam` in `predatorThink`); the posse
 grows by `TEAM_EXTRA_PER_COMPANION` 1 per living companion and each conscript goes to the least-hunted
 member of the team; raid dives aimed at the trainer land on a random team member (`SkyLife.teamSpots`) and a

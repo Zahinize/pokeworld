@@ -418,9 +418,12 @@ export function PokemonLayer() {
       // they've actually REACHED the bottom (no mid-water somersaults during the descent);
       // passive drifters stay level — their happy surface swirl is the tell
       const atBottom = e.state === 'feed' && e.y - floorY(e.x, e.z) < GAME.FEED_TILT_FLOOR_DIST + e.species.size * 0.5;
-      const tiltTarget = atBottom && e.species.primary !== 'passive'
+      // chase burst (L3/L4 hunters): nose tipped forward into the surge, eased in over the first half second
+      // and eased out as the burst fades, so it reads as lunging at the trainer rather than snapping
+      const surgeTilt = e.boostT > 0 ? f * 0.3 * Math.min(1, e.boostT / 0.5) : 0;
+      const tiltTarget = (atBottom && e.species.primary !== 'passive'
         ? f * (0.5 + Math.sin(time * 2 + e.phase * 11) * 0.14)
-        : 0;
+        : 0) + surgeTilt;
       const tPrev = tiltMemo.get(e.id) ?? 0;
       const tNow = tPrev + (tiltTarget - tPrev) * 0.06;
       tiltMemo.set(e.id, tNow);
