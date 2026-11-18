@@ -69,14 +69,19 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
   const capShinies = (list: string[]) => { let n = 0; return list.filter((t) => !isShinyToken(t) || ++n <= COMBAT.PARTY_SHINY_MAX); };
   const [party, setParty] = useState<string[]>(() => (level.companions ? capShinies(savedParty.filter((t) => (collection[t]?.caught ?? 0) > 0)).slice(0, COMBAT.PARTY_SIZE) : []));
   const partyShinies = shinyCount(party);
+  // the red "limit reached" note shows only when a FOURTH shiny is actually picked; it clears on the next party
+  // change or after a few seconds
+  const [shinyBlocked, setShinyBlocked] = useState(false);
+  useEffect(() => { if (!shinyBlocked) return; const id = setTimeout(() => setShinyBlocked(false), 4000); return () => clearTimeout(id); }, [shinyBlocked]);
   const toggleParty = (t: string) => {
     Audio.uiClick();
     setParty((prev) => {
-      if (prev.includes(t)) return prev.filter((x) => x !== t);
+      if (prev.includes(t)) { setShinyBlocked(false); return prev.filter((x) => x !== t); }
       if (prev.length >= COMBAT.PARTY_SIZE) return prev;
       // only one Boss Pokémon may be fielded at a time — picking a new one replaces the old
       const next = isBossToken(t) ? prev.filter((x) => !isBossToken(x)) : prev;
-      if (isShinyToken(t) && shinyCount(next) >= COMBAT.PARTY_SHINY_MAX) return prev; // the shiny cap holds
+      if (isShinyToken(t) && shinyCount(next) >= COMBAT.PARTY_SHINY_MAX) { setShinyBlocked(true); return prev; } // the shiny cap holds
+      setShinyBlocked(false);
       return [...next, t];
     });
   };
@@ -175,8 +180,8 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                   </div>
                 </div>
                 {partyShinies > 0 && (
-                  <p className={`shiny-note ${partyShinies >= COMBAT.PARTY_SHINY_MAX ? 'limit' : ''}`} role="status">
-                    <Ic icon={Shiny} size={12} color="currentColor" /> {partyShinies >= COMBAT.PARTY_SHINY_MAX
+                  <p className={`shiny-note ${shinyBlocked ? 'limit' : ''}`} role="status">
+                    <Ic icon={Shiny} size={12} color="currentColor" /> {shinyBlocked
                       ? `Shiny limit reached — ${partyShinies} of ${COMBAT.PARTY_SHINY_MAX}. Drop one to pick another shiny.`
                       : `Shiny limit: up to ${COMBAT.PARTY_SHINY_MAX} shiny Pokémon per party, a shiny Boss Pokémon included (${partyShinies} of ${COMBAT.PARTY_SHINY_MAX}).`}
                   </p>
