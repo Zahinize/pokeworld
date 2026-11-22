@@ -950,7 +950,10 @@ for (const levelId of [1, 2]) {
   else fail(`L3: hunter/elite boost wrong (pred ${okPred}, shiny ${okShiny}, mission ${okMission}, others ${okOthers})`);
   const gen1 = generateEcosystem(getLevel(1), 5);
   const eco1 = new Ecosystem(gen1, hp);
-  if (eco1.alive.every((e) => e.spdMul === 1 && !e.hunter && e.cdRate === 1)) ok('L1: no elite predators or hunters on a solo level'); else fail('L1: elite/hunter boost leaked into a solo level');
+  if (eco1.alive.every((e) => !e.hunter && e.cdRate === 1 && Math.abs(e.spdMul - (e.behavior === 'predator' ? CC.WILD_PACE.predator[1] : e.behavior === 'curious' ? CC.WILD_PACE.curious[1] : 1)) < 1e-9)) ok(`L1: no elite predators or hunters on a solo level; the reef's pace is predators ×${CC.WILD_PACE.predator[1]}, curious ×${CC.WILD_PACE.curious[1]}, everyone else ×1`); else fail('L1: elite/hunter boost leaked into a solo level, or the wild pace is off');
+  const eco2 = new Ecosystem(generateEcosystem(getLevel(2), 5), hp);
+  const paced = (eco: Ecosystem, g: 'predator' | 'curious', lvl: number) => eco.alive.filter((e) => e.behavior === g && e.role !== 'partner').every((e) => Math.abs(e.spdMul - (CC.WILD_PACE[g][lvl] ?? 1)) < 1e-9);
+  if (paced(eco2, 'predator', 2) && paced(eco2, 'curious', 2) && eco.alive.filter((e) => e.behavior === 'curious' && !e.hunter).every((e) => e.spdMul === 1)) ok(`L2: predators ×${CC.WILD_PACE.predator[2]}, curious ×${CC.WILD_PACE.curious[2]}; L3 curious keep ×1 (no pace dial there)`); else fail('L2/L3: wild pace wrong');
   // the chase burst: a mission Pokémon turned on the trainer surges for CHASE_SECONDS at CHASE_SPEED× with bubbles
   {
     const m0 = mission.find((e) => e.state !== 'ko');

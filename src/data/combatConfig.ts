@@ -121,6 +121,9 @@ export const COMBAT = {
    *  ELITE_PREDATORS for the predators), move cooldowns × COOLDOWN, and the moment it goes for the trainer or a
    *  companion it gets a CHASE_SECONDS burst at CHASE_SPEED× with a bubble stream boiling off it. */
   HUNTERS: { SPEED: 1.2, COOLDOWN: 0.5, CHASE_SPEED: 1.5, CHASE_SECONDS: 5 },
+  /** Solo levels felt slow (USER RULING 2026-11-22): wild predators and curious explorers swim this much faster per
+   *  level (cruise and burst alike, on top of a shiny lead's or an elite's own multipliers). Levels not listed = ×1. */
+  WILD_PACE: { predator: { 1: 1.5, 2: 1.5 }, curious: { 1: 1.3, 2: 1.3 } } as Record<'predator' | 'curious', Record<number, number>>,
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,

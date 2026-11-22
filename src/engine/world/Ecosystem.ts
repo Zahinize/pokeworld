@@ -89,6 +89,7 @@ export class Ecosystem {
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
     this.elitePredators = gen.elitePredators;
+    this.levelId = gen.levelId;
     this.missionMinStage = gen.objectives.find((o) => o.kind === 'stageCatch')?.minStage ?? null;
     if (gen.chest) this.chest = { x: gen.chest.x, y: gen.chest.y, z: gen.chest.z, guardIds: [] };
     this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
@@ -223,6 +224,8 @@ export class Ecosystem {
       const H = COMBAT.HUNTERS;
       e.hunter = true; e.spdBase *= H.SPEED; e.cdRate = 1 / H.COOLDOWN;
     }
+    // the level's own pace for the reef's hunters and explorers (COMBAT.WILD_PACE: L1/L2 predators ×1.5, curious ×1.3)
+    if (sp.role !== 'partner' && !sp.boss && (behavior === 'predator' || behavior === 'curious')) e.spdBase *= COMBAT.WILD_PACE[behavior][this.levelId] ?? 1;
     e.spdMul = e.spdBase;
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
@@ -1188,6 +1191,8 @@ export class Ecosystem {
   bossesActive = true;
   /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (see spawn). */
   elitePredators = false;
+  /** The level being played (COMBAT.WILD_PACE is keyed by it). */
+  levelId = 0;
   /** The level's stage-catch objective, if any: every wild at or above this stage is a mission Pokémon (a hunter on L3/L4). */
   missionMinStage: number | null = null;
 
