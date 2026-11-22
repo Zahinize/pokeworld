@@ -1,7 +1,10 @@
 /**
  * Attract mode (the living menu background): the real reef engine runs a slow cinematic
  * loop behind the home screens — schools, feeding, guardians, the surface and the sky —
- * selling the game the way a trailer would, except it's live.
+ * selling the game the way a trailer would, except it's live. The reef is PEACEFUL towards the camera
+ * (Ecosystem.peaceful / SkyLife.peaceful, USER RULING 2026-11-22): predators hunt fish and guardians
+ * stand off, but nothing turns on the trainer when they drift close — the menu must not read as a game
+ * that only bites.
  */
 import type { LevelConfig } from './levels/types';
 import { LEVEL_1 } from './levels/level1';

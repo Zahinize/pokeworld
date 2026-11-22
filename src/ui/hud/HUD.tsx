@@ -419,7 +419,7 @@ function TargetPointer() {
   const [, force] = useState(0);
   useEffect(() => { const id = setInterval(() => force((n) => n + 1), 100); return () => clearInterval(id); }, []);
   const dwelling = !!chest && chest.state === 'unlocked' && chest.dwell01 > 0;
-  if (!t && !berry && !chest?.nearest && !dwelling) return null;
+  if (!t && !berry && !chest?.nearest && !chest?.drop && !dwelling) return null;
   let target: React.ReactNode = null;
   if (t) {
     const h = headingOf(t.dx, t.dz);
@@ -452,6 +452,17 @@ function TargetPointer() {
       <>
         {!inView && <div className="chest-ring"><div className="chest-arrow" style={{ transform: `rotate(${h.deg}deg)` }}><i /></div></div>}
         <div className="chest-label"><img src={chest.state === 'unlocked' ? CHEST_ICONS.closed : CHEST_ICONS.open} alt="" />{chest.state === 'unlocked' ? 'Treasure chest' : 'Open chest'} · {Math.round(n.distance)} m</div>
+      </>
+    );
+  } else if (chest?.drop) {
+    // the stray reef drop: a chest item lying on the sand, pointed at like a berry but in the chest's gold
+    const n = chest.drop;
+    const h = headingOf(n.dx, n.dz);
+    const inView = h.ahead > 0.94 && n.distance < 40;
+    loot = (
+      <>
+        {!inView && <div className="chest-ring"><div className="chest-arrow" style={{ transform: `rotate(${h.deg}deg)` }}><i /></div></div>}
+        <div className="chest-label"><img src={LOOT[n.id].icon} alt="" />{LOOT[n.id].name} · {Math.round(n.distance)} m</div>
       </>
     );
   }

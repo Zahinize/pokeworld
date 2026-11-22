@@ -7,7 +7,7 @@
  * near the chest swarms the trainer who comes close (until the chest is looted).
  *
  * Opening an unlocked chest: stay on top of it for DWELL_SECONDS (progress drains slowly when you drift
- * off), or land MASTER_HITS Master Balls on it. It then yields LOOT_PER_CHEST distinct items out of four:
+ * off), or land MASTER_HITS Master Balls on it. It then yields LOOT_PER_CHEST[0]–[1] distinct items out of four:
  *   ballGun  — a Poké Ball launcher with its own magazine; 2× speed (≈ 2× range) and 2× hit radius
  *   laserGun — ROUNDS hitscan shots; a stage-0 wild is CAUGHT in 1 shot, stage-1 in 2, stage-2 in 3
  *   timer    — TIMER_USES charges, each cutting TIMER_CUT seconds off a Poké Ball restock; charges stack
@@ -61,7 +61,8 @@ export const CHEST = {
   /** Gold pointer to an unlocked chest within this range. */
   POINTER_RANGE: 60,
   GUARDIANS: ['blastoise', 'feraligatr'] as readonly string[],
-  LOOT_PER_CHEST: 2,
+  /** Distinct items per chest: a random count in this range (USER RULING 2026-11-22: 2–4, was always 2). */
+  LOOT_PER_CHEST: [2, 4] as readonly [number, number],
   LASER: { ROUNDS: 15, RANGE: 45, HIT_PAD: 0.4, SHOTS_BY_STAGE: [1, 2, 3] as readonly number[] },
   GUN: { MAG: { pokeball: 10, greatball: 5, ultraball: 4, masterball: 3 } as Record<BallId, number>, SPEED_MUL: 2, HIT_MUL: 2 },
   /** Each Restock Timer holds TIMER_USES charges; a charge takes TIMER_CUT s off a restock (never under TIMER_MIN s). */
@@ -69,6 +70,10 @@ export const CHEST = {
   TIMER_CUT: 30,
   TIMER_MIN: 10,
   HEART_LIVES: 2,
+  /** A stray chest item washes onto the reef on L1/L2 (USER RULING 2026-11-22): one of the four, on CHANCE of dives,
+   *  landing like a berry does (same placement, pickup radius and pointer range) between FIRST_AT and WINDOW seconds
+   *  into the dive. Rolled once per dive — a resume carries the same drop on, landed or still owed. */
+  REEF_DROP: { CHANCE: 0.2, FIRST_AT: 6, WINDOW: 120 },
 } as const;
 
 export type LootId = 'ballGun' | 'laserGun' | 'timer' | 'blueHeart';

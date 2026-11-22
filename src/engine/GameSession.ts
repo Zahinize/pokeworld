@@ -241,6 +241,7 @@ export class GameSession {
     this.chest = new ChestSystem(this.gen.chest ? { x: this.gen.chest.x, y: this.gen.chest.y, z: this.gen.chest.z } : null, new RNG(randomSeed()));
     this.chestHudKey = ''; this.chestToastT = 0; this.chestSwarmToastT = 0;
     if (this.chest.present) { this.chest.setLoot(useStore.getState().save.loot); this.lootKey = JSON.stringify(this.chest.lootSnapshot()); } // the bag is the save's: it outlives hearts, resumes and dives
+    if (!(resume && resume.seed === this.seed)) this.chest.rollReefDrop(); // a fresh dive rolls its stray reef drop (a resume restores it in applyResume)
     this.mission = createMission(levelId, this.seed, this.gen.objectives);
     this.lives = COMBAT.PLAYER_LIVES;
     if (resume && resume.seed === this.seed) this.applyResume(resume);
@@ -318,6 +319,7 @@ export class GameSession {
     this.mission.caught = this.mission.objectives.reduce((n, o) => n + o.caught + (o.guardianCaught ? 1 : 0), 0);
     this.mission.complete = this.mission.caught >= this.mission.total;
     this.lives = Math.max(1, Math.min(COMBAT.PLAYER_LIVES_MAX, run.lives ?? COMBAT.PLAYER_LIVES)); // lost hearts stay lost across a resume (blue hearts too)
+    if (run.lootDrop !== undefined) this.chest.restoreDrop(run.lootDrop); else this.chest.rollReefDrop(); // older saves: roll as a new dive would
     if (run.chestLooted && this.eco.chest) {
       // the chest was emptied before the break: it stays open and bare, its guardians long gone — no farming it
       for (const id of this.eco.chest.guardIds) { const g = this.eco.byId.get(id); if (g) { g.state = 'caught'; g.animT = 10; } }
@@ -426,9 +428,11 @@ export class GameSession {
       this.gen = gen;
       this.eco = new Ecosystem(gen, maxHpOf);
       this.eco.onPlayerDamage = () => {}; // nothing hurts the camera
+      this.eco.peaceful = true; // …and nothing even tries: no proximity hostility, retaliation or chest guard at the camera (USER RULING 2026-11-22)
       this.eco.time = GAME.PREDATOR_GRACE; // the menu reef appears mid-life: no quiet opening
       this.balls = new BallSystem();
       this.sky = new SkyLife(this.seed ^ 0x51ab1e, (sid) => combatStatsOf(sid).maxHp);
+      this.sky.peaceful = true; // flocks dive for fish, never at the camera
       this.timeOfDay = DEMO.TIME_OF_DAY;
       this.lighting = lightingAt(this.timeOfDay, this.lighting);
       this.demoPath = buildDemoPath(gen);
@@ -800,6 +804,17 @@ export class GameSession {
           Audio.uiClick();
           this.toast('chest', { kind: 'info', title: `${LOOT[ev.weapon as LootId].name} is empty`, body: 'Back to throwing by hand.', icon: LOOT[ev.weapon as LootId].icon, ttl: 3 });
           break;
+        // the stray reef drop (CHEST.REEF_DROP): announced and picked up like a berry, stacked into the bag like chest loot
+        case 'drop':
+          this.toast('chest', { kind: 'event', title: `A ${LOOT[ev.id].name} washed onto the reef`, body: 'Search the sea floor — a gold pointer picks it up within 50 m.', icon: LOOT[ev.id].icon, ttl: 5 });
+          this.persistRun();
+          break;
+        case 'dropPickup':
+          Audio.lootPickup();
+          this.pushFx('lure', ev.x, ev.y + 0.3, ev.z, 0.9, LOOT[ev.id].color);
+          this.toast('chest', { kind: 'catch', title: `${LOOT[ev.id].name} acquired`, body: `${how(ev.id)} · ${LOOT[ev.id].blurb}`, icon: LOOT[ev.id].icon, ttl: 7 });
+          this.persistRun();
+          break;
       }
     }
   }
@@ -811,6 +826,7 @@ export class GameSession {
     const snap = this.chest.hudSnapshot(this.player, this.eco.chestGuardiansAlive());
     if (!snap) return;
     if (snap.nearest) snap.nearest = { distance: Math.round(snap.nearest.distance * 2) / 2, dx: Math.round(snap.nearest.dx * 10) / 10, dz: Math.round(snap.nearest.dz * 10) / 10 };
+    if (snap.drop) snap.drop = { id: snap.drop.id, distance: Math.round(snap.drop.distance * 2) / 2, dx: Math.round(snap.drop.dx * 10) / 10, dz: Math.round(snap.drop.dz * 10) / 10 };
     snap.dwell01 = Math.round(snap.dwell01 * 50) / 50;
     const key = JSON.stringify(snap);
     if (key === this.chestHudKey) return;
@@ -1490,7 +1506,7 @@ export class GameSession {
     this.handleSkyEvents();
     if (!this.arena) { this.berries.update(dt, p, eco, this.activePartnerEntities()); this.handleBerryEvents(); }
     if (!this.arena && this.chest.present) {
-      this.chest.update(dt, p, eco.chestGuardiansAlive());
+      this.chest.update(dt, p, eco.chestGuardiansAlive(), eco);
       eco.chestMode = this.chest.state === 'looted' ? 'off' : eco.chestGuardiansAlive() > 0 ? 'guard' : 'swarm';
       this.handleChestEvents();
     }
@@ -2302,6 +2318,7 @@ export class GameSession {
       objectives: this.mission.objectives.map((o) => ({ id: o.id, caught: o.caught, guardianCaught: o.guardianCaught })),
       caught: this.mission.caught, total: this.mission.total, lives: this.lives,
       chestLooted: this.chest.state === 'looted',
+      lootDrop: this.chest.dropSnapshot(),
       berries: this.recoveringT > 0 ? null : this.berries.snapshot(), // mid-recovery the next heart rolls fresh anyway
     });
   }

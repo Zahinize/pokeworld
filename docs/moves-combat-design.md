@@ -627,7 +627,7 @@ No chest in L3/L4.
 Opening plays the lid animation (`ChestLayer`, 0.8 s, hinged at the back) with a sparkle burst, a gold
 pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everything at once**.
 
-### Loot (random **two of four**, keys **G H J K**, loot bar above the berry bar)
+### Loot (random **two to four of four** — USER RULING 2026-11-22, was always two — keys **G H J K**, loot bar above the berry bar)
 | Key | Item | Effect |
 |---|---|---|
 | G | **Ball Launcher** | Its own magazine 10 Poké · 5 Great · 4 Ultra · 3 Master. Fires at **2× speed** (≈ 2× range under the exponential drag) with a **2× hit radius**. Never touches the bag, never starts the restock. Auto/pinned ball choice reads the magazine while equipped. |
@@ -655,6 +655,22 @@ pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everyth
 
 ---
 
+
+### The stray reef drop (USER RULING 2026-11-22)
+On one dive in five (`CHEST.REEF_DROP.CHANCE` 0.2, rolled once per dive, resumed as-is via `CurrentRun.lootDrop`) one
+random chest item washes onto the sand 6–120 s into the dive exactly as a berry does: same placement (`placeOnSand`,
+shared with the berries), same 2.2 m pickup radius and 50 m pointer range, drawn by `BerryLayer` with the shiny glow
+pulse in the chest's gold, a gold HUD pointer (the open chest's own pointer wins while both show), a `chest`-channel
+"X washed onto the reef" toast on landing and "X acquired" on pickup, and the item stacks into the persisted bag like
+chest loot. L1/L2 only (the chest levels).
+
+### Attract mode is peaceful · fewer bubbles on touch (USER RULINGS 2026-11-22)
+The homepage reef (`startDemo`) sets `Ecosystem.peaceful` and `SkyLife.peaceful`: no proximity hostility, no
+retaliation at the camera, no chest guard or swarm, no dives at the camera — predators still hunt fish and
+guardians still stand off, so the reef stays alive without looking hostile (measured: 0 retaliations / hits /
+dives at the camera in 120 s, against 36 / 46 / 27 with the flag off). Phones and tablets draw a third of the
+bubble particles (`Scene.tsx`, 0.07 × the quality's particle budget vs 0.22 on desktop): the full cloud hid the
+reef and the sky there.
 
 ## 9. Companions, duels, and the L3/L4 boss arc
 

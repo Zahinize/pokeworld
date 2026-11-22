@@ -73,6 +73,26 @@ export interface BerryHudSnapshot {
 
 const SPD_CAP = 1.8;
 
+/** A spot on the sand near the trainer, clear of rocks and inside the reef rim — where berries (and the chest's stray
+ *  reef drop) wash in. */
+export function placeOnSand(rng: RNG, player: { x: number; z: number }, obstacles: Obstacle[]): { x: number; y: number; z: number } {
+  const P = BERRY_RULES.PLACE;
+  let best = { x: player.x, z: player.z };
+  for (let t = 0; t < P.TRIES; t++) {
+    const a = rng.next() * Math.PI * 2, r = rng.range(P.MIN_FROM_PLAYER, P.MAX_FROM_PLAYER);
+    const x = player.x + Math.cos(a) * r, z = player.z + Math.sin(a) * r;
+    if (Math.hypot(x, z) > P.MAX_WORLD_R) continue;
+    best = { x, z };
+    let clear = true;
+    for (const o of obstacles) { if (Math.hypot(x - o.x, z - o.z) < o.r + P.OBSTACLE_PAD) { clear = false; break; } }
+    if (clear) break;
+  }
+  // last resort (every try fell outside the reef): pull the point back inside the rim
+  const d = Math.hypot(best.x, best.z);
+  if (d > P.MAX_WORLD_R) { const f = P.MAX_WORLD_R / d; best = { x: best.x * f, z: best.z * f }; }
+  return { x: best.x, y: floorY(best.x, best.z) + BERRY_RULES.FLOOR_LIFT, z: best.z };
+}
+
 export class BerrySystem {
   readonly set: readonly BerryId[];
   floor: FloorBerry[] = [];
@@ -178,25 +198,10 @@ export class BerrySystem {
     }
   }
 
-  private placeOnFloor(player: { x: number; z: number }, obstacles: Obstacle[]): { x: number; y: number; z: number } {
-    const P = BERRY_RULES.PLACE;
-    let best = { x: player.x, z: player.z };
-    for (let t = 0; t < P.TRIES; t++) {
-      const a = this.rng.next() * Math.PI * 2, r = this.rng.range(P.MIN_FROM_PLAYER, P.MAX_FROM_PLAYER);
-      const x = player.x + Math.cos(a) * r, z = player.z + Math.sin(a) * r;
-      if (Math.hypot(x, z) > P.MAX_WORLD_R) continue;
-      best = { x, z };
-      let clear = true;
-      for (const o of obstacles) { if (Math.hypot(x - o.x, z - o.z) < o.r + P.OBSTACLE_PAD) { clear = false; break; } }
-      if (clear) break;
-    }
-    // last resort (every try fell outside the reef): pull the point back inside the rim
-    const d = Math.hypot(best.x, best.z);
-    if (d > P.MAX_WORLD_R) { const f = P.MAX_WORLD_R / d; best = { x: best.x * f, z: best.z * f }; }
-    return { x: best.x, y: floorY(best.x, best.z) + BERRY_RULES.FLOOR_LIFT, z: best.z };
-  }
+  private placeOnFloor(player: { x: number; z: number }, obstacles: Obstacle[]): { x: number; y: number; z: number } { return placeOnSand(this.rng, player, obstacles); }
 
   // ------------------------------------------------------------------ Eating
+
 
   /** Eat the berry in hotbar `slot`. False (with a `blocked` event) when there is none or no one to feed. */
   use(slot: number, ctx: BerryUseContext): boolean {

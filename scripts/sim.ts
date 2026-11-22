@@ -1286,7 +1286,7 @@ for (const levelId of [1, 2]) {
     // auto-collect
     run(a, 0.1, true);
     const looted = a.drainEvents().find((e) => e.type === 'looted') as any;
-    if (a.state === 'looted' && looted && looted.loot.length === CHEST.LOOT_PER_CHEST) ok(`chest: reaching the open chest collects ${looted.loot.join(' + ')}`); else fail(`chest: collect — ${a.state}`);
+    if (a.state === 'looted' && looted && looted.loot.length >= CHEST.LOOT_PER_CHEST[0] && looted.loot.length <= CHEST.LOOT_PER_CHEST[1]) ok(`chest: reaching the open chest collects ${looted.loot.join(' + ')}`); else fail(`chest: collect — ${a.state}`);
     // master balls
     const m = mk();
     const locked = new ChestSystem({ ...pos }, new RNG(1)); locked.onChestHit('masterball');
@@ -1312,8 +1312,54 @@ for (const levelId of [1, 2]) {
     // loot rolls
     const seen = new Map<string, number>(); let badRoll = 0;
     const roller = new ChestSystem({ ...pos }, new RNG(99));
-    for (let i = 0; i < 200; i++) { const l = roller.rollLoot(); if (l.length !== CHEST.LOOT_PER_CHEST || new Set(l).size !== l.length) badRoll++; for (const id of l) seen.set(id, (seen.get(id) ?? 0) + 1); }
-    if (badRoll === 0 && LOOT_ORDER.every((id) => (seen.get(id) ?? 0) > 20)) ok(`chest: 200 rolls → always ${CHEST.LOOT_PER_CHEST} distinct items (${LOOT_ORDER.map((id) => `${id} ${seen.get(id)}`).join(', ')})`); else fail(`chest: loot rolls (bad ${badRoll}, ${JSON.stringify([...seen])})`);
+    const counts = new Map<number, number>();
+    for (let i = 0; i < 200; i++) { const l = roller.rollLoot(); if (l.length < CHEST.LOOT_PER_CHEST[0] || l.length > CHEST.LOOT_PER_CHEST[1] || new Set(l).size !== l.length) badRoll++; counts.set(l.length, (counts.get(l.length) ?? 0) + 1); for (const id of l) seen.set(id, (seen.get(id) ?? 0) + 1); }
+    const sizesSeen = [2, 3, 4].every((n) => (counts.get(n) ?? 0) > 20);
+    if (badRoll === 0 && sizesSeen && LOOT_ORDER.every((id) => (seen.get(id) ?? 0) > 20)) ok(`chest: 200 rolls → ${CHEST.LOOT_PER_CHEST[0]}–${CHEST.LOOT_PER_CHEST[1]} distinct items (sizes ${[2, 3, 4].map((n) => `${n}:${counts.get(n)}`).join(' ')}; ${LOOT_ORDER.map((id) => `${id} ${seen.get(id)}`).join(', ')})`); else fail(`chest: loot rolls (bad ${badRoll}, sizes ${JSON.stringify([...counts])}, ${JSON.stringify([...seen])})`);
+  }
+
+  // 7b. the stray reef drop: one dive in five, lands like a berry inside the window, picked up into the bag, resumable
+  {
+    const pos = { x: 0, y: -20, z: 0 };
+    let dives = 0, withDrop = 0, inWindow = 0;
+    const ids = new Map<string, number>();
+    for (let seed = 1; seed <= 600; seed++) {
+      const cs = new ChestSystem({ ...pos }, new RNG(seed * 7919));
+      cs.rollReefDrop(); dives++;
+      if (cs.drop) { withDrop++; ids.set(cs.drop.id, (ids.get(cs.drop.id) ?? 0) + 1); if (cs.drop.in >= CHEST.REEF_DROP.FIRST_AT && cs.drop.in <= CHEST.REEF_DROP.WINDOW) inWindow++; }
+    }
+    const rate = withDrop / dives;
+    if (rate > 0.15 && rate < 0.25 && inWindow === withDrop && LOOT_ORDER.every((id) => (ids.get(id) ?? 0) > 10)) ok(`reef drop: ${(rate * 100).toFixed(1)}% of ${dives} dives owe one item, all due ${CHEST.REEF_DROP.FIRST_AT}–${CHEST.REEF_DROP.WINDOW} s in (${LOOT_ORDER.map((id) => `${id} ${ids.get(id)}`).join(', ')})`);
+    else fail(`reef drop: rate ${(rate * 100).toFixed(1)}%, in window ${inWindow}/${withDrop}, ${JSON.stringify([...ids])}`);
+    // land it, point at it, pick it up
+    const cs = new ChestSystem({ ...pos }, new RNG(11));
+    cs.drop = { id: 'blueHeart', in: 1, floor: null };
+    const far = mkP(60, -20, 60);
+    for (let i = 0; i < 70; i++) cs.update(1 / 60, far, 2, { obstacles: [] });
+    const landed = cs.drainEvents().find((e) => e.type === 'drop') as any;
+    const f = cs.drop?.floor;
+    const dist = f ? Math.hypot(f.x - far.x, f.z - far.z) : -1;
+    const snap = cs.dropSnapshot();
+    if (landed && f && dist >= BERRY_RULES.PLACE.MIN_FROM_PLAYER - 0.01 && dist <= BERRY_RULES.PLACE.MAX_FROM_PLAYER + 0.01 && snap?.floor) ok(`reef drop: lands ${dist.toFixed(1)} m from the trainer after its timer (snapshot keeps the spot)`);
+    else fail(`reef drop: landing (${JSON.stringify(landed)}, dist ${dist.toFixed(1)}, snap ${JSON.stringify(snap)})`);
+    const nearP = { x: f!.x + 6, y: f!.y, z: f!.z + 8 }; // 10 m off: inside the 50 m pointer range (the landing spot above is not)
+    const hud = cs.hudSnapshot(nearP, 2), hudFar = cs.hudSnapshot({ x: f!.x + 60, y: f!.y, z: f!.z }, 2);
+    if (hud?.drop && hud.drop.id === 'blueHeart' && Math.abs(hud.drop.distance - 10) < 0.01 && hudFar?.drop === null) ok(`reef drop: the HUD points at it inside ${BERRY_RULES.POINTER_RANGE} m, not beyond`); else fail(`reef drop: hud ${JSON.stringify(hud?.drop)} / far ${JSON.stringify(hudFar?.drop)}`);
+    // a resume restores it where it lay; the trainer swims onto it
+    const cs2 = new ChestSystem({ ...pos }, new RNG(12));
+    cs2.restoreDrop(snap);
+    const on = mkP(f!.x, f!.y, f!.z);
+    cs2.update(1 / 60, on, 2, { obstacles: [] });
+    const picked = cs2.drainEvents().find((e) => e.type === 'dropPickup') as any;
+    if (picked?.id === 'blueHeart' && cs2.loot.blueHeart === 1 && cs2.drop === null && cs2.dropSnapshot() === null) ok('reef drop: restored from the snapshot and picked up into the bag (+1 Blue Heart, drop gone)');
+    else fail(`reef drop: pickup (${JSON.stringify(picked)}, bag ${JSON.stringify(cs2.loot)}, drop ${JSON.stringify(cs2.drop)})`);
+    // an owed drop resumes with its timer
+    const cs3 = new ChestSystem({ ...pos }, new RNG(13));
+    cs3.restoreDrop({ id: 'timer', in: 30, floor: null });
+    for (let i = 0; i < 60 * 29; i++) cs3.update(1 / 60, far, 2, { obstacles: [] });
+    const early = cs3.drop?.floor;
+    for (let i = 0; i < 60 * 2; i++) cs3.update(1 / 60, far, 2, { obstacles: [] });
+    if (!early && cs3.drop?.floor) ok('reef drop: an owed drop resumes its countdown (lands at 30 s, not before)'); else fail(`reef drop: countdown (early ${!!early}, after ${!!cs3.drop?.floor})`);
   }
 
   // 8. the ball launcher: 2× speed carries ≈ 2× as far; 2× hit radius

@@ -92,7 +92,8 @@ export function Scene() {
         <Kelp count={q.grass} height={2.2} width={0.35} color="#5b8f3c" tip="#b7e06a" tall={false} />
         <LightShafts count={q.shafts} />
         <Particles count={q.particles} />
-        <Particles count={Math.round(q.particles * 0.22)} bubbles />
+        {/* USER RULING 2026-11-22: a third of the bubbles on phones and tablets — the full cloud hid the reef and the sky there */}
+        <Particles count={Math.round(q.particles * (isTouch ? 0.07 : 0.22))} bubbles />
         <Surface />
         <SkyWorld clouds={SKY.CLOUDS[resolveQuality(qualitySetting, isTouch)] ?? 3} />
         <SkyLifeLayer />

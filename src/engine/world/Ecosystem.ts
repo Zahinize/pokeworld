@@ -41,6 +41,10 @@ export class Ecosystem {
   chest: { x: number; y: number; z: number; guardIds: number[] } | null = null;
   /** guard: the guardians answer anyone near the chest · swarm: guardians gone, the reef defends it · off: looted. */
   chestMode: 'guard' | 'swarm' | 'off' = 'guard';
+  /** Attract mode (USER RULING 2026-11-22): nothing on the reef turns on the trainer — no proximity hostility, no
+   *  retaliation, no chest guard or swarm — the menu must not look like a game that only bites. Hunting the trainer is
+   *  already off there (the demo never marks the player huntable). */
+  peaceful = false;
   private chestAcc = 0;
   private swarmAcc = 0;
   hash = new SpatialHash<Entity>(10);
@@ -354,6 +358,7 @@ export class Ecosystem {
     // a boss runs its own AI and nothing else: the generic retaliation used to knock a predator-type boss
     // (Basculegion) out of its charge mid-lunge, so the charge timer never reset and it charged every ~7 s
     if (t.isBoss) return;
+    if (this.peaceful && attackerId === -2) return; // the menu reef never answers the camera
     if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
     if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
     const vsRaider = attackerId <= -1000; // a sky Pokémon under the reef: every hit it lands draws an answer
@@ -843,7 +848,7 @@ export class Ecosystem {
    *  turns on a trainer within SWARM_TRIGGER_R, a staggered ripple every SWARM_PERIOD. off: looted. */
   private chestAggro(dt: number) {
     const c = this.chest;
-    if (!c || this.chestMode === 'off') return;
+    if (!c || this.chestMode === 'off' || this.peaceful) return;
     this.chestAcc += dt;
     if (this.chestAcc < 0.5) return;
     const tick = this.chestAcc; this.chestAcc = 0;

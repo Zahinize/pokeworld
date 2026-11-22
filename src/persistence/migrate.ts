@@ -1,6 +1,7 @@
 import { createNewSave, SAVE_VERSION, type SaveData, DEFAULT_SETTINGS } from './schema';
 import { STARTING_INVENTORY } from '@/data/balls';
 import { BERRY_IDS, type BerryId } from '@/data/berries';
+import { LOOT_ORDER, type LootId } from '@/data/chest';
 
 /**
  * Migrate/repair any parsed save object into the current schema.
@@ -73,7 +74,13 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     lives: clampInt(r.lives, 1, 9, 4),
     chestLooted: !!r.chestLooted,
     berries: sanitizeBerries(r.berries),
+    ...(r.lootDrop !== undefined ? { lootDrop: sanitizeDrop(r.lootDrop) } : null),
   };
+}
+function sanitizeDrop(d: any): NonNullable<SaveData['currentRun']>['lootDrop'] {
+  if (!isObj(d) || !(LOOT_ORDER as readonly string[]).includes(d.id)) return null;
+  const f = d.floor;
+  return { id: d.id as LootId, in: Number.isFinite(d.in) ? Math.max(0, d.in) : 0, floor: isObj(f) && [f.x, f.y, f.z].every((n: unknown) => Number.isFinite(n)) ? { x: f.x, y: f.y, z: f.z } : null };
 }
 function sanitizeBerries(b: any): NonNullable<SaveData['currentRun']>['berries'] {
   if (!isObj(b)) return null;

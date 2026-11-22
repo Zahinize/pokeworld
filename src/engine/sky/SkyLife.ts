@@ -91,6 +91,8 @@ export class SkyLife {
   diveSpots: ((maxDepth: number) => { x: number; z: number }[]) | null = null;
   /** Where the trainer's submerged companions are (companion levels): a dive aimed at the trainer may pick one. */
   teamSpots: (() => { x: number; z: number }[]) | null = null;
+  /** Attract mode: dives never come down on the camera (USER RULING 2026-11-22). */
+  peaceful = false;
   /** Cramorant's fishing grounds: small ambient fish no deeper than `maxDepth` (the bird prefers `prefer`, Arrokuda). */
   fishSpots: ((prefer: string[], maxDepth: number) => { id: number; speciesId: string; x: number; y: number; z: number }[]) | null = null;
   /** Where a fish is right now (null once it is gone), and the bite: true when the reef gave the fish up. */
@@ -254,7 +256,7 @@ export class SkyLife {
           // aggressive: a trainer in range is the dive's target (always, for a shiny flock); otherwise the
           // nearest schooling guardian in range — the raid starts on its school; otherwise the shallows
           let tx: number | null = null, tz = 0;
-          const chance = f.shinyN > 0 ? SKY.SHINY.AT_TRAINER_CHANCE : SKY.DIVE.AT_TRAINER_CHANCE;
+          const chance = this.peaceful ? 0 : f.shinyN > 0 ? SKY.SHINY.AT_TRAINER_CHANCE : SKY.DIVE.AT_TRAINER_CHANCE;
           if (Math.hypot(b.x - px, b.z - pz) < SKY.DIVE.AT_TRAINER_R && this.rng.chance(chance)) {
             // the dive comes down on the TEAM: the trainer, or (companion levels) one of their companions
             const team = this.teamSpots ? this.teamSpots() : [];

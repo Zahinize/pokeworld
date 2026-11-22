@@ -124,7 +124,8 @@ console.log('Treasure chest');
   if (!(COMBAT.PARTY_SHINY_MAX >= 1 && COMBAT.PARTY_SHINY_MAX < COMBAT.PARTY_SIZE)) { bad++; fail('the shiny cap must leave room for a plain Pokémon'); }
   if (!(COMBAT.ELITE_PREDATORS.HP >= 1 && COMBAT.ELITE_PREDATORS.ATK >= 1 && COMBAT.ELITE_PREDATORS.SPEED >= 1)) { bad++; fail('elite predators must not be weaker than plain ones'); }
   if (!(COMBAT.HUNTERS.SPEED >= 1 && COMBAT.HUNTERS.COOLDOWN > 0 && COMBAT.HUNTERS.COOLDOWN <= 1 && COMBAT.HUNTERS.CHASE_SPEED >= 1 && COMBAT.HUNTERS.CHASE_SECONDS > 0)) { bad++; fail('hunter rules inconsistent'); }
-  if (!(CHEST.LOOT_PER_CHEST >= 1 && CHEST.LOOT_PER_CHEST <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
+  if (!(CHEST.REEF_DROP.CHANCE > 0 && CHEST.REEF_DROP.CHANCE <= 1 && CHEST.REEF_DROP.FIRST_AT < CHEST.REEF_DROP.WINDOW)) { bad++; fail('reef drop dials out of range'); }
+  if (!(CHEST.LOOT_PER_CHEST[0] >= 1 && CHEST.LOOT_PER_CHEST[0] <= CHEST.LOOT_PER_CHEST[1] && CHEST.LOOT_PER_CHEST[1] <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
   if (!(CHEST.TIMER_CUT > 0 && CHEST.TIMER_MIN > 0 && CHEST.TIMER_CUT < 60) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }
   if (CHEST.GUARDIANS.length !== 2 || !CHEST.GUARDIANS.every((g) => SPECIES[g]?.stage === 2)) { bad++; fail('the chest needs two fully evolved guardians'); }
   if (!bad) ok(`chest: L${CHEST.LEVELS.join('/L')} · ${CHEST.GUARDIANS.join(' + ')} · ${LOOT_ORDER.length} loot items on ${LOOT_KEYS.join(' ')} · icons present · magazine ${mag} · laser 1/2/3`);
