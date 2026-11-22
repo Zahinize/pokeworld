@@ -668,7 +668,9 @@ chest loot. L1/L2 only (the chest levels).
 L1 and L2 "felt slow": `COMBAT.WILD_PACE` multiplies a wild's speed per level — predators ×1.5, curious explorers
 ×1.3 on L1 and L2 (cruise and burst alike, via `Entity.spdBase`, on top of a shiny lead's own multipliers; nothing on
 L3/L4, where the elite ×1.2 and hunter ×1.2 already apply). A Sharpedo now cruises at 5.3 m/s and rushes at 16 m/s
-against the trainer's 5.5 / 9.5; a Starmie bursts at 9.6 m/s.
+against the trainer's 5.5 / 9.5; a Starmie bursts at 9.6 m/s. Side effect, accepted: faster predators also catch
+more fish — the sim's reef-wide predator move hits on L1 rose from under 220 to ~255 per 5 min, so its budget cap is
+now 300 (schools are reinforced on KO pressure, so the reef stays populated).
 
 ### Attract mode is peaceful · fewer bubbles on touch (USER RULINGS 2026-11-22)
 The homepage reef (`startDemo`) sets `Ecosystem.peaceful` and `SkyLife.peaceful`: no proximity hostility, no

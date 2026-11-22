@@ -57,8 +57,9 @@ for (const levelId of [1, 2]) {
   const msPerStep = msTotal / steps;
   console.log(`Level ${levelId}: casts/5min ${(casts / n).toFixed(1)} · move hits/5min ${(hits / n).toFixed(1)} · KOs ${(kos / n).toFixed(1)} (predators KO'd by wilds: ${(predKos / n).toFixed(1)}) · retaliation-seconds ${(retaliations / n).toFixed(0)} · effects ${(effects / n).toFixed(1)} · playerHits ${(playerHits / n).toFixed(1)} · ${msPerStep.toFixed(3)} ms/step`);
   if (hits / n < 10) fail(`level ${levelId}: predator pressure too low (${(hits / n).toFixed(1)} hits/5min)`);
-  // the hostile reef (doubled predators, shiny leads, fury, raids) lands 100–150 hits/5min by design
-  if (hits / n > 220) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
+  // the hostile reef (doubled predators, shiny leads, fury, raids) lands 100–150 hits/5min by design; the L1/L2 wild pace
+  // (predators ×1.5, USER RULING 2026-11-22) lifted L1 to ~255 — the cap moved 220 → 300 with it, knowingly
+  if (hits / n > 300) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
   if (msPerStep > 0.25) fail(`level ${levelId}: perf budget exceeded (${msPerStep.toFixed(3)} ms/step > 0.25)`);
   if (casts / n < hits / n) fail(`level ${levelId}: fewer casts than hits?`);
   ok(`level ${levelId} within budgets`);
@@ -953,7 +954,7 @@ for (const levelId of [1, 2]) {
   if (eco1.alive.every((e) => !e.hunter && e.cdRate === 1 && Math.abs(e.spdMul - (e.behavior === 'predator' ? CC.WILD_PACE.predator[1] : e.behavior === 'curious' ? CC.WILD_PACE.curious[1] : 1)) < 1e-9)) ok(`L1: no elite predators or hunters on a solo level; the reef's pace is predators ×${CC.WILD_PACE.predator[1]}, curious ×${CC.WILD_PACE.curious[1]}, everyone else ×1`); else fail('L1: elite/hunter boost leaked into a solo level, or the wild pace is off');
   const eco2 = new Ecosystem(generateEcosystem(getLevel(2), 5), hp);
   const paced = (eco: Ecosystem, g: 'predator' | 'curious', lvl: number) => eco.alive.filter((e) => e.behavior === g && e.role !== 'partner').every((e) => Math.abs(e.spdMul - (CC.WILD_PACE[g][lvl] ?? 1)) < 1e-9);
-  if (paced(eco2, 'predator', 2) && paced(eco2, 'curious', 2) && eco.alive.filter((e) => e.behavior === 'curious' && !e.hunter).every((e) => e.spdMul === 1)) ok(`L2: predators ×${CC.WILD_PACE.predator[2]}, curious ×${CC.WILD_PACE.curious[2]}; L3 curious keep ×1 (no pace dial there)`); else fail('L2/L3: wild pace wrong');
+  if (paced(eco2, 'predator', 2) && paced(eco2, 'curious', 2) && eco3.alive.filter((e) => e.behavior === 'curious' && !e.hunter).every((e) => e.spdMul === 1)) ok(`L2: predators ×${CC.WILD_PACE.predator[2]}, curious ×${CC.WILD_PACE.curious[2]}; L3 curious keep ×1 (no pace dial there)`); else fail('L2/L3: wild pace wrong');
   // the chase burst: a mission Pokémon turned on the trainer surges for CHASE_SECONDS at CHASE_SPEED× with bubbles
   {
     const m0 = mission.find((e) => e.state !== 'ko');
