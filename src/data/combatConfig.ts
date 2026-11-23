@@ -124,6 +124,21 @@ export const COMBAT = {
   /** Solo levels felt slow (USER RULING 2026-11-22): wild predators and curious explorers swim this much faster per
    *  level (cruise and burst alike, on top of a shiny lead's or an elite's own multipliers). Levels not listed = ×1. */
   WILD_PACE: { predator: { 1: 1.5, 2: 1.5 }, curious: { 1: 1.3, 2: 1.3 } } as Record<'predator' | 'curious', Record<number, number>>,
+  /** Bottom dwellers (USER RULING 2026-11-23) — the solo floor Pokémon (Krabby, Kingler, Shellder, Staryu, Omastar…):
+   *  BURROW: at rest, with CHANCE per rest cycle, one digs a hole in the sand (BIG_CHANCE of them big; radius HOLE_R × size,
+   *  small/big) and hides in it for HIDE s — unseen, out of every hash query, no ball or move reaches it. DIG is the dig-in
+   *  and pop-out animation time.
+   *  AMBUSH: a Poké Ball that FAILS on one makes it dig in on the spot and tunnel under the sand toward the trainer at
+   *  STAT_MULT× speed with STAT_MULT× Attack for BOOST_SECONDS; within STRIKE_R of the trainer's footprint it erupts and
+   *  strikes (the retaliation lunge, boosted). Past GIVE_UP_R or after MAX_SECONDS it surfaces empty-handed.
+   *  LUNGE: vicious — every EVERY s (an interval in SECONDS; the ruling's "10-15ms" is read as seconds) a dweller lunges at
+   *  the nearest wild or the trainer within RADIUS at burst × SPEED, casts once on reach and gives up after MAX_SECONDS.
+   *  Lunges at the trainer share the predators' reef-wide cast gap, so a ring of Krabby cannot kill in two seconds. */
+  BOTTOM: {
+    BURROW: { CHANCE: 0.35, BIG_CHANCE: 0.4, HOLE_R: [0.9, 1.6] as readonly [number, number], HIDE: [5, 10] as readonly [number, number], DIG: 0.5 },
+    AMBUSH: { STAT_MULT: 1.5, BOOST_SECONDS: 10, STRIKE_R: 2.5, MAX_SECONDS: 8, GIVE_UP_R: 45 },
+    LUNGE: { RADIUS: 20, EVERY: [10, 15] as readonly [number, number], SPEED: 1.25, MAX_SECONDS: 6 },
+  },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench
    *  (~70s from empty to full). Swapping is never a free full-heal; active healers still work. */
   BENCH_REGEN_FRAC_PER_SEC: 0.015,

@@ -201,6 +201,8 @@ class AudioManagerImpl {
   ko() { this.tone(392, 0.5, 0.1, 'sine', 196); this.tone(294, 0.6, 0.08, 'sine', 147, 0, 0.25); }
   breach() { this.noiseBurst(1.2, 0.35, 600, 0.5); this.noiseBurst(0.8, 0.25, 1800, 0.8, 0.2); this.tone(70, 1.0, 0.15, 'sine', 40); }
   inflate() { this.tone(300, 0.25, 0.12, 'sine', 620); }
+  /** A bottom dweller digs into the sand (a dull scrape and a low thud); `erupt` is the burst back out — louder, sharper. */
+  dig(erupt = false) { this.noiseBurst(erupt ? 0.28 : 0.35, erupt ? 0.26 : 0.16, erupt ? 700 : 380, 0.6); this.tone(erupt ? 110 : 80, 0.22, erupt ? 0.14 : 0.08, 'sine', 50); }
   lure() { [660, 880, 1100].forEach((f, i) => this.tone(f, 0.5, 0.1, 'sine', f * 0.98, 0, i * 0.25)); }
   legendary() { this.tone(36, 4, 0.35, 'sine', 48); this.tone(54, 3.5, 0.2, 'triangle', 40, 0, 0.5); this.noiseBurst(3, 0.15, 200, 0.5); }
   levelComplete() {

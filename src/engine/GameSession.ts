@@ -685,7 +685,7 @@ export class GameSession {
     for (const e of eco.alive) {
       if (e.isBoss || e.role === 'partner') continue;
       const st = e.state;
-      if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark') continue;
+      if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'burrow' || st === 'ambush') continue;
       const ex = e.x - ox, ey = e.y - oy, ez = e.z - oz;
       const t = ex * dx + ey * dy + ez * dz;
       if (t <= 0 || t > hitT) continue;
@@ -1892,6 +1892,19 @@ export class GameSession {
           if (near(c, 80)) {
             if (ev.inside) { Audio.bubble(2); store.pushToast({ kind: 'warn', title: "Tatsugiri hides in Dondozo's mouth", body: 'Nothing can reach it in there. Stagger Dondozo — punish a charge — to flush it out.', speciesId: 'tatsugiri', ttl: 6 }); }
             else { Audio.playCry(getSpecies('tatsugiri').dexId, 0.7); store.pushToast({ kind: 'event', title: 'Tatsugiri is exposed!', body: `Dondozo is staggered — ${COMMANDER.EXPOSE_FOR} seconds before the commander dives back in.`, speciesId: 'tatsugiri', ttl: 5 }); }
+          }
+          break;
+        }
+        case 'burrow': {
+          // a bottom dweller and the sand (COMBAT.BOTTOM): sand puffs where it digs, along its tunnel and where it erupts;
+          // the ambush after a failed ball is the one that gets a warning — it is coming for YOU
+          const SAND = '#d9c79a';
+          const close = len3(ev.x - p.x, ev.y - p.y, ev.z - p.z) < 45;
+          if (ev.phase === 'trail') { if (close) this.pushFx('splash', ev.x, ev.y + 0.15, ev.z, ev.size * 0.45, SAND); break; }
+          if (close) { this.pushFx('splash', ev.x, ev.y + 0.2, ev.z, ev.size * (ev.phase === 'erupt' ? 1.5 : 0.9), SAND); Audio.dig(ev.phase === 'erupt'); }
+          if (ev.phase === 'ambush' && this.phase === 'playing') {
+            const e = eco.byId.get(ev.entityId);
+            if (e) this.toast('hunt', { kind: 'warn', title: `${e.species.name} dug in!`, body: 'It is tunnelling toward you under the sand — watch for the trail, and move.', speciesId: e.species.id, ttl: 4 });
           }
           break;
         }

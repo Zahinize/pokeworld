@@ -18,6 +18,7 @@ import { SkyWorld } from './env/Sky';
 import { SkyLifeLayer } from './sky/SkyLifeLayer';
 import { FeedCrumbs } from './env/FeedCrumbs';
 import { BerryLayer } from './env/BerryLayer';
+import { BurrowLayer } from './env/BurrowLayer';
 import { ChestLayer } from './env/ChestLayer';
 import { LaserFx } from './fx/LaserFx';
 import { ThrowArc } from './fx/ThrowArc';
@@ -99,6 +100,7 @@ export function Scene() {
         <SkyLifeLayer />
         <FeedCrumbs />
         <BerryLayer />
+        <BurrowLayer />
         <ChestLayer />
         <ThrowArc />
         <LaserFx />

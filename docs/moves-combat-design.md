@@ -680,6 +680,32 @@ dives at the camera in 120 s, against 36 / 46 / 27 with the flag off). Phones an
 bubble particles (`Scene.tsx`, 0.07 × the quality's particle budget vs 0.22 on desktop): the full cloud hid the
 reef and the sky there.
 
+### Bottom dwellers dig, ambush and lunge (USER RULING 2026-11-23)
+The solo floor Pokémon (Krabby, Kingler, Shellder, Staryu, Omastar, Toxapex…; entourage members and the chest's
+guardians keep their own routines) got three habits, all dialled in `COMBAT.BOTTOM`:
+- **Burrow** — at rest, 35 % of rest cycles end in a dig instead of a crawl: the dweller opens a hole in the sand
+  (small ×0.9 or big ×1.6 its size, 40 % big) and hides in it for 5–10 s. Under the sand it is **unseen** (sprite
+  sunk and faded), **out of the spatial hash** (no ball, laser, lure, prey pick or move reaches it) and pinned below
+  the floor. `BurrowLayer` draws the hole as a dark disc that fades back to sand 1.5 s after it climbs out; the
+  `burrow` eco event carries `dig` / `emerge` for the sand puffs and the `Audio.dig` scrape.
+- **Ambush** — a Poké Ball that FAILS on one no longer makes it flee: `Ecosystem.breakOut` calls `startAmbush`, it
+  digs in on the spot and tunnels under the sand toward the trainer's footprint at **×1.5 speed with ×1.5 Attack**
+  for 10 s (`spdMul` through `Entity.burrow.ambushT`, Attack through `atkStage`), a pale mound and a trail of sand
+  puffs marking its path. Inside 2.5 m (+ half its size) it **erupts** and strikes — the retaliation lunge, boosted —
+  with a `hunt`-channel warning ("Krabby dug in!") at the dig. Past 45 m or after 8 s it surfaces empty-handed and
+  crawls home. Never on the peaceful homepage reef.
+- **Vicious lunges** — every 10–15 s (the ruling's "10-15ms" read as seconds) a dweller lunges at the nearest wild
+  or the trainer within 20 m at burst ×1.25, casts once on reach, and gives up after 6 s. Its own entourage,
+  companions, bosses and anything under the sand are never targets; the trainer only when huntable and past the
+  opening grace. Lunges and ambush strikes at the trainer share the predators' reef-wide 4 s cast gap, so a ring of
+  Krabby cannot kill in two seconds. Sim (L1, 5 min): ~60 lunges, reef-wide predator move hits ~255 → ~290 per
+  5 min, inside the 300 budget.
+
+**Engine note (perf):** the seven new per-entity fields live in ONE nested object, `Entity.burrow`. The spawn literal
+in `Ecosystem.spawn` must stay under 128 top-level fields — past that V8 drops the literal off its fast path and
+every property read on every entity slows: the headless sim went from 0.13 to 0.27 ms/step with seven flat fields
+and back to 0.13 with the packed object. Add future per-feature state the same way.
+
 ## 9. Companions, duels, and the L3/L4 boss arc
 
 ### Party

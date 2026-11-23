@@ -388,6 +388,9 @@ export function PokemonLayer() {
       if (e.state === 'ko') { alpha = Math.max(0, 1 - e.animT / 1.4); }
       else if (e.state === 'caught') { const k = Math.max(0, 1 - e.animT / 0.45); scale *= k; alpha = k; }
       else if (e.state === 'captureAttempt') { scale *= 0.96 + Math.sin(e.stateT * 30) * 0.03; }
+      // a bottom dweller in its hole or tunnelling (COMBAT.BOTTOM): sinks out of sight over the dig time, pops back out
+      if (e.state === 'burrow' || e.state === 'ambush') { const k = Math.min(1, e.stateT / COMBAT.BOTTOM.BURROW.DIG); alpha *= 1 - k; y -= e.species.size * 0.9 * k; }
+      else if (e.burrow.emergeT > 0) { const k = Math.min(1, e.burrow.emergeT / COMBAT.BOTTOM.BURROW.DIG); alpha *= 1 - k * 0.85; y -= e.species.size * 0.9 * k; }
       // smokescreen: vanish into the cloud fast, re-emerge gradually as the smoke thins
       if (e.concealT > 0) {
         const into = Math.max(e.concealDur, 0.001) - e.concealT;

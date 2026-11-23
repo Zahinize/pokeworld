@@ -125,6 +125,10 @@ console.log('Treasure chest');
   if (!(COMBAT.ELITE_PREDATORS.HP >= 1 && COMBAT.ELITE_PREDATORS.ATK >= 1 && COMBAT.ELITE_PREDATORS.SPEED >= 1)) { bad++; fail('elite predators must not be weaker than plain ones'); }
   if (!(COMBAT.HUNTERS.SPEED >= 1 && COMBAT.HUNTERS.COOLDOWN > 0 && COMBAT.HUNTERS.COOLDOWN <= 1 && COMBAT.HUNTERS.CHASE_SPEED >= 1 && COMBAT.HUNTERS.CHASE_SECONDS > 0)) { bad++; fail('hunter rules inconsistent'); }
   for (const g of ['predator', 'curious'] as const) for (const [lvl, m] of Object.entries(COMBAT.WILD_PACE[g])) if (!(m >= 1 && m <= 2)) { bad++; fail(`wild pace ${g} L${lvl} out of range`); }
+  const BD = COMBAT.BOTTOM;
+  if (!(BD.BURROW.CHANCE > 0 && BD.BURROW.CHANCE <= 1 && BD.BURROW.HIDE[0] > BD.BURROW.DIG && BD.BURROW.HIDE[0] <= BD.BURROW.HIDE[1] && BD.BURROW.HOLE_R[0] > 0 && BD.BURROW.HOLE_R[0] < BD.BURROW.HOLE_R[1])) { bad++; fail('bottom burrow dials out of range'); }
+  if (!(BD.AMBUSH.STAT_MULT >= 1 && BD.AMBUSH.STAT_MULT <= 2 && BD.AMBUSH.BOOST_SECONDS >= BD.AMBUSH.MAX_SECONDS && BD.AMBUSH.STRIKE_R > 0 && BD.AMBUSH.GIVE_UP_R > BD.AMBUSH.STRIKE_R)) { bad++; fail('bottom ambush dials inconsistent (the boost must outlast the tunnel)'); }
+  if (!(BD.LUNGE.RADIUS > 0 && BD.LUNGE.EVERY[0] >= BD.LUNGE.MAX_SECONDS && BD.LUNGE.EVERY[0] <= BD.LUNGE.EVERY[1] && BD.LUNGE.SPEED >= 1)) { bad++; fail('bottom lunge dials inconsistent (lunges must not overlap)'); }
   if (!(CHEST.REEF_DROP.CHANCE > 0 && CHEST.REEF_DROP.CHANCE <= 1 && CHEST.REEF_DROP.FIRST_AT < CHEST.REEF_DROP.WINDOW)) { bad++; fail('reef drop dials out of range'); }
   if (!(CHEST.LOOT_PER_CHEST[0] >= 1 && CHEST.LOOT_PER_CHEST[0] <= CHEST.LOOT_PER_CHEST[1] && CHEST.LOOT_PER_CHEST[1] <= LOOT_ORDER.length)) { bad++; fail('loot per chest out of range'); }
   if (!(CHEST.TIMER_CUT > 0 && CHEST.TIMER_MIN > 0 && CHEST.TIMER_CUT < 60) || CHEST.TIMER_USES < 1) { bad++; fail('timer rules inconsistent'); }

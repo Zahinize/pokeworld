@@ -1043,12 +1043,14 @@ for (const levelId of [1, 2]) {
   // 3. Nanab: the reef at half speed; a companion keeps its pace
   {
     const speedOf = (frames: number) => { let s = 0, n = 0; for (let i = 0; i < frames; i++) { eco.update(1 / 60, p, 0); if (i % 10 === 0) for (const e of eco.alive) if (e.role !== 'partner' && (e.state as string) !== 'rest') { s += Math.hypot(e.vx, e.vy, e.vz); n++; } } eco.drainEvents(); return s / Math.max(1, n); };
-    const base = speedOf(5 * 60);
+    // 10 s windows: the reef's state mix (lunges, scatters, knockbacks) shifts between windows, and the mean swims a
+    // little over half because knockback and eruption shoves never scale — ~0.6 is the honest ratio, 0.66 the bar
+    const base = speedOf(10 * 60);
     eco.wildSpeedMul = 0.5;
-    const slowed = speedOf(5 * 60);
+    const slowed = speedOf(10 * 60);
     eco.wildSpeedMul = 1;
     const after = speedOf(3 * 60);
-    if (slowed <= base * 0.62) ok(`berries: Nanab slows the reef (mean ${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`); else fail(`berries: Nanab barely slowed the reef (${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`);
+    if (slowed <= base * 0.66) ok(`berries: Nanab slows the reef (mean ${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`); else fail(`berries: Nanab barely slowed the reef (${base.toFixed(2)} → ${slowed.toFixed(2)} m/s)`);
     if (after >= slowed * 1.3) ok('berries: the reef speeds back up when Nanab wears off'); else fail(`berries: reef stayed slow after Nanab (${slowed.toFixed(2)} → ${after.toFixed(2)})`);
     const partner = eco.addPartner('sharpedo', 0);
     eco.wildSpeedMul = 0.5;
@@ -1454,6 +1456,111 @@ for (const levelId of [1, 2]) {
     w.toggleWeapon('laserGun'); const swapped = w.weapon; w.toggleWeapon('ballGun'); const fired = w.consumeGunBall('pokeball'); const dry = w.weapon;
     if (!none && on && wasGun === 'ballGun' && off && wasHands === 'hands' && swapped === 'laserGun' && fired && dry === 'hands' && w.loot.ballGun === null) ok('weapons: G/H toggle, pressing again returns to hands, an empty launcher drops back to hands');
     else fail(`weapons: none ${none} on ${on}/${wasGun} off ${off}/${wasHands} swapped ${swapped} fired ${fired} dry ${dry}`);
+  }
+}
+
+
+// ---- Bottom dwellers (USER RULING 2026-11-23): burrow and hide, ambush after a failed ball, vicious lunges ----
+{
+  const { COMBAT: CB } = await import('@/data/combatConfig');
+  const { underSand } = await import('@/engine/ai/types');
+  const B = CB.BOTTOM;
+  const mkP = (x: number, y: number, z: number, huntable = true) => ({ x, y, z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false, huntable });
+  const solos = (eco: Ecosystem) => eco.alive.filter((e) => e.behavior === 'bottom' && e.role === 'solo' && !e.isBoss);
+  const inHash = (eco: Ecosystem, e: Entity) => { let found = false; eco.hash.query(e.x, e.y, e.z, 3, (o) => { if (o === e) found = true; }); return found; };
+  // 1. the ambush: a ball fails on a solo dweller 14 m from the trainer → it digs in (hidden, out of the hash, boosted),
+  //    tunnels under the sand at the trainer, erupts inside STRIKE_R and lands a boosted hit
+  {
+    const gen = generateEcosystem(getLevel(1), 7); const eco = new Ecosystem(gen, hp);
+    const d = solos(eco).sort((a, b) => a.species.burst - b.species.burst)[0]; // the slowest crawler makes the hardest case
+    const px = d.x + 14, pz = d.z; const p = mkP(px, floorY(px, pz) + 1.5, pz);
+    for (let i = 0; i < 60; i++) eco.update(1 / 60, p, 0);
+    eco.drainEvents();
+    eco.beginCaptureAttempt(d); eco.breakOut(d);
+    const evs0 = eco.drainEvents();
+    const dug = evs0.some((ev) => ev.type === 'burrow' && ev.phase === 'ambush' && ev.entityId === d.id);
+    eco.update(1 / 60, p, 0);
+    const hidden = d.state === 'ambush' && underSand(d) && !inHash(eco, d) && d.burrow.holeT > 0 && d.burrow.holeR > 0;
+    const boosted = d.atkStage >= B.AMBUSH.STAT_MULT && Math.abs(d.spdMul - B.AMBUSH.STAT_MULT) < 1e-9;
+    if (dug && hidden && boosted) ok(`bottom: a failed ball on ${d.species.name} → it digs in (hole r ${d.burrow.holeR.toFixed(2)} m), vanishes from the hash, Attack ×${d.atkStage} and speed ×${d.spdMul}`);
+    else fail(`bottom: ambush start (dug ${dug}, state ${d.state}, hidden ${hidden}, atk ${d.atkStage}, spd ${d.spdMul})`);
+    let eruptAt = -1, eruptDist = Infinity, hitAt = -1, hitAtk = 0, belowFloor = true, trail = 0, maxV = 0;
+    const t0 = eco.time;
+    for (let i = 0; i < 60 * 14 && hitAt < 0; i++) {
+      eco.update(1 / 60, p, 0);
+      if (d.state === 'ambush') { if (d.y > floorY(d.x, d.z)) belowFloor = false; maxV = Math.max(maxV, Math.hypot(d.vx, d.vz)); }
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'burrow' && ev.entityId === d.id && ev.phase === 'trail') trail++;
+        if (ev.type === 'burrow' && ev.entityId === d.id && ev.phase === 'erupt') { eruptAt = eco.time - t0; eruptDist = Math.hypot(ev.x - px, ev.z - pz); }
+        if (ev.type === 'playerHit' && ev.casterId === d.id) { hitAt = eco.time - t0; hitAtk = d.atkStage; }
+      }
+    }
+    const reach = B.AMBUSH.STRIKE_R + d.species.size * 0.5 + 0.6;
+    if (eruptAt > 0 && eruptAt <= B.AMBUSH.MAX_SECONDS && eruptDist <= reach && belowFloor && trail >= 4) ok(`bottom: it tunnelled under the sand (${trail} sand puffs, ${maxV.toFixed(1)} m/s vs burst ${d.species.burst}) and erupted ${eruptDist.toFixed(1)} m from the trainer after ${eruptAt.toFixed(1)} s`);
+    else fail(`bottom: tunnel/erupt (erupt ${eruptAt.toFixed(1)} s at ${eruptDist.toFixed(1)} m, below floor ${belowFloor}, trail ${trail})`);
+    if (hitAt > 0 && hitAt - eruptAt <= 6 && hitAtk >= B.AMBUSH.STAT_MULT) ok(`bottom: the ambush strike landed ${(hitAt - eruptAt).toFixed(1)} s after it erupted, with Attack ×${hitAtk}`);
+    else fail(`bottom: ambush strike (hit at ${hitAt.toFixed(1)}, erupt at ${eruptAt.toFixed(1)}, atk ${hitAtk})`);
+    // the boost wears off
+    for (let i = 0; i < 60 * (B.AMBUSH.BOOST_SECONDS + 1); i++) eco.update(1 / 60, p, 0);
+    eco.drainEvents();
+    if (d.atkStage === 1 && Math.abs(d.spdMul - 1) < 1e-9 && !underSand(d)) ok(`bottom: the ambush boost is gone ${B.AMBUSH.BOOST_SECONDS} s on`); else fail(`bottom: boost lingered (atk ${d.atkStage}, spd ${d.spdMul}, ${d.state})`);
+  }
+  // 2. no ambush on the peaceful homepage reef, and none past GIVE_UP_R (it surfaces and crawls home)
+  {
+    const gen = generateEcosystem(getLevel(1), 7); const eco = new Ecosystem(gen, hp); eco.peaceful = true;
+    const d = solos(eco)[0]; const p = mkP(d.x + 10, d.y + 1, d.z);
+    eco.update(1 / 60, p, 0); eco.beginCaptureAttempt(d); eco.breakOut(d);
+    const quiet = d.state !== 'ambush';
+    const eco2 = new Ecosystem(generateEcosystem(getLevel(1), 7), hp);
+    const d2 = solos(eco2)[0]; const near = mkP(d2.x + 10, d2.y + 1, d2.z);
+    eco2.update(1 / 60, near, 0); eco2.beginCaptureAttempt(d2); eco2.breakOut(d2);
+    const far = mkP(d2.x + B.AMBUSH.GIVE_UP_R + 20, d2.y + 1, d2.z); // the trainer swims off
+    let surfaced = false; for (let i = 0; i < 60 && !surfaced; i++) { eco2.update(1 / 60, far, 0); surfaced = eco2.drainEvents().some((ev) => ev.type === 'burrow' && ev.phase === 'emerge' && ev.entityId === d2.id); }
+    if (quiet && surfaced && d2.state === 'retreat') ok('bottom: no ambush on the peaceful reef; a trainer who swims off past the give-up range gets an empty-handed emerge'); else fail(`bottom: peaceful ${quiet}, give-up ${surfaced}/${d2.state}`);
+  }
+  // 3. five minutes of reef: dwellers dig in and hide for HIDE s (small and big holes), unseen by the hash meanwhile;
+  //    they lunge at wilds within RADIUS no more often than EVERY s each, and some lunges land
+  {
+    const gen = generateEcosystem(getLevel(1), 5); const eco = new Ecosystem(gen, hp);
+    const p = mkP(gen.playerStart.x, gen.playerStart.y, gen.playerStart.z, false); // out of the game: the reef among itself
+    const digAt = new Map<number, number>(); const hides: number[] = []; const radii = new Set<string>();
+    const lungeAt = new Map<number, number[]>(); let lungeFar = 0, lungeHits = 0, hiddenInHash = 0, hiddenChecks = 0;
+    const bottomIds = new Set(solos(eco).map((e) => e.id));
+    for (let i = 0; i < 60 * 300; i++) {
+      eco.update(1 / 60, p, 0);
+      if (i % 30 === 0) for (const e of eco.alive) if (e.state === 'burrow') { hiddenChecks++; if (inHash(eco, e)) hiddenInHash++; }
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'burrow' && ev.phase === 'dig') { digAt.set(ev.entityId, eco.time); radii.add(((eco.byId.get(ev.entityId)!).burrow.holeR / ev.size).toFixed(2)); }
+        if (ev.type === 'burrow' && ev.phase === 'emerge' && digAt.has(ev.entityId)) { hides.push(eco.time - digAt.get(ev.entityId)!); digAt.delete(ev.entityId); }
+        if (ev.type === 'huntStart' && bottomIds.has(ev.predatorId) && ev.targetId >= 0) {
+          const a = eco.byId.get(ev.predatorId)!, t = eco.byId.get(ev.targetId);
+          if (t && Math.hypot(t.x - a.x, t.y - a.y, t.z - a.z) > B.LUNGE.RADIUS + 0.5) lungeFar++;
+          const arr = lungeAt.get(ev.predatorId) ?? []; arr.push(eco.time); lungeAt.set(ev.predatorId, arr);
+        }
+        if (ev.type === 'moveHit' && bottomIds.has(ev.casterId)) lungeHits++;
+      }
+    }
+    const lunges = [...lungeAt.values()].reduce((n, a) => n + a.length, 0);
+    let tooSoon = 0; for (const a of lungeAt.values()) for (let i = 1; i < a.length; i++) if (a[i] - a[i - 1] < B.LUNGE.EVERY[0] - 0.05) tooSoon++;
+    const inRange = hides.every((h) => h >= B.BURROW.HIDE[0] - 0.05 && h <= B.BURROW.HIDE[1] + 0.3);
+    if (hides.length >= 3 && inRange && radii.size === 2 && hiddenInHash === 0 && hiddenChecks > 0) ok(`bottom: ${hides.length} hides of ${Math.min(...hides).toFixed(1)}–${Math.max(...hides).toFixed(1)} s in holes of ${[...radii].sort().join(' and ')} × size; ${hiddenChecks} hidden checks, never in the hash`);
+    else fail(`bottom: burrow (hides ${hides.length}, in range ${inRange}, radii ${[...radii].join(',')}, hidden-in-hash ${hiddenInHash}/${hiddenChecks})`);
+    if (lunges >= 10 && lungeFar === 0 && tooSoon === 0 && lungeHits >= 3) ok(`bottom: ${lunges} vicious lunges at wilds in 5 min, all inside ${B.LUNGE.RADIUS} m, none under ${B.LUNGE.EVERY[0]} s apart per dweller, ${lungeHits} landed`);
+    else fail(`bottom: lunges ${lunges}, too far ${lungeFar}, too soon ${tooSoon}, landed ${lungeHits}`);
+  }
+  // 4. the trainer is a lunge target too: 10 m from a dweller after the grace, it comes for them and casts
+  {
+    const gen = generateEcosystem(getLevel(1), 5); const eco = new Ecosystem(gen, hp);
+    const d = solos(eco)[1]; const p = mkP(d.x + 10, d.y + 2, d.z);
+    let lunged = false, hit = false;
+    for (let i = 0; i < 60 * 40 && !hit; i++) {
+      eco.update(1 / 60, p, 0);
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'huntStart' && ev.predatorId === d.id && ev.targetId === -2) lunged = true;
+        if (ev.type === 'playerHit' && ev.casterId === d.id) hit = true;
+      }
+    }
+    if (lunged && hit) ok(`bottom: ${d.species.name} lunged at a trainer 10 m away and landed a hit (in ${(eco.time).toFixed(0)} s)`); else fail(`bottom: trainer lunge (lunged ${lunged}, hit ${hit}, state ${d.state})`);
   }
 }
 
