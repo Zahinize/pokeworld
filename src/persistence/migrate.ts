@@ -75,6 +75,7 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     chestLooted: !!r.chestLooted,
     berries: sanitizeBerries(r.berries),
     ...(r.lootDrop !== undefined ? { lootDrop: sanitizeDrop(r.lootDrop) } : null),
+    ...(Array.isArray(r.holes) ? { holes: r.holes.filter((h: any) => isObj(h) && [h.x, h.z, h.r, h.t].every((n: unknown) => Number.isFinite(n)) && h.r > 0 && h.r <= 12 && h.t > 0).slice(0, 48).map((h: any) => ({ x: h.x, z: h.z, r: h.r, t: Math.min(h.t, 3600), ambush: !!h.ambush, by: -1 })) } : null),
   };
 }
 function sanitizeDrop(d: any): NonNullable<SaveData['currentRun']>['lootDrop'] {

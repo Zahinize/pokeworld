@@ -693,13 +693,20 @@ guardians keep their own routines) got three habits, all dialled in `COMBAT.BOTT
   for 10 s (`spdMul` through `Entity.burrow.ambushT`, Attack through `atkStage`), a pale mound and a trail of sand
   puffs marking its path. Inside 2.5 m (+ half its size) it **erupts** and strikes — the retaliation lunge, boosted —
   with a `hunt`-channel warning ("Krabby dug in!") at the dig. Past 45 m or after 8 s it surfaces empty-handed and
-  crawls home. Never on the peaceful homepage reef.
+  crawls home. Never on the peaceful homepage reef. **The ambush burrow stays open for ten minutes**
+  (`AMBUSH.HOLE_SECONDS`) after the digger leaves — the reef visibly remembers the attack — and is saved with the
+  run (`CurrentRun.holes`, restored by `Ecosystem.restoreHoles` on resume, counting on from where it was). Holes
+  live on `Ecosystem.holes`, not the digger: a resting dweller's hole closes 1.5 s after it climbs out and is never
+  saved while occupied (the digger would not be there on resume); at most 48 holes are kept.
 - **Vicious lunges** — every 10–15 s (the ruling's "10-15ms" read as seconds) a dweller lunges at the nearest wild
   or the trainer within 20 m at burst ×1.25, casts once on reach, and gives up after 6 s. Its own entourage,
   companions, bosses and anything under the sand are never targets; the trainer only when huntable and past the
   opening grace. Lunges and ambush strikes at the trainer share the predators' reef-wide 4 s cast gap, so a ring of
-  Krabby cannot kill in two seconds. Sim (L1, 5 min): ~60 lunges, reef-wide predator move hits ~255 → ~290 per
-  5 min, inside the 300 budget.
+  Krabby cannot kill in two seconds.
+- **8–12 extra dwellers on L1/L2** (`spawn.ambient.extras.bottom` is a range rolled per dive): ambient solos drawn
+  from species the level is not already fielding, never mission targets — they exist to make the reef lively and
+  dangerous. Sim (L1, 5 min, 24 dives): 8–12 extras from 18 species, ~100 lunges, reef-wide predator move hits ~255 →
+  ~380 per 5 min (L2 ~220), so the sim's budget cap moved 300 → 420; KOs 67 → 80 per 5 min, covered by reinforcement.
 
 **Engine note (perf):** the seven new per-entity fields live in ONE nested object, `Entity.burrow`. The spawn literal
 in `Ecosystem.spawn` must stay under 128 top-level fields — past that V8 drops the literal off its fast path and

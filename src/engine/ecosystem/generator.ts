@@ -389,7 +389,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     addSolo(s, 'solo', undefined, true);
     summary.ambient.push(s.name);
   }
-  // ---- Ambient extras: 20 more wild Pokémon per level so the reef feels full (user request). Drawn from
+  // ---- Ambient extras: more wild Pokémon per level so the reef feels full (user request). Drawn from
   // species the level is not already fielding (repeats only when a pool runs dry, e.g. the four defensive
   // fish); never mission targets, never shiny, no packs. Entourages still ride along (Kabuto, Shellder…).
   const ex = level.spawn.ambient.extras;
@@ -414,7 +414,7 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
     };
     extraSolos('curious', ex.curious);
     extraSolos('predator', ex.predators);
-    extraSolos('bottom', ex.bottom);
+    extraSolos('bottom', Array.isArray(ex.bottom) ? rng.int(ex.bottom[0], ex.bottom[1]) : (ex.bottom as number)); // L1/L2: 8–12, rolled per dive
     extraSolos('defensive', ex.defensive);
   }
   // Legendary/boss species (Kyogre, Wailord, Dondozo, Tatsugiri) never spawn as ordinary Pokémon —

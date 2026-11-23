@@ -130,13 +130,17 @@ export const COMBAT = {
    *  and pop-out animation time.
    *  AMBUSH: a Poké Ball that FAILS on one makes it dig in on the spot and tunnel under the sand toward the trainer at
    *  STAT_MULT× speed with STAT_MULT× Attack for BOOST_SECONDS; within STRIKE_R of the trainer's footprint it erupts and
-   *  strikes (the retaliation lunge, boosted). Past GIVE_UP_R or after MAX_SECONDS it surfaces empty-handed.
+   *  strikes (the retaliation lunge, boosted). Past GIVE_UP_R or after MAX_SECONDS it surfaces empty-handed. The hole it
+   *  dug stays HOLE_SECONDS on the sand (a resting dweller's hole fades BURROW.FADE s after it climbs out).
    *  LUNGE: vicious — every EVERY s (an interval in SECONDS; the ruling's "10-15ms" is read as seconds) a dweller lunges at
    *  the nearest wild or the trainer within RADIUS at burst × SPEED, casts once on reach and gives up after MAX_SECONDS.
    *  Lunges at the trainer share the predators' reef-wide cast gap, so a ring of Krabby cannot kill in two seconds. */
   BOTTOM: {
-    BURROW: { CHANCE: 0.35, BIG_CHANCE: 0.4, HOLE_R: [0.9, 1.6] as readonly [number, number], HIDE: [5, 10] as readonly [number, number], DIG: 0.5 },
-    AMBUSH: { STAT_MULT: 1.5, BOOST_SECONDS: 10, STRIKE_R: 2.5, MAX_SECONDS: 8, GIVE_UP_R: 45 },
+    BURROW: { CHANCE: 0.35, BIG_CHANCE: 0.4, HOLE_R: [0.9, 1.6] as readonly [number, number], HIDE: [5, 10] as readonly [number, number], DIG: 0.5, FADE: 1.5 },
+    AMBUSH: { STAT_MULT: 1.5, BOOST_SECONDS: 10, STRIKE_R: 2.5, MAX_SECONDS: 8, GIVE_UP_R: 45,
+      /** An ambush burrow stays open on the sand this long after the dweller leaves it (USER RULING 2026-11-23: ten
+       *  minutes — the reef visibly remembers the attack; it is saved with the run and survives a resume). */
+      HOLE_SECONDS: 600 },
     LUNGE: { RADIUS: 20, EVERY: [10, 15] as readonly [number, number], SPEED: 1.25, MAX_SECONDS: 6 },
   },
   /** Benched companions keep their wounds and heal this fraction of max HP per second on the bench

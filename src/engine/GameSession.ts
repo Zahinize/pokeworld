@@ -320,6 +320,7 @@ export class GameSession {
     this.mission.complete = this.mission.caught >= this.mission.total;
     this.lives = Math.max(1, Math.min(COMBAT.PLAYER_LIVES_MAX, run.lives ?? COMBAT.PLAYER_LIVES)); // lost hearts stay lost across a resume (blue hearts too)
     if (run.lootDrop !== undefined) this.chest.restoreDrop(run.lootDrop); else this.chest.rollReefDrop(); // older saves: roll as a new dive would
+    if (run.holes) this.eco.restoreHoles(run.holes); // the ambush burrows the reef remembers
     if (run.chestLooted && this.eco.chest) {
       // the chest was emptied before the break: it stays open and bare, its guardians long gone — no farming it
       for (const id of this.eco.chest.guardIds) { const g = this.eco.byId.get(id); if (g) { g.state = 'caught'; g.animT = 10; } }
@@ -1906,6 +1907,7 @@ export class GameSession {
             const e = eco.byId.get(ev.entityId);
             if (e) this.toast('hunt', { kind: 'warn', title: `${e.species.name} dug in!`, body: 'It is tunnelling toward you under the sand — watch for the trail, and move.', speciesId: e.species.id, ttl: 4 });
           }
+          this.persistRun(); // the burrows are part of the run save (an ambush hole lasts ten minutes)
           break;
         }
         case 'devour': {
@@ -2332,6 +2334,7 @@ export class GameSession {
       caught: this.mission.caught, total: this.mission.total, lives: this.lives,
       chestLooted: this.chest.state === 'looted',
       lootDrop: this.chest.dropSnapshot(),
+      holes: this.eco?.holeSnapshot() ?? [],
       berries: this.recoveringT > 0 ? null : this.berries.snapshot(), // mid-recovery the next heart rolls fresh anyway
     });
   }

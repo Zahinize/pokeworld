@@ -59,7 +59,9 @@ for (const levelId of [1, 2]) {
   if (hits / n < 10) fail(`level ${levelId}: predator pressure too low (${(hits / n).toFixed(1)} hits/5min)`);
   // the hostile reef (doubled predators, shiny leads, fury, raids) lands 100–150 hits/5min by design; the L1/L2 wild pace
   // (predators ×1.5, USER RULING 2026-11-22) lifted L1 to ~255 — the cap moved 220 → 300 with it, knowingly
-  if (hits / n > 300) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
+  // 2026-11-23: 8–12 extra bottom dwellers per dive, each lunging at a neighbour every 10–15 s (USER RULING: a livelier,
+  // more dangerous reef) — L1 measures ~380 hits/5 min, L2 ~220; the cap moved 300 → 420
+  if (hits / n > 420) fail(`level ${levelId}: predator pressure too high (${(hits / n).toFixed(1)} hits/5min)`);
   if (msPerStep > 0.25) fail(`level ${levelId}: perf budget exceeded (${msPerStep.toFixed(3)} ms/step > 0.25)`);
   if (casts / n < hits / n) fail(`level ${levelId}: fewer casts than hits?`);
   ok(`level ${levelId} within budgets`);
@@ -1463,7 +1465,7 @@ for (const levelId of [1, 2]) {
 // ---- Bottom dwellers (USER RULING 2026-11-23): burrow and hide, ambush after a failed ball, vicious lunges ----
 {
   const { COMBAT: CB } = await import('@/data/combatConfig');
-  const { underSand } = await import('@/engine/ai/types');
+  const { underSand, HOLE_OPEN } = await import('@/engine/ai/types');
   const B = CB.BOTTOM;
   const mkP = (x: number, y: number, z: number, huntable = true) => ({ x, y, z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false, huntable });
   const solos = (eco: Ecosystem) => eco.alive.filter((e) => e.behavior === 'bottom' && e.role === 'solo' && !e.isBoss);
@@ -1480,9 +1482,10 @@ for (const levelId of [1, 2]) {
     const evs0 = eco.drainEvents();
     const dug = evs0.some((ev) => ev.type === 'burrow' && ev.phase === 'ambush' && ev.entityId === d.id);
     eco.update(1 / 60, p, 0);
-    const hidden = d.state === 'ambush' && underSand(d) && !inHash(eco, d) && d.burrow.holeT > 0 && d.burrow.holeR > 0;
+    const hole = eco.holes.find((h) => h.by === d.id);
+    const hidden = d.state === 'ambush' && underSand(d) && !inHash(eco, d) && !!hole && hole.ambush && hole.r > 0;
     const boosted = d.atkStage >= B.AMBUSH.STAT_MULT && Math.abs(d.spdMul - B.AMBUSH.STAT_MULT) < 1e-9;
-    if (dug && hidden && boosted) ok(`bottom: a failed ball on ${d.species.name} → it digs in (hole r ${d.burrow.holeR.toFixed(2)} m), vanishes from the hash, Attack ×${d.atkStage} and speed ×${d.spdMul}`);
+    if (dug && hidden && boosted) ok(`bottom: a failed ball on ${d.species.name} → it digs in (hole r ${hole!.r.toFixed(2)} m), vanishes from the hash, Attack ×${d.atkStage} and speed ×${d.spdMul}`);
     else fail(`bottom: ambush start (dug ${dug}, state ${d.state}, hidden ${hidden}, atk ${d.atkStage}, spd ${d.spdMul})`);
     let eruptAt = -1, eruptDist = Infinity, hitAt = -1, hitAtk = 0, belowFloor = true, trail = 0, maxV = 0;
     const t0 = eco.time;
@@ -1530,7 +1533,7 @@ for (const levelId of [1, 2]) {
       eco.update(1 / 60, p, 0);
       if (i % 30 === 0) for (const e of eco.alive) if (e.state === 'burrow') { hiddenChecks++; if (inHash(eco, e)) hiddenInHash++; }
       for (const ev of eco.drainEvents()) {
-        if (ev.type === 'burrow' && ev.phase === 'dig') { digAt.set(ev.entityId, eco.time); radii.add(((eco.byId.get(ev.entityId)!).burrow.holeR / ev.size).toFixed(2)); }
+        if (ev.type === 'burrow' && ev.phase === 'dig') { digAt.set(ev.entityId, eco.time); radii.add((eco.holes.find((h) => h.by === ev.entityId && h.t >= HOLE_OPEN)!.r / ev.size).toFixed(2)); }
         if (ev.type === 'burrow' && ev.phase === 'emerge' && digAt.has(ev.entityId)) { hides.push(eco.time - digAt.get(ev.entityId)!); digAt.delete(ev.entityId); }
         if (ev.type === 'huntStart' && bottomIds.has(ev.predatorId) && ev.targetId >= 0) {
           const a = eco.byId.get(ev.predatorId)!, t = eco.byId.get(ev.targetId);
@@ -1547,6 +1550,52 @@ for (const levelId of [1, 2]) {
     else fail(`bottom: burrow (hides ${hides.length}, in range ${inRange}, radii ${[...radii].join(',')}, hidden-in-hash ${hiddenInHash}/${hiddenChecks})`);
     if (lunges >= 10 && lungeFar === 0 && tooSoon === 0 && lungeHits >= 3) ok(`bottom: ${lunges} vicious lunges at wilds in 5 min, all inside ${B.LUNGE.RADIUS} m, none under ${B.LUNGE.EVERY[0]} s apart per dweller, ${lungeHits} landed`);
     else fail(`bottom: lunges ${lunges}, too far ${lungeFar}, too soon ${tooSoon}, landed ${lungeHits}`);
+  }
+  // 3b. an ambush burrow outlives its digger by HOLE_SECONDS and survives a snapshot; a rest hole closes in FADE s
+  {
+    const gen = generateEcosystem(getLevel(1), 7); const eco = new Ecosystem(gen, hp);
+    const d = solos(eco)[0]; const p = mkP(d.x + 8, floorY(d.x + 8, d.z) + 1.5, d.z);
+    eco.update(1 / 60, p, 0); eco.beginCaptureAttempt(d); eco.breakOut(d);
+    const far = mkP(d.x + B.AMBUSH.GIVE_UP_R + 20, d.y + 1, d.z);
+    for (let i = 0; i < 60 * 2; i++) eco.update(1 / 60, far, 0); // it gives up and climbs out
+    eco.drainEvents();
+    const h = eco.holes.find((x) => x.ambush);
+    const openFor = h ? h.t : -1;
+    const snap = eco.holeSnapshot();
+    const eco2 = new Ecosystem(generateEcosystem(getLevel(1), 7), hp); eco2.restoreHoles(JSON.parse(JSON.stringify(snap)));
+    const back = eco2.holes[0];
+    for (let i = 0; i < 60 * 30; i++) eco2.update(1 / 60, far, 0); // half a minute later it is still there
+    const still = eco2.holes.length === 1 && eco2.holes[0].t > B.AMBUSH.HOLE_SECONDS - 40 && eco2.holes[0].t < B.AMBUSH.HOLE_SECONDS - 25;
+    if (h && !underSand(d) && openFor > B.AMBUSH.HOLE_SECONDS - 3 && openFor <= B.AMBUSH.HOLE_SECONDS && snap.length === 1 && back && back.ambush && Math.abs(back.x - h.x) < 0.01 && still)
+      ok(`bottom: the ambush burrow stays ${B.AMBUSH.HOLE_SECONDS} s after the digger leaves (${openFor.toFixed(0)} s left), survives the run snapshot and keeps counting down on resume (${eco2.holes[0].t.toFixed(0)} s left after 30 s)`);
+    else fail(`bottom: persistent hole (hole ${!!h}, left ${openFor.toFixed(0)}, snap ${snap.length}, back ${!!back}, still ${still})`);
+    // a rest hole closes FADE s after the dweller climbs out and is never saved while occupied
+    const e2 = solos(eco2)[1]; e2.state = 'rest'; e2.t1 = 0; eco2.digHole(e2, 'dig'); e2.state = 'burrow'; e2.stateT = 0; e2.t1 = 1;
+    const occupiedSaved = eco2.holeSnapshot().some((x) => !x.ambush);
+    for (let i = 0; i < 60 * 1.2; i++) eco2.update(1 / 60, far, 0); // out after 1 s
+    const closing = eco2.holes.find((x) => x.by === e2.id);
+    const closingT = closing ? closing.t : -1;
+    for (let i = 0; i < 60 * 2; i++) eco2.update(1 / 60, far, 0);
+    if (!occupiedSaved && closingT > 0 && closingT <= B.BURROW.FADE && !eco2.holes.some((x) => x.by === e2.id) && eco2.holes.some((x) => x.ambush))
+      ok(`bottom: a rest hole is not saved while occupied and closes ${B.BURROW.FADE} s after the dweller climbs out; the ambush hole stays`);
+    else fail(`bottom: rest hole (saved ${occupiedSaved}, closing ${closingT.toFixed(2)}, left ${eco2.holes.length})`);
+    eco2.drainEvents();
+  }
+  // 3c. L1/L2 field 8–12 extra bottom dwellers per dive, none of them mission targets
+  {
+    const counts: number[] = []; let targets = 0, species = new Set<string>();
+    for (const lvl of [1, 2]) for (let seed = 1; seed <= 12; seed++) {
+      const gen = generateEcosystem(getLevel(lvl), seed);
+      const extra = gen.spawns.filter((sp) => sp.role === 'solo' && sp.ambient && !sp.objectiveId && SPECIES[sp.speciesId].primary === 'bottom' && !SPECIES[sp.speciesId].bossOnly);
+      const missionBottoms = gen.spawns.filter((sp) => sp.objectiveId === 'bottom').length;
+      counts.push(extra.length); void missionBottoms;
+      for (const sp of extra) { species.add(sp.speciesId); if (sp.objectiveId) targets++; }
+    }
+    const lo = Math.min(...counts), hi = Math.max(...counts);
+    const ex1 = getLevel(1).spawn.ambient.extras!.bottom as readonly [number, number];
+    // the ambient solo bottoms also include the level's own non-mission dwellers (mission.bottom = 0 levels) — L1/L2 have mission bottoms, so these are the extras alone
+    if (lo >= ex1[0] && hi <= ex1[1] && lo < hi && targets === 0 && species.size >= 8) ok(`bottom: L1/L2 field ${lo}–${hi} extra dwellers per dive (${species.size} species seen over 24 dives), none a mission target`);
+    else fail(`bottom: extras ${lo}–${hi}, targets ${targets}, species ${species.size}`);
   }
   // 4. the trainer is a lunge target too: 10 m from a dweller after the grace, it comes for them and casts
   {

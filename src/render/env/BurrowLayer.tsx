@@ -1,7 +1,8 @@
 /**
  * Holes in the sand (COMBAT.BOTTOM): a dark disc where a bottom dweller dug in — small or big — that fades back to sand
- * once it has left, and a pale mound creeping along the floor over an ambusher tunnelling at the trainer (the hole it
- * came out of stays behind it). Render-only: everything comes from Entity.hole* / state; nothing here touches the sim.
+ * over its last 1.5 s (a rest hole closes right after the dweller leaves; an ambush hole stays ten minutes and is saved
+ * with the run), and a pale mound creeping along the floor over an ambusher tunnelling at the trainer. Render-only:
+ * everything comes from Ecosystem.holes and Entity.state; nothing here touches the sim.
  */
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
@@ -9,8 +10,10 @@ import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
 import { floorY } from '@/engine/world/terrain';
 import { COMBAT } from '@/data/combatConfig';
+import { HOLE_OPEN } from '@/engine/ai/types';
+import { MAX_HOLES } from '@/engine/world/Ecosystem';
 
-const POOL = 32;
+const POOL = MAX_HOLES + 8; // every hole plus a few tunnelling mounds
 const HOLE = new THREE.Color('#2a2016'), SAND = new THREE.Color('#cdb78d'), MOUND = new THREE.Color('#e4d2a4');
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)), tmpP = new THREE.Vector3(), tmpS = new THREE.Vector3(), tmpC = new THREE.Color();
 
@@ -30,14 +33,14 @@ export function BurrowLayer() {
       tmpM.compose(tmpP, tmpQ, tmpS);
       mesh.setMatrixAt(n, tmpM); mesh.setColorAt(n, color); n++;
     };
+    for (const h of eco.holes) {
+      // the hole: dark while occupied or fresh, fading to the sand's colour over its last FADE seconds
+      const k = h.t >= HOLE_OPEN ? 1 : Math.min(1, h.t / COMBAT.BOTTOM.BURROW.FADE);
+      const rim = 1 + 0.03 * Math.sin(time * 2.1 + h.x);
+      put(h.x, h.z, h.r * rim, tmpC.copy(SAND).lerp(HOLE, k * 0.9));
+    }
     for (const e of eco.alive) {
       if (e.behavior !== 'bottom') continue;
-      if (e.burrow.holeT > 0 && e.burrow.holeR > 0) {
-        // the hole: dark while occupied or fresh, fading to the sand's colour over its last 1.5 s
-        const k = Math.min(1, e.burrow.holeT / 1.5);
-        const rim = 1 + 0.03 * Math.sin(time * 2.1 + e.phase);
-        put(e.burrow.holeX, e.burrow.holeZ, e.burrow.holeR * rim, tmpC.copy(SAND).lerp(HOLE, k * 0.9));
-      }
       if (e.state === 'ambush' && e.stateT > COMBAT.BOTTOM.BURROW.DIG) {
         // the mound over a tunnelling ambusher: pale, pulsing with its pace
         const r = e.species.size * (0.55 + 0.08 * Math.sin(time * 9 + e.phase * 3));

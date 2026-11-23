@@ -23,7 +23,7 @@ export interface LevelSpawn {
     /** Extra wild Pokémon (individuals) beyond the slot counts, drawn from species the level is not already
      *  fielding so the reef feels full — never mission targets. `schools` is one guardian-less school of that
      *  many fish, `drifters` one drifter group; the rest are solos. */
-    extras?: { schools: number; drifters: number; curious: number; predators: number; bottom: number; defensive: number };
+    extras?: { schools: number; drifters: number; curious: number; predators: number; bottom: number | readonly [number, number]; defensive: number };
   };
 }
 

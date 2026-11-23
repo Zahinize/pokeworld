@@ -1240,7 +1240,7 @@ function pickLungeTarget(e: Entity, ctx: SimContext, radius: number): number {
 
 /** Out of the sand: the hole starts fading, the pop-out animation plays, and the reef hears about it. */
 function surface(e: Entity, ctx: SimContext, phase: 'erupt' | 'emerge') {
-  e.burrow.holeT = 1.5; e.burrow.emergeT = COMBAT.BOTTOM.BURROW.DIG;
+  e.burrow.emergeT = COMBAT.BOTTOM.BURROW.DIG; // its hole closes on its own (Ecosystem.update) now that it is out
   e.y = floorY(e.x, e.z) + e.species.size * 0.42;
   ctx.events.push({ type: 'burrow', entityId: e.id, speciesId: e.species.id, phase, x: e.x, y: floorY(e.x, e.z), z: e.z, size: e.species.size });
 }

@@ -131,9 +131,9 @@ export interface Entity {
    *  on every entity slows down (measured 2026-11-23: seven new fields took the headless sim from 0.13 to 0.27 ms/step;
    *  one nested object costs nothing). Add future per-feature state the same way.
    *  ambushT: seconds of the ambush boost left (STAT_MULT× speed; Attack rides atkStage) · lungeT: seconds until the
-   *  next vicious lunge · holeX/Z/R/T: the hole it dug — where, how wide, seconds it stays visible (fades at the end) ·
-   *  emergeT: pop-out animation left after surfacing. */
-  burrow: { ambushT: number; lungeT: number; holeX: number; holeZ: number; holeR: number; holeT: number; emergeT: number };
+   *  next vicious lunge · emergeT: pop-out animation left after surfacing. The holes themselves live on the ecosystem
+   *  (Ecosystem.holes) so they outlive the digger. */
+  burrow: { ambushT: number; lungeT: number; emergeT: number };
   /** Trainer-proximity retaliation cooldown. */
   proxT: number;
   /** Who to retaliate against (entity id or -2 for player). */
@@ -253,6 +253,12 @@ export type EcoEvent =
   /** A bottom dweller and the sand (COMBAT.BOTTOM): dig = hides in a hole · ambush = dug in after a failed ball and
    *  tunnelling at the trainer · trail = a sand puff along the tunnel · erupt = bursts out to strike · emerge = climbs out. */
   | { type: 'burrow'; entityId: number; speciesId: string; phase: 'dig' | 'ambush' | 'trail' | 'erupt' | 'emerge'; x: number; y: number; z: number; size: number };
+
+/** A hole in the sand (COMBAT.BOTTOM): where, how wide, seconds left before it closes (HOLE_OPEN while its digger is
+ *  still inside), whether an ambush dug it (those last AMBUSH.HOLE_SECONDS and are saved with the run), and the digger. */
+export interface Hole { x: number; z: number; r: number; t: number; ambush: boolean; by: number }
+/** `Hole.t` while the digger is still in it. */
+export const HOLE_OPEN = 1e9;
 
 /** Under the sand (COMBAT.BOTTOM): unseen, out of the spatial hash, nothing reaches it. */
 export const underSand = (e: Pick<Entity, 'state'>): boolean => e.state === 'burrow' || e.state === 'ambush';

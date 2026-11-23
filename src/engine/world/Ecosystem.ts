@@ -4,7 +4,7 @@
  * Renderer-agnostic; emits EcoEvents consumed by the game session.
  */
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
-import { underSand } from '../ai/types';
+import { underSand, HOLE_OPEN, type Hole } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
 import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf, wingSlotOf } from '../ai/behaviors';
 
@@ -29,6 +29,9 @@ function zoneAtSafe(x: number, z: number) { return zoneAt(x, z).id; }
 import { len3 } from '../ai/steering';
 import { CHEST } from '@/data/chest';
 
+/** Holes kept on the sand at once (render pool in BurrowLayer matches). */
+export const MAX_HOLES = 48;
+
 export interface DamageInfo { entity: Entity; amount: number; by: 'predator' | 'ball' | 'laser'; sourceId: number }
 
 export class Ecosystem {
@@ -46,6 +49,9 @@ export class Ecosystem {
    *  retaliation, no chest guard or swarm — the menu must not look like a game that only bites. Hunting the trainer is
    *  already off there (the demo never marks the player huntable). */
   peaceful = false;
+  /** Holes in the sand (COMBAT.BOTTOM): a resting dweller's closes BURROW.FADE s after it leaves; an ambush's stays
+   *  AMBUSH.HOLE_SECONDS (ten minutes, saved with the run). Oldest dropped past MAX_HOLES. */
+  holes: Hole[] = [];
   private chestAcc = 0;
   private swarmAcc = 0;
   hash = new SpatialHash<Entity>(10);
@@ -199,7 +205,7 @@ export class Ecosystem {
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
-      burrow: { ambushT: 0, lungeT: 0, holeX: 0, holeZ: 0, holeR: 0, holeT: 0, emergeT: 0 }, // one field, not seven: see Entity.burrow
+      burrow: { ambushT: 0, lungeT: 0, emergeT: 0 }, // one field, not three: see Entity.burrow
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
       baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
       souls: 0, respectN: 0, surgeT: 0, surgeAt: 0,
@@ -469,12 +475,28 @@ export class Ecosystem {
   }
 
   /** Open a hole under a dweller (small or big, COMBAT.BOTTOM.BURROW) and announce the dig. */
-  digHole(e: Entity, phase: 'dig' | 'ambush') {
+  digHole(e: Entity, phase: 'dig' | 'ambush'): Hole {
     const B = COMBAT.BOTTOM.BURROW;
     const big = this.rng.next() < B.BIG_CHANCE;
-    e.burrow.holeX = e.x; e.burrow.holeZ = e.z; e.burrow.holeR = e.species.size * (big ? B.HOLE_R[1] : B.HOLE_R[0]); e.burrow.holeT = 1e9; // stays until it leaves
+    const hole: Hole = { x: e.x, z: e.z, r: e.species.size * (big ? B.HOLE_R[1] : B.HOLE_R[0]), t: HOLE_OPEN, ambush: phase === 'ambush', by: e.id };
+    this.holes.push(hole);
+    if (this.holes.length > MAX_HOLES) this.holes.splice(0, this.holes.length - MAX_HOLES);
     this.events.push({ type: 'burrow', entityId: e.id, speciesId: e.species.id, phase, x: e.x, y: floorY(e.x, e.z), z: e.z, size: e.species.size });
+    return hole;
   }
+
+  /** The holes worth saving with the run: ambush holes (their remaining life, an occupied one gets the full span) and
+   *  closing rest holes; one still occupied by a resting dweller is not saved — the digger will not be there on resume. */
+  holeSnapshot(): Hole[] {
+    const out: Hole[] = [];
+    for (const h of this.holes) {
+      if (h.t >= HOLE_OPEN && !h.ambush) continue;
+      out.push({ x: +h.x.toFixed(2), z: +h.z.toFixed(2), r: +h.r.toFixed(2), t: h.t >= HOLE_OPEN ? COMBAT.BOTTOM.AMBUSH.HOLE_SECONDS : +h.t.toFixed(1), ambush: h.ambush, by: -1 });
+    }
+    return out;
+  }
+
+  restoreHoles(holes: Hole[]) { this.holes = holes.filter((h) => h.t > 0).slice(-MAX_HOLES).map((h) => ({ ...h, by: -1 })); }
 
   /** Capture succeeded. */
   capture(e: Entity) {
@@ -539,6 +561,13 @@ export class Ecosystem {
     // Rebuild spatial hash with live, interactable entities
     this.hash.clear();
     for (const e of this.alive) if (e.state !== 'ko' && e.state !== 'caught' && !underSand(e)) this.hash.insert(e);
+    // holes close: an open one starts its countdown the moment its digger is out of the sand (or gone for good)
+    for (let i = this.holes.length - 1; i >= 0; i--) {
+      const h = this.holes[i];
+      if (h.t >= HOLE_OPEN) { const d = this.byId.get(h.by); if (!d || !underSand(d)) h.t = h.ambush ? COMBAT.BOTTOM.AMBUSH.HOLE_SECONDS : COMBAT.BOTTOM.BURROW.FADE; continue; }
+      h.t -= dt;
+      if (h.t <= 0) this.holes.splice(i, 1);
+    }
 
     // A surfaced ferry Lapras draws the little ones to its side
     ctx.ferry = null;
@@ -580,7 +609,6 @@ export class Ecosystem {
         // the ambush boost (COMBAT.BOTTOM.AMBUSH.STAT_MULT× speed; Attack rides atkStage), the lunge clock, the hole's fade
         if (e.burrow.ambushT > 0) e.burrow.ambushT -= dt;
         if (e.burrow.lungeT > 0) e.burrow.lungeT -= dt;
-        if (e.burrow.holeT > 0 && !underSand(e)) e.burrow.holeT -= dt;
         if (e.burrow.emergeT > 0) e.burrow.emergeT -= dt;
         const boost = e.burrow.ambushT > 0 ? COMBAT.BOTTOM.AMBUSH.STAT_MULT : 1;
         e.spdMul = e.hunter ? e.spdMul * boost : e.spdBase * boost;

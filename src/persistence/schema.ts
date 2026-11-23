@@ -31,7 +31,11 @@ export interface CurrentRun {
   berries?: BerrySnapshot | null;
   /** The dive's stray chest item (L1/L2): still owed, lying on the sand, or none. Undefined = an older save (roll afresh). */
   lootDrop?: ReefDropSnapshot | null;
+  /** Burrows still open on the sand (L1/L2 bottom dwellers): an ambush hole lasts ten minutes and comes back on resume. */
+  holes?: HoleSnapshot[];
 }
+
+export interface HoleSnapshot { x: number; z: number; r: number; t: number; ambush: boolean; by: number }
 
 export interface Settings {
   audioEnabled: boolean;
