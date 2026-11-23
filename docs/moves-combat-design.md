@@ -627,7 +627,7 @@ No chest in L3/L4.
 Opening plays the lid animation (`ChestLayer`, 0.8 s, hinged at the back) with a sparkle burst, a gold
 pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everything at once**.
 
-### Loot (random **two of four**, keys **G H J K**, loot bar above the berry bar)
+### Loot (random **two to four of four** — USER RULING 2026-11-22, was always two — keys **G H J K**, loot bar above the berry bar)
 | Key | Item | Effect |
 |---|---|---|
 | G | **Ball Launcher** | Its own magazine 10 Poké · 5 Great · 4 Ultra · 3 Master. Fires at **2× speed** (≈ 2× range under the exponential drag) with a **2× hit radius**. Never touches the bag, never starts the restock. Auto/pinned ball choice reads the magazine while equipped. |
@@ -655,6 +655,66 @@ pointer leads back to it within 60 m, and reaching it (2.6 m) **collects everyth
 
 ---
 
+
+### The stray reef drop (USER RULING 2026-11-22)
+On one dive in five (`CHEST.REEF_DROP.CHANCE` 0.2, rolled once per dive, resumed as-is via `CurrentRun.lootDrop`) one
+random chest item washes onto the sand 6–120 s into the dive exactly as a berry does: same placement (`placeOnSand`,
+shared with the berries), same 2.2 m pickup radius and 50 m pointer range, drawn by `BerryLayer` with the shiny glow
+pulse in the chest's gold, a gold HUD pointer (the open chest's own pointer wins while both show), a `chest`-channel
+"X washed onto the reef" toast on landing and "X acquired" on pickup, and the item stacks into the persisted bag like
+chest loot. L1/L2 only (the chest levels).
+
+### Wild pace on the solo levels (USER RULING 2026-11-22)
+L1 and L2 "felt slow": `COMBAT.WILD_PACE` multiplies a wild's speed per level — predators ×1.5, curious explorers
+×1.3 on L1 and L2 (cruise and burst alike, via `Entity.spdBase`, on top of a shiny lead's own multipliers; nothing on
+L3/L4, where the elite ×1.2 and hunter ×1.2 already apply). A Sharpedo now cruises at 5.3 m/s and rushes at 16 m/s
+against the trainer's 5.5 / 9.5; a Starmie bursts at 9.6 m/s. Side effect, accepted: faster predators also catch
+more fish — the sim's reef-wide predator move hits on L1 rose from under 220 to ~255 per 5 min, so its budget cap is
+now 300 (schools are reinforced on KO pressure, so the reef stays populated).
+
+### Attract mode is peaceful · fewer bubbles on touch (USER RULINGS 2026-11-22)
+The homepage reef (`startDemo`) sets `Ecosystem.peaceful` and `SkyLife.peaceful`: no proximity hostility, no
+retaliation at the camera, no chest guard or swarm, no dives at the camera — predators still hunt fish and
+guardians still stand off, so the reef stays alive without looking hostile (measured: 0 retaliations / hits /
+dives at the camera in 120 s, against 36 / 46 / 27 with the flag off). Phones and tablets draw a third of the
+bubble particles (`Scene.tsx`, 0.07 × the quality's particle budget vs 0.22 on desktop): the full cloud hid the
+reef and the sky there.
+
+### Bottom dwellers dig, ambush and lunge (USER RULING 2026-11-23)
+The solo floor Pokémon (Krabby, Kingler, Shellder, Staryu, Omastar, Toxapex…; entourage members and the chest's
+guardians keep their own routines) got three habits, all dialled in `COMBAT.BOTTOM`:
+- **Burrow** — at rest, 35 % of rest cycles end in a dig instead of a crawl: the dweller opens a hole in the sand
+  (small ×0.9 or big ×1.6 its size, 40 % big) and hides in it for 5–10 s. Under the sand it is **unseen** (sprite
+  sunk and faded), **out of the spatial hash** (no ball, laser, lure, prey pick or move reaches it) and pinned below
+  the floor. `BurrowLayer` draws the hole as a dark disc that fades back to sand 1.5 s after it climbs out; the
+  `burrow` eco event carries `dig` / `emerge` for the sand puffs and the `Audio.dig` scrape.
+- **Ambush** — a Poké Ball that FAILS on one no longer makes it flee: `Ecosystem.breakOut` calls `startAmbush`, it
+  digs in on the spot and tunnels under the sand toward the trainer's footprint at **×1.5 speed with ×1.5 Attack**
+  for 10 s (`spdMul` through `Entity.burrow.ambushT`, Attack through `atkStage`), a pale mound and a trail of sand
+  puffs marking its path. Inside 2.5 m (+ half its size) it **erupts** and strikes — the retaliation lunge, boosted —
+  with a `hunt`-channel warning ("Krabby dug in!") at the dig. Past 45 m or after 8 s it surfaces empty-handed and
+  crawls home. Never on the peaceful homepage reef. **The ambush burrow stays open for ten minutes**
+  (`AMBUSH.HOLE_SECONDS`) after the digger leaves — the reef visibly remembers the attack — and is saved with the
+  run (`CurrentRun.holes`, restored by `Ecosystem.restoreHoles` on resume, counting on from where it was). Holes
+  live on `Ecosystem.holes`, not the digger: a resting dweller's hole closes 1.5 s after it climbs out and is never
+  saved while occupied (the digger would not be there on resume); at most 48 holes are kept.
+- **Vicious lunges** — every 10–15 s (the ruling's "10-15ms" read as seconds) a dweller lunges at the nearest wild
+  or the trainer within 20 m at burst ×1.25, casts once on reach, and gives up after 6 s. **Only the mission-target
+  dwellers lunge at wilds; the ambient extras lunge at the trainer alone** (USER RULING 2026-11-23 — they are there to
+  be dangerous to the player, not to thin the reef). Its own entourage,
+  companions, bosses and anything under the sand are never targets; the trainer only when huntable and past the
+  opening grace. Lunges and ambush strikes at the trainer share the predators' reef-wide 4 s cast gap, so a ring of
+  Krabby cannot kill in two seconds.
+- **8–12 extra dwellers on L1/L2** (`spawn.ambient.extras.bottom` is a range rolled per dive): ambient solos drawn
+  from species the level is not already fielding, never mission targets — they exist to make the reef lively and
+  dangerous to the trainer (they never lunge at wilds, see above). Sim (L1, 5 min, 24 dives): 8–12 extras from 18
+  species; reef-wide predator move hits ~255 → ~305 per 5 min (the mission dwellers' lunges at neighbours are the only
+  new source), so the sim's budget cap moved 300 → 340.
+
+**Engine note (perf):** the seven new per-entity fields live in ONE nested object, `Entity.burrow`. The spawn literal
+in `Ecosystem.spawn` must stay under 128 top-level fields — past that V8 drops the literal off its fast path and
+every property read on every entity slows: the headless sim went from 0.13 to 0.27 ms/step with seven flat fields
+and back to 0.13 with the packed object. Add future per-feature state the same way.
 
 ## 9. Companions, duels, and the L3/L4 boss arc
 

@@ -4,6 +4,7 @@
  * Design: docs/moves-combat-design.md §3–7.
  */
 import type { Entity, EcoEvent, Vec3 } from '../ai/types';
+import { underSand } from '../ai/types';
 import type { MoveConfig } from '@/data/moves';
 import { getMove, isSupportive, movesFor, type MoveConfig as MC } from '@/data/moves';
 import { CAST_FLOURISH } from '@/data/personality';
@@ -334,7 +335,7 @@ export class MoveSystem {
       return this.skyPos;
     }
     const e = this.host.byId.get(t.id) ?? this.host.externalCaster?.(t.id);
-    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint' || e.shelterT > 0) return null; // fainted = catchable, not hittable; sheltered = unreachable
+    if (!e || e.state === 'ko' || e.state === 'removed' || e.state === 'caught' || e.state === 'faint' || e.shelterT > 0 || underSand(e)) return null; // fainted = catchable, not hittable; sheltered or under the sand = unreachable
     return e;
   }
 

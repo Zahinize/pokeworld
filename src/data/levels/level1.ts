@@ -17,8 +17,9 @@ export const LEVEL_1: LevelConfig = {
     defensive: 1,
     ambient: {
       schools: 1, drifters: 1, giants: 1, legendaryChance: 0.03,
-      // 20 more wild Pokémon from species the level is not already fielding (not mission targets)
-      extras: { schools: 5, drifters: 3, curious: 4, predators: 2, bottom: 4, defensive: 2 },
+      // more wild Pokémon from species the level is not already fielding (not mission targets); the bottom count is a
+      // range rolled per dive (USER RULING 2026-11-23: 8–12 various dwellers to make the reef lively and dangerous)
+      extras: { schools: 5, drifters: 3, curious: 4, predators: 2, bottom: [8, 12], defensive: 2 },
     },
   },
   mission: {

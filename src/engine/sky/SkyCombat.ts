@@ -52,7 +52,7 @@ function makeShim(b: SkyBird, cs: CombatStats): Entity {
     hp: b.hp, maxHp: b.maxHp, hpBarT: 0, flashT: 0, animT: 0,
     home: { ...zero }, target: { ...zero }, wander: { ...zero }, targetId: -1, huntCooldown: 0, curiosityCooldown: 0,
     threatId: -1, threatT: 0, lured: false, lureOrbit: 0, facing: 1, zone: 'openReef',
-    t1: 0, t2: 0, cs, mcd: [0, 0], atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1, chestGuard: false,
+    t1: 0, t2: 0, cs, mcd: [0, 0], atkStage: 1, atkStageUntil: 0, defStage: 1, defStageUntil: 0, atkBonus: 0, berrySpd: 1, chestGuard: false, burrow: { ambushT: 0, lungeT: 0, emergeT: 0 },
     stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0, concealT: 0, concealDur: 0, veilT: 0, veilDur: 0,
     castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0,
     leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0,

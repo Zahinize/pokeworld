@@ -4,6 +4,7 @@
  * Renderer-agnostic; emits EcoEvents consumed by the game session.
  */
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
+import { underSand, HOLE_OPEN, type Hole } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
 import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf, wingSlotOf } from '../ai/behaviors';
 
@@ -28,6 +29,9 @@ function zoneAtSafe(x: number, z: number) { return zoneAt(x, z).id; }
 import { len3 } from '../ai/steering';
 import { CHEST } from '@/data/chest';
 
+/** Holes kept on the sand at once (render pool in BurrowLayer matches). */
+export const MAX_HOLES = 48;
+
 export interface DamageInfo { entity: Entity; amount: number; by: 'predator' | 'ball' | 'laser'; sourceId: number }
 
 export class Ecosystem {
@@ -41,6 +45,13 @@ export class Ecosystem {
   chest: { x: number; y: number; z: number; guardIds: number[] } | null = null;
   /** guard: the guardians answer anyone near the chest · swarm: guardians gone, the reef defends it · off: looted. */
   chestMode: 'guard' | 'swarm' | 'off' = 'guard';
+  /** Attract mode (USER RULING 2026-11-22): nothing on the reef turns on the trainer — no proximity hostility, no
+   *  retaliation, no chest guard or swarm — the menu must not look like a game that only bites. Hunting the trainer is
+   *  already off there (the demo never marks the player huntable). */
+  peaceful = false;
+  /** Holes in the sand (COMBAT.BOTTOM): a resting dweller's closes BURROW.FADE s after it leaves; an ambush's stays
+   *  AMBUSH.HOLE_SECONDS (ten minutes, saved with the run). Oldest dropped past MAX_HOLES. */
+  holes: Hole[] = [];
   private chestAcc = 0;
   private swarmAcc = 0;
   hash = new SpatialHash<Entity>(10);
@@ -85,6 +96,7 @@ export class Ecosystem {
     this.obstacles = gen.obstacles;
     this.objectives = gen.objectives;
     this.elitePredators = gen.elitePredators;
+    this.levelId = gen.levelId;
     this.missionMinStage = gen.objectives.find((o) => o.kind === 'stageCatch')?.minStage ?? null;
     if (gen.chest) this.chest = { x: gen.chest.x, y: gen.chest.y, z: gen.chest.z, guardIds: [] };
     this.hunterQuota = COMBAT.PREDATOR_HUNT.HUNTERS_MIN[gen.levelId] ?? 0;
@@ -107,7 +119,8 @@ export class Ecosystem {
           if (okC) this.nextChestPlayerCastAt = this.time + (this.chestMode === 'guard' ? CHEST.GUARD_CAST_GAP : CHEST.SWARM_CAST_GAP);
           return okC;
         }
-        const atTrainer = target.kind === 'player' && e.behavior === 'predator';
+        // bottom dwellers' lunges and ambush strikes at the trainer share the predators' gap (COMBAT.BOTTOM)
+        const atTrainer = target.kind === 'player' && (e.behavior === 'predator' || e.behavior === 'bottom');
         if (atTrainer && this.time < this.nextPredatorPlayerCastAt) return false;
         const ok = this.moves.cast(e, slot, target);
         if (ok && atTrainer) this.nextPredatorPlayerCastAt = this.time + COMBAT.PREDATOR_HUNT.TRAINER_CAST_GAP;
@@ -115,6 +128,7 @@ export class Ecosystem {
       },
       pickMove: (e, dist, preferUtility, damageOnly) => this.moves.pickMove(e, dist, preferUtility, damageOnly),
       moveReady: (e, slot) => this.moves.ready(e, slot),
+      digHole: (e) => this.digHole(e, 'dig'),
     };
     this.moves = new MoveSystem({
       time: 0,
@@ -191,6 +205,7 @@ export class Ecosystem {
       stunT: 0, slowT: 0, blindT: 0, hotRate: 0, hotT: 0, hotAcc: 0,
       concealT: 0, concealDur: 0, veilT: 0, veilDur: 0, castFrom: -1, castAt: -1, jetT: 0, jetColor: '#7dd3fc', wingT: 0, wakeT: 0, aboardT: 0, talkT: 0, talkDelay: 0, rideK: 0, leapWith: -1, leapDelay: 0, podN: 0, hopT: 0, hopDur: 0, hopH: 0, hx: 0, hy: 0, hz: 0, hx2: 0, hy2: 0, hz2: 0, frozenT: 0, kbx: 0, kby: 0, kbz: 0, kbT: 0,
       retaliateN: 0, retaliateWindowT: 0, retaliateTarget: -1, furyT: 0, furyHp: 0, proxT: 0,
+      burrow: { ambushT: 0, lungeT: 0, emergeT: 0 }, // one field, not three: see Entity.burrow
       duelWith: -1, faintT: 0, orderTarget: -1, orderMove: -1, partnerSlot: -1, isBoss: false, isShiny: false, pairBossId: -1,
       baitT: 0, shelterT: 0, exposeT: 0, orderT: 0, baitAt: 0, gulpT: 0, gulpAt: 0, gulpN: 0, dumbT: 0,
       souls: 0, respectN: 0, surgeT: 0, surgeAt: 0,
@@ -219,6 +234,8 @@ export class Ecosystem {
       const H = COMBAT.HUNTERS;
       e.hunter = true; e.spdBase *= H.SPEED; e.cdRate = 1 / H.COOLDOWN;
     }
+    // the level's own pace for the reef's hunters and explorers (COMBAT.WILD_PACE: L1/L2 predators ×1.5, curious ×1.3)
+    if (sp.role !== 'partner' && !sp.boss && (behavior === 'predator' || behavior === 'curious')) e.spdBase *= COMBAT.WILD_PACE[behavior][this.levelId] ?? 1;
     e.spdMul = e.spdBase;
     this.entities.push(e); this.alive.push(e); this.byId.set(e.id, e);
     if (sp.groupIndex >= 0) {
@@ -354,7 +371,8 @@ export class Ecosystem {
     // a boss runs its own AI and nothing else: the generic retaliation used to knock a predator-type boss
     // (Basculegion) out of its charge mid-lunge, so the charge timer never reset and it charged every ~7 s
     if (t.isBoss) return;
-    if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel') return;
+    if (this.peaceful && attackerId === -2) return; // the menu reef never answers the camera
+    if (t.state === 'ko' || t.state === 'caught' || t.state === 'removed' || t.state === 'captureAttempt' || t.state === 'retaliate' || t.state === 'faint' || t.state === 'duel' || underSand(t)) return;
     if (t.retaliateWindowT <= 0) { t.retaliateWindowT = COMBAT.RETALIATE_WINDOW; t.retaliateN = 0; }
     const vsRaider = attackerId <= -1000; // a sky Pokémon under the reef: every hit it lands draws an answer
     const vsPlayer = attackerId === -2;   // the trainer: every reef Pokémon answers, whatever its temperament
@@ -429,6 +447,7 @@ export class Ecosystem {
   breakOut(e: Entity) {
     if (e.state !== 'captureAttempt') return;
     e.state = 'wander'; e.stateT = 0; // out of the ball — the retaliation roll refuses a Pokémon still "in" one
+    if (this.startAmbush(e)) return; // a bottom dweller digs in and comes for the trainer under the sand (COMBAT.BOTTOM.AMBUSH)
     this.maybeRetaliate(e, -2);
     if ((e.state as EntityState) === 'retaliate') return; // stands its ground for a beat, then the AI resumes
     e.state = 'flee'; e.stateT = 0; e.threatId = -2; e.threatT = 0;
@@ -440,6 +459,44 @@ export class Ecosystem {
     e.vx = (dx / d) * sp; e.vy = (dy / d) * sp * 0.5; e.vz = (dz / d) * sp;
     e.nextThink = this.time + 0.8;
   }
+
+  /** A solo bottom dweller that just broke out of a ball digs in on the spot and tunnels at the trainer with
+   *  STAT_MULT× speed and Attack (COMBAT.BOTTOM.AMBUSH); bottomThink runs the tunnel and the strike. */
+  startAmbush(e: Entity): boolean {
+    if (e.behavior !== 'bottom' || e.role !== 'solo' || e.isBoss || this.peaceful) return false;
+    const A = COMBAT.BOTTOM.AMBUSH;
+    e.state = 'ambush'; e.stateT = 0; e.targetId = -2; e.t1 = A.MAX_SECONDS;
+    e.vx = e.vy = e.vz = 0; e.dx = e.dy = e.dz = 0;
+    e.burrow.ambushT = A.BOOST_SECONDS;
+    e.atkStage = Math.max(e.atkStage, A.STAT_MULT); e.atkStageUntil = Math.max(e.atkStageUntil, this.time + A.BOOST_SECONDS);
+    this.digHole(e, 'ambush');
+    e.nextThink = this.time;
+    return true;
+  }
+
+  /** Open a hole under a dweller (small or big, COMBAT.BOTTOM.BURROW) and announce the dig. */
+  digHole(e: Entity, phase: 'dig' | 'ambush'): Hole {
+    const B = COMBAT.BOTTOM.BURROW;
+    const big = this.rng.next() < B.BIG_CHANCE;
+    const hole: Hole = { x: e.x, z: e.z, r: e.species.size * (big ? B.HOLE_R[1] : B.HOLE_R[0]), t: HOLE_OPEN, ambush: phase === 'ambush', by: e.id };
+    this.holes.push(hole);
+    if (this.holes.length > MAX_HOLES) this.holes.splice(0, this.holes.length - MAX_HOLES);
+    this.events.push({ type: 'burrow', entityId: e.id, speciesId: e.species.id, phase, x: e.x, y: floorY(e.x, e.z), z: e.z, size: e.species.size });
+    return hole;
+  }
+
+  /** The holes worth saving with the run: ambush holes (their remaining life, an occupied one gets the full span) and
+   *  closing rest holes; one still occupied by a resting dweller is not saved — the digger will not be there on resume. */
+  holeSnapshot(): Hole[] {
+    const out: Hole[] = [];
+    for (const h of this.holes) {
+      if (h.t >= HOLE_OPEN && !h.ambush) continue;
+      out.push({ x: +h.x.toFixed(2), z: +h.z.toFixed(2), r: +h.r.toFixed(2), t: h.t >= HOLE_OPEN ? COMBAT.BOTTOM.AMBUSH.HOLE_SECONDS : +h.t.toFixed(1), ambush: h.ambush, by: -1 });
+    }
+    return out;
+  }
+
+  restoreHoles(holes: Hole[]) { this.holes = holes.filter((h) => h.t > 0).slice(-MAX_HOLES).map((h) => ({ ...h, by: -1 })); }
 
   /** Capture succeeded. */
   capture(e: Entity) {
@@ -503,7 +560,14 @@ export class Ecosystem {
 
     // Rebuild spatial hash with live, interactable entities
     this.hash.clear();
-    for (const e of this.alive) if (e.state !== 'ko' && e.state !== 'caught') this.hash.insert(e);
+    for (const e of this.alive) if (e.state !== 'ko' && e.state !== 'caught' && !underSand(e)) this.hash.insert(e);
+    // holes close: an open one starts its countdown the moment its digger is out of the sand (or gone for good)
+    for (let i = this.holes.length - 1; i >= 0; i--) {
+      const h = this.holes[i];
+      if (h.t >= HOLE_OPEN) { const d = this.byId.get(h.by); if (!d || !underSand(d)) h.t = h.ambush ? COMBAT.BOTTOM.AMBUSH.HOLE_SECONDS : COMBAT.BOTTOM.BURROW.FADE; continue; }
+      h.t -= dt;
+      if (h.t <= 0) this.holes.splice(i, 1);
+    }
 
     // A surfaced ferry Lapras draws the little ones to its side
     ctx.ferry = null;
@@ -540,6 +604,14 @@ export class Ecosystem {
         e.wasChasing = chasing;
         if (e.boostT > 0) { e.boostT -= dt; e.wakeT = Math.max(e.wakeT, 0.7); } // bubbles boil off it while it surges
         e.spdMul = e.spdBase * (e.boostT > 0 ? COMBAT.HUNTERS.CHASE_SPEED : 1);
+      }
+      if (e.behavior === 'bottom') {
+        // the ambush boost (COMBAT.BOTTOM.AMBUSH.STAT_MULT× speed; Attack rides atkStage), the lunge clock, the hole's fade
+        if (e.burrow.ambushT > 0) e.burrow.ambushT -= dt;
+        if (e.burrow.lungeT > 0) e.burrow.lungeT -= dt;
+        if (e.burrow.emergeT > 0) e.burrow.emergeT -= dt;
+        const boost = e.burrow.ambushT > 0 ? COMBAT.BOTTOM.AMBUSH.STAT_MULT : 1;
+        e.spdMul = e.hunter ? e.spdMul * boost : e.spdBase * boost;
       }
       if (e.mcd[0] > 0) e.mcd[0] -= cdt;
       if (e.mcd[1] > 0) e.mcd[1] -= cdt;
@@ -823,6 +895,7 @@ export class Ecosystem {
     const st = e.state;
     // a predator already on the trainer's trail keeps hunting — a retaliation would only break its hunt
     if (e.behavior === 'predator' && e.targetId === -2 && (st === 'approach' || st === 'circle' || st === 'rush')) return false;
+    if (e.behavior === 'bottom' && (underSand(e) || (st === 'rush' && e.targetId === -2))) return false; // digging, tunnelling or already lunging at the trainer
     if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'retaliate' || st === 'duel' || st === 'faint' || st === 'removed'
       || st === 'feed' || st === 'lured' || st === 'support' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapRun' || st === 'leapAir') return false;
     const p = this.player;
@@ -843,7 +916,7 @@ export class Ecosystem {
    *  turns on a trainer within SWARM_TRIGGER_R, a staggered ripple every SWARM_PERIOD. off: looted. */
   private chestAggro(dt: number) {
     const c = this.chest;
-    if (!c || this.chestMode === 'off') return;
+    if (!c || this.chestMode === 'off' || this.peaceful) return;
     this.chestAcc += dt;
     if (this.chestAcc < 0.5) return;
     const tick = this.chestAcc; this.chestAcc = 0;
@@ -1019,7 +1092,8 @@ export class Ecosystem {
     // Hard constraints
     // the sand is everyone's floor — a sky companion dives the reef with its trainer; only the ceiling differs
     const fy = floorY(e.x, e.z) + e.species.size * (e.behavior === 'bottom' ? 0.35 : 0.45);
-    if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
+    if (underSand(e)) { e.y = fy - e.species.size * 0.7; e.vy = 0; } // in its hole or tunnelling: pinned under the sand
+    else if (e.y < fy) { e.y = fy; if (e.vy < 0) e.vy = 0; }
     // nobody breaches: a surfaced trainer's companions wait fully submerged (and hidden),
     // so the open-air suffocation drain can never touch them — EXCEPT the Lapras ferry, which
     // comes all the way up and out, and the amphibious riders perched on its shell
@@ -1183,6 +1257,8 @@ export class Ecosystem {
   bossesActive = true;
   /** Companion level: wild predators spawn at COMBAT.ELITE_PREDATORS multiples (see spawn). */
   elitePredators = false;
+  /** The level being played (COMBAT.WILD_PACE is keyed by it). */
+  levelId = 0;
   /** The level's stage-catch objective, if any: every wild at or above this stage is a mission Pokémon (a hunter on L3/L4). */
   missionMinStage: number | null = null;
 

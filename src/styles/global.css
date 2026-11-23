@@ -17,6 +17,8 @@
   --violet: #b388ff;
   --radius: 18px;
   --font-display: 'Nunito', 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* the wordmark only: the closest open face to the Pokémon logo's hand-lettering (chunky, rounded, a little bouncy) */
+  --font-brand: 'Luckiest Guy', 'Nunito', 'Outfit', system-ui, sans-serif;
   --font-body: 'Outfit', 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -73,8 +75,13 @@ a { color: var(--aqua); }
 .eyebrow { font-family: var(--font-display); font-weight: 800; letter-spacing: .22em; text-transform: uppercase; font-size: 11px; color: var(--aqua); }
 .title { font-family: var(--font-display); font-weight: 900; font-size: clamp(28px, 5vw, 52px); line-height: 1.02; letter-spacing: -0.01em; }
 .subtitle { color: var(--muted); font-size: clamp(14px, 1.8vw, 17px); }
-.logo { font-family: var(--font-display); font-weight: 900; font-size: clamp(42px, 9vw, 96px); line-height: 1.05; filter: drop-shadow(0 6px 24px rgba(53,208,255,.25)); }
-.logo .logo-text { display: inline-block; padding: 0 .12em; letter-spacing: -0.02em; background: linear-gradient(180deg, #ffffff 0%, #bfefff 50%, #35d0ff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; }
+/* The wordmark wears the Pokémon logo's colours (USER RULING 2026-11-24, sampled from the Pokémon UNITE logo the user
+   attached): the yellow #fccf00 as a light-to-gold vertical gradient, the blue #2e54a2 as a heavy outline painted UNDER
+   the fill (paint-order), and a deeper blue hard drop beneath for the logo's embossed lift. Shared by every screen that
+   shows "PokeWorld" (start, main menu, loading, sign-in) through this one class. The face is Luckiest Guy (OFL, Google
+   Fonts) — the Pokémon wordmark is custom lettering, and this is the nearest open font to it. */
+.logo { font-family: var(--font-display); font-weight: 900; font-size: clamp(42px, 9vw, 96px); line-height: 1.05; filter: drop-shadow(0 .055em 0 #1d3f8c) drop-shadow(0 10px 26px rgba(46,84,162,.35)); }
+.logo .logo-text { display: inline-block; font-family: var(--font-brand); font-weight: 400; padding: .04em .16em 0; letter-spacing: .02em; background: linear-gradient(180deg, #ffe76a 0%, #fcd21a 30%, #fccf00 55%, #f1c300 78%, #d9ad00 100%); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; -webkit-text-stroke: .04em #2e54a2; paint-order: stroke fill; }
 .logo small { display: block; font-size: .22em; letter-spacing: .4em; padding-left: .4em; color: var(--aqua); -webkit-text-fill-color: var(--aqua); font-weight: 800; margin-top: 6px; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .row { display: flex; align-items: center; gap: 12px; }

@@ -1,5 +1,6 @@
 import type { BallId } from '@/data/types';
 import type { BerrySnapshot } from '@/engine/sim/berries';
+import type { ReefDropSnapshot } from '@/engine/sim/chest';
 import { STARTING_INVENTORY } from '@/data/balls';
 
 export const SAVE_VERSION = 1;
@@ -28,7 +29,13 @@ export interface CurrentRun {
   /** This heart's berries (bag, floor, drops still owed): a resumed run carries on with them instead of rolling a
    *  fresh batch. Null while a lifeline is being lost — the next heart starts fresh anyway. */
   berries?: BerrySnapshot | null;
+  /** The dive's stray chest item (L1/L2): still owed, lying on the sand, or none. Undefined = an older save (roll afresh). */
+  lootDrop?: ReefDropSnapshot | null;
+  /** Burrows still open on the sand (L1/L2 bottom dwellers): an ambush hole lasts ten minutes and comes back on resume. */
+  holes?: HoleSnapshot[];
 }
+
+export interface HoleSnapshot { x: number; z: number; r: number; t: number; ambush: boolean; by: number }
 
 export interface Settings {
   audioEnabled: boolean;

@@ -9,8 +9,12 @@
 import type { BallId } from '@/data/types';
 import { BALL_ORDER } from '@/data/balls';
 import { CHEST, LOOT_ORDER, heartLives, type LootId, type Weapon } from '@/data/chest';
+import { BERRY_RULES } from '@/data/berries';
 import type { RNG } from '../rng';
 import type { Vec3 } from '../ai/types';
+import type { Obstacle } from '../world/terrain';
+import { placeOnSand } from './berries';
+import { len3 } from '../ai/steering';
 
 export type ChestState = 'locked' | 'unlocked' | 'opening' | 'open' | 'looted';
 
@@ -25,6 +29,10 @@ export interface LootInventory {
   blueHeart: number | null;
 }
 
+/** The dive's stray reef drop: owed (`in` seconds to go), lying on the sand (`floor`), or taken (null). */
+export interface ReefDrop { id: LootId; in: number; floor: { x: number; y: number; z: number; phase: number } | null }
+export interface ReefDropSnapshot { id: LootId; in: number; floor: { x: number; y: number; z: number } | null }
+
 export type ChestEvent =
   | { type: 'unlocked' }
   | { type: 'hit'; n: number; needed: number }
@@ -35,7 +43,10 @@ export type ChestEvent =
   | { type: 'equip'; weapon: Weapon }
   | { type: 'use'; id: LootId; lives?: number; /** timer: a running restock was cut right now (else just a status). */ cut?: boolean; left?: number }
   | { type: 'blocked'; id: LootId; reason: 'empty' | 'maxLives' }
-  | { type: 'weaponEmpty'; weapon: Weapon };
+  | { type: 'weaponEmpty'; weapon: Weapon }
+  /** The reef drop washed onto the sand / was picked up. */
+  | { type: 'drop'; id: LootId; x: number; y: number; z: number }
+  | { type: 'dropPickup'; id: LootId; x: number; y: number; z: number };
 
 export interface ChestHudSnapshot {
   state: ChestState;
@@ -46,6 +57,8 @@ export interface ChestHudSnapshot {
   guardians: number;
   /** Pointer to the chest (unlocked/opening/open, within POINTER_RANGE). */
   nearest: { distance: number; dx: number; dz: number } | null;
+  /** Pointer to the reef drop lying on the sand (within the berry pointer range). */
+  drop: { id: LootId; distance: number; dx: number; dz: number } | null;
   /** Loot bar slots in LOOT_ORDER: count null = not owned. */
   slots: { id: LootId; count: number | null }[];
   weapon: Weapon;
@@ -68,15 +81,18 @@ export class ChestSystem {
   events: ChestEvent[] = [];
   /** What the open chest holds until the trainer reaches it. */
   private pending: LootId[] = [];
+  /** This dive's stray reef drop (CHEST.REEF_DROP), null on four dives in five and once it is taken. */
+  drop: ReefDrop | null = null;
 
   constructor(public pos: Vec3 | null, private rng: RNG) {}
 
   /** This level has a chest. */
   get present(): boolean { return !!this.pos; }
 
-  update(dt: number, player: { x: number; y: number; z: number }, guardiansAlive: number) {
+  update(dt: number, player: { x: number; y: number; z: number }, guardiansAlive: number, world: { obstacles: Obstacle[] } = { obstacles: [] }) {
     const c = this.pos;
     if (!c) return;
+    this.updateDrop(dt, player, world.obstacles);
     if (this.state === 'locked' && guardiansAlive === 0) { this.state = 'unlocked'; this.events.push({ type: 'unlocked' }); }
     if (this.state === 'unlocked') {
       const inside = Math.hypot(player.x - c.x, player.z - c.z) <= CHEST.DWELL_R && player.y >= c.y - 1 && player.y <= c.y + CHEST.DWELL_UP;
@@ -110,24 +126,60 @@ export class ChestSystem {
     this.events.push({ type: 'opening', how });
   }
 
-  /** LOOT_PER_CHEST distinct items out of LOOT_ORDER (Fisher–Yates). */
+  /** A random LOOT_PER_CHEST[0]–[1] distinct items out of LOOT_ORDER (Fisher–Yates, then a cut). */
   rollLoot(): LootId[] {
     const ids = LOOT_ORDER.slice();
     for (let i = ids.length - 1; i > 0; i--) { const j = this.rng.int(0, i); [ids[i], ids[j]] = [ids[j], ids[i]]; }
-    return ids.slice(0, CHEST.LOOT_PER_CHEST);
+    const [lo, hi] = CHEST.LOOT_PER_CHEST;
+    return ids.slice(0, this.rng.int(lo, Math.min(hi, ids.length)));
+  }
+
+  /** One item into the bag — everything stacks: a second launcher tops up the magazine, a second timer is two more charges. */
+  private grant(id: LootId) {
+    if (id === 'ballGun') { const m = this.loot.ballGun ?? { pokeball: 0, greatball: 0, ultraball: 0, masterball: 0 }; for (const b of BALL_ORDER) m[b] += CHEST.GUN.MAG[b]; this.loot.ballGun = m; }
+    else if (id === 'laserGun') this.loot.laserGun = (this.loot.laserGun ?? 0) + CHEST.LASER.ROUNDS;
+    else if (id === 'timer') this.loot.timer = (this.loot.timer ?? 0) + CHEST.TIMER_USES;
+    else this.loot.blueHeart = (this.loot.blueHeart ?? 0) + 1;
   }
 
   private collect() {
-    // everything stacks: a second launcher tops up the magazine, a second timer is two more charges
-    for (const id of this.pending) {
-      if (id === 'ballGun') { const m = this.loot.ballGun ?? { pokeball: 0, greatball: 0, ultraball: 0, masterball: 0 }; for (const b of BALL_ORDER) m[b] += CHEST.GUN.MAG[b]; this.loot.ballGun = m; }
-      else if (id === 'laserGun') this.loot.laserGun = (this.loot.laserGun ?? 0) + CHEST.LASER.ROUNDS;
-      else if (id === 'timer') this.loot.timer = (this.loot.timer ?? 0) + CHEST.TIMER_USES;
-      else this.loot.blueHeart = (this.loot.blueHeart ?? 0) + 1;
-    }
+    for (const id of this.pending) this.grant(id);
     this.state = 'looted';
     this.events.push({ type: 'looted', loot: this.pending.slice() });
     this.pending = [];
+  }
+
+  // ------------------------------------------------------------------ the reef drop
+
+  /** A new dive on a chest level: on REEF_DROP.CHANCE of dives one random item is owed, due within the window. */
+  rollReefDrop() {
+    const R = CHEST.REEF_DROP;
+    this.drop = this.pos && this.rng.chance(R.CHANCE) ? { id: this.rng.pick(LOOT_ORDER), in: this.rng.range(R.FIRST_AT, R.WINDOW), floor: null } : null;
+  }
+  /** A resumed dive carries its drop on exactly as it was (owed, landed, or none). */
+  restoreDrop(s: ReefDropSnapshot | null) {
+    this.drop = s ? { id: s.id, in: Math.max(0, s.in), floor: s.floor ? { ...s.floor, phase: this.rng.next() * Math.PI * 2 } : null } : null;
+  }
+  dropSnapshot(): ReefDropSnapshot | null {
+    const d = this.drop;
+    return d ? { id: d.id, in: d.in, floor: d.floor ? { x: d.floor.x, y: d.floor.y, z: d.floor.z } : null } : null;
+  }
+  private updateDrop(dt: number, player: { x: number; y: number; z: number }, obstacles: Obstacle[]) {
+    const d = this.drop;
+    if (!d) return;
+    if (!d.floor) {
+      d.in = Math.max(0, d.in - dt);
+      if (d.in > 0) return;
+      const pos = placeOnSand(this.rng, player, obstacles);
+      d.floor = { ...pos, phase: this.rng.next() * Math.PI * 2 };
+      this.events.push({ type: 'drop', id: d.id, x: pos.x, y: pos.y, z: pos.z });
+      return;
+    }
+    if (len3(d.floor.x - player.x, d.floor.y - player.y, d.floor.z - player.z) > BERRY_RULES.PICKUP_RADIUS) return;
+    const { x, y, z } = d.floor;
+    this.drop = null;
+    this.grant(d.id);
+    this.events.push({ type: 'dropPickup', id: d.id, x, y, z });
   }
 
   /** Resume of a run that already looted the chest: it stays open and empty, the guardians are gone. */
@@ -216,15 +268,21 @@ export class ChestSystem {
     const dx = c.x - player.x, dz = c.z - player.z, distance = Math.hypot(dx, dz);
     return distance <= CHEST.POINTER_RANGE ? { distance, dx, dz } : null;
   }
+  nearestDrop(player: { x: number; y: number; z: number }): ChestHudSnapshot['drop'] {
+    const f = this.drop?.floor;
+    if (!f || !this.drop) return null;
+    const distance = len3(f.x - player.x, f.y - player.y, f.z - player.z);
+    return distance <= BERRY_RULES.POINTER_RANGE ? { id: this.drop.id, distance, dx: f.x - player.x, dz: f.z - player.z } : null;
+  }
 
-  hudSnapshot(player: { x: number; z: number }, guardians: number): ChestHudSnapshot | null {
+  hudSnapshot(player: { x: number; y: number; z: number }, guardians: number): ChestHudSnapshot | null {
     if (!this.pos) return null;
     const L = this.loot;
     const count = (id: LootId): number | null => id === 'ballGun' ? (L.ballGun ? this.gunTotal() : null) : id === 'laserGun' ? L.laserGun : id === 'timer' ? L.timer : L.blueHeart;
     const slots = LOOT_ORDER.map((id) => ({ id, count: count(id) }));
     return {
       state: this.state, dwell01: Math.min(1, this.dwell / CHEST.DWELL_SECONDS), hits: this.hits, hitsNeeded: CHEST.MASTER_HITS, guardians,
-      nearest: this.nearest(player), slots, weapon: this.weapon, gunAmmo: L.ballGun ? { ...L.ballGun } : null, laser: L.laserGun ?? 0, restockBoosted: this.restockBoosted,
+      nearest: this.nearest(player), drop: this.nearestDrop(player), slots, weapon: this.weapon, gunAmmo: L.ballGun ? { ...L.ballGun } : null, laser: L.laserGun ?? 0, restockBoosted: this.restockBoosted,
       active: slots.some((s) => s.count !== null),
     };
   }

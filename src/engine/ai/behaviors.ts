@@ -4,7 +4,7 @@
  * Nothing here knows about rendering.
  */
 import type { Entity, EntityState, Group, EcoEvent, PlayerSnapshot, Vec3 } from './types';
-import { acc, accReset, accAdd, seek, fleeFrom, updateWander, depthPreference, floorAndSurface, containZone, containWorld, avoidObstacles, commit, len3 } from './steering';
+import { underSand } from './types';import { acc, accReset, accAdd, seek, fleeFrom, updateWander, depthPreference, floorAndSurface, containZone, containWorld, avoidObstacles, commit, len3 } from './steering';
 import type { Obstacle } from '../world/terrain';
 import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
@@ -44,6 +44,8 @@ export interface SimContext {
   /** Best ready move slot for a target at `dist`, or -1. */
   pickMove(e: Entity, dist: number, preferUtility?: boolean, damageOnly?: boolean): -1 | 0 | 1;
   moveReady(e: Entity, slot: 0 | 1): boolean;
+  /** A bottom dweller opens a hole under itself (COMBAT.BOTTOM.BURROW) — the ecosystem sizes and announces it. */
+  digHole(e: Entity): void;
 }
 
 const PLAYER_ID = -2;
@@ -1221,6 +1223,31 @@ function pickFerrySite(e: Entity, ctx: SimContext, toTrainer = false) {
 // Bottom dwellers (+ Huntail ambush)
 // ---------------------------------------------------------------------------------------------
 
+/** The nearest lunge target within `radius` for a vicious bottom dweller: the trainer (-2, when huntable and past the
+ *  grace) or — for a MISSION dweller only — any wild that is not its own entourage, a companion, a boss, or out of reach;
+ *  -1 for nobody. An ambient dweller (USER RULING 2026-11-23) goes for the trainer alone: it is there to be dangerous
+ *  to the player, not to thin the reef. */
+function pickLungeTarget(e: Entity, ctx: SimContext, radius: number): number {
+  let best = -1, bd = radius * radius;
+  const p = ctx.player;
+  if (p.huntable === true && ctx.playerGraceOver) { const d2 = (p.x - e.x) ** 2 + (p.y - e.y) ** 2 + (p.z - e.z) ** 2; if (d2 < bd) { bd = d2; best = -2; } }
+  if (e.ambient) return best;
+  ctx.hash.query(e.x, e.y, e.z, radius, (o, d2) => {
+    if (o === e || o.role === 'partner' || o.isBoss || (o.groupId >= 0 && o.groupId === e.groupId)) return;
+    const st = o.state;
+    if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'faint' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapAir' || underSand(o)) return;
+    if (d2 < bd) { bd = d2; best = o.id; }
+  });
+  return best;
+}
+
+/** Out of the sand: the hole starts fading, the pop-out animation plays, and the reef hears about it. */
+function surface(e: Entity, ctx: SimContext, phase: 'erupt' | 'emerge') {
+  e.burrow.emergeT = COMBAT.BOTTOM.BURROW.DIG; // its hole closes on its own (Ecosystem.update) now that it is out
+  e.y = floorY(e.x, e.z) + e.species.size * 0.42;
+  ctx.events.push({ type: 'burrow', entityId: e.id, speciesId: e.species.id, phase, x: e.x, y: floorY(e.x, e.z), z: e.z, size: e.species.size });
+}
+
 export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
   const s = e.species;
   accReset();
@@ -1231,17 +1258,68 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
   let speed = s.speed * e.speedMul;
   const hunter = s.secondary.includes('predator');
 
-  if (e.state !== 'rest' && e.state !== 'relocate' && e.state !== 'rush' && e.state !== 'retreat') { e.state = 'rest'; e.t1 = 15 + ctx.rng() * 35; e.home.x = e.x; e.home.z = e.z; }
+  if (e.state !== 'rest' && e.state !== 'relocate' && e.state !== 'rush' && e.state !== 'retreat' && e.state !== 'burrow' && e.state !== 'ambush') { e.state = 'rest'; e.t1 = 15 + ctx.rng() * 35; e.home.x = e.x; e.home.z = e.z; }
+
+  // vicious (COMBAT.BOTTOM.LUNGE): every EVERY s, from rest or on the crawl, lunge at the nearest wild or the trainer within RADIUS
+  if ((e.state === 'rest' || e.state === 'relocate') && e.burrow.lungeT <= 0 && e.lod < 2) {
+    const L = COMBAT.BOTTOM.LUNGE;
+    const tgt = pickLungeTarget(e, ctx, L.RADIUS);
+    if (tgt !== -1) {
+      e.targetId = tgt; e.state = 'rush'; e.stateT = 0; e.home.x = e.x; e.home.z = e.z;
+      e.burrow.lungeT = L.EVERY[0] + ctx.rng() * (L.EVERY[1] - L.EVERY[0]);
+      ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: tgt, lunge: true });
+    } else e.burrow.lungeT = 2 + ctx.rng() * 2; // nobody in reach: look again shortly
+  }
 
   switch (e.state) {
+    case 'burrow': {
+      // in its hole (COMBAT.BOTTOM.BURROW): still and unseen until the hide time runs out, then it climbs out and rests
+      e.t1 -= dt;
+      e.dx = e.dy = e.dz = 0; speed = 0;
+      if (e.t1 <= 0) { surface(e, ctx, 'emerge'); e.state = 'rest'; e.stateT = 0; e.t1 = 15 + ctx.rng() * 35; e.home.x = e.x; e.home.z = e.z; }
+      break;
+    }
+    case 'ambush': {
+      // dug in after a failed ball (COMBAT.BOTTOM.AMBUSH): tunnel under the sand at the trainer's footprint and erupt
+      // within STRIKE_R to strike — the boosted retaliation lunge; past GIVE_UP_R or after MAX_SECONDS it surfaces and
+      // crawls home empty-handed
+      const A = COMBAT.BOTTOM.AMBUSH;
+      e.t1 -= dt;
+      const dxz = Math.hypot(p.x - e.x, p.z - e.z);
+      if (e.t1 <= 0 || pd > A.GIVE_UP_R || ctx.player.huntable !== true) {
+        surface(e, ctx, 'emerge'); e.state = 'retreat'; e.stateT = 0; e.targetId = -1;
+        break;
+      }
+      if (dxz < A.STRIKE_R + s.size * 0.5) {
+        surface(e, ctx, 'erupt');
+        e.state = 'retaliate'; e.stateT = 0; e.retaliateTarget = -2; e.targetId = -1; e.home.x = e.x; e.home.z = e.z;
+        e.vy = s.burst * 0.8; // it bursts up out of the sand
+        break;
+      }
+      seek(e, p.x, floorY(e.x, e.z) - s.size * 0.7, p.z, 1.0, 2);
+      acc.y = 0;
+      speed = s.burst; // × the STAT_MULT boost through spdMul
+      if (Math.floor(e.stateT * 4) !== Math.floor((e.stateT - dt) * 4)) ctx.events.push({ type: 'burrow', entityId: e.id, speciesId: s.id, phase: 'trail', x: e.x, y: floorY(e.x, e.z), z: e.z, size: s.size });
+      break;
+    }
     case 'rush': {
+      const vsPlayer = e.targetId === -2; // a vicious lunge at the trainer (COMBAT.BOTTOM.LUNGE)
+      if (vsPlayer) {
+        const L = COMBAT.BOTTOM.LUNGE;
+        if (e.stateT > L.MAX_SECONDS || ctx.player.huntable !== true || pd > L.RADIUS * 1.5) { e.state = 'retreat'; e.stateT = 0; e.targetId = -1; ctx.events.push({ type: 'huntEnd', predatorId: e.id }); break; }
+        seek(e, p.x, p.y, p.z, 2.5);
+        speed = s.burst * L.SPEED;
+        const slot = ctx.pickMove(e, pd, false, true);
+        if (slot !== -1 && ctx.cast(e, slot, { kind: 'player' })) { e.state = 'retreat'; e.stateT = 0; e.targetId = -1; ctx.events.push({ type: 'huntEnd', predatorId: e.id }); }
+        break;
+      }
       const t = ctx.byId.get(e.targetId);
       // a named prey is EATEN, not shot: the hunter crawls all the way to it (Toxapex and Mareanie on a Corsola
       // cluster) and gets longer to close; mission fish are only ever bitten
       const eats = !!t && !!s.prey?.includes(t.species.id) && !t.objectiveId;
-      if (!t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || e.stateT > (eats ? 9 : 4)) { e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 40 + ctx.rng() * 30; break; }
+      if (!t || t.state === 'removed' || t.state === 'ko' || t.state === 'caught' || underSand(t) || e.stateT > (eats ? 9 : COMBAT.BOTTOM.LUNGE.MAX_SECONDS)) { e.state = 'retreat'; e.stateT = 0; e.huntCooldown = 40 + ctx.rng() * 30; ctx.events.push({ type: 'huntEnd', predatorId: e.id }); break; }
       seek(e, t.x, t.y, t.z, eats ? 1.0 : 2.5);
-      speed = s.burst;
+      speed = eats ? s.burst : s.burst * COMBAT.BOTTOM.LUNGE.SPEED; // a lunge, not a crawl
       const d = len3(t.x - e.x, t.y - e.y, t.z - e.z);
       if (eats) {
         if (d < s.size * 0.5 + t.species.size * 0.5 + 0.6) {
@@ -1283,6 +1361,12 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
         const dx = e.x - p.x, dz = e.z - p.z; const d = Math.hypot(dx, dz) || 1;
         e.target.x = e.x + (dx / d) * 8; e.target.z = e.z + (dz / d) * 8;
         e.state = 'relocate'; e.stateT = 0;
+      } else if (e.t1 <= 0 && ctx.rng() < COMBAT.BOTTOM.BURROW.CHANCE) {
+        // dig a hole and hide in it for a while (COMBAT.BOTTOM.BURROW)
+        const B = COMBAT.BOTTOM.BURROW;
+        e.state = 'burrow'; e.stateT = 0; e.t1 = B.HIDE[0] + ctx.rng() * (B.HIDE[1] - B.HIDE[0]);
+        e.dx = e.dy = e.dz = 0; e.vx = e.vy = e.vz = 0;
+        ctx.digHole(e);
       } else if (e.t1 <= 0) {
         const a = ctx.rng() * Math.PI * 2, r = 5 + ctx.rng() * 10;
         e.target.x = e.x + Math.cos(a) * r; e.target.z = e.z + Math.sin(a) * r;

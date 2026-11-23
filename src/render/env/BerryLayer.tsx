@@ -1,24 +1,26 @@
 /**
- * Floor berries: the pixel-art berry icons resting on the sand with a shiny-style glow pulse and
- * a soft cyan halo, so a berry reads from a distance like a shiny Pokémon does. Render-only:
- * positions come straight from session.berries.floor (at most a handful per heart).
+ * Floor pickups: the pixel-art berry icons resting on the sand with a shiny-style glow pulse and
+ * a soft cyan halo, so a berry reads from a distance like a shiny Pokémon does — and the chest's
+ * stray reef drop (CHEST.REEF_DROP), the same way in the chest's gold. Render-only: positions come
+ * straight from session.berries.floor and session.chest.drop (at most a handful per heart).
  */
 import { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
 import { session } from '@/engine/GameSession';
-import { BERRIES, BERRY_IDS, BERRY_RULES, type BerryId } from '@/data/berries';
+import { BERRIES, BERRY_IDS, BERRY_RULES } from '@/data/berries';
+import { LOOT } from '@/data/chest';
 
-const POOL = 8;
+const POOL = 9; // up to eight berries on the sand plus the one reef drop
 
-const textures = new Map<BerryId, THREE.Texture>();
-function textureOf(id: BerryId): THREE.Texture {
-  let t = textures.get(id);
+const textures = new Map<string, THREE.Texture>();
+function textureOf(url: string): THREE.Texture {
+  let t = textures.get(url);
   if (!t) {
-    t = new THREE.TextureLoader().load(BERRIES[id].icon);
+    t = new THREE.TextureLoader().load(url);
     t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.generateMipmaps = false;
     t.colorSpace = THREE.SRGBColorSpace;
-    textures.set(id, t);
+    textures.set(url, t);
   }
   return t;
 }
@@ -61,7 +63,11 @@ export const HALO_FRAG = /* glsl */ `
     #include <colorspace_fragment>
   }`;
 
-interface Slot { group: THREE.Group; sprite: THREE.ShaderMaterial; halo: THREE.ShaderMaterial; id: BerryId | null }
+interface Slot { group: THREE.Group; sprite: THREE.ShaderMaterial; halo: THREE.ShaderMaterial; key: string | null }
+/** What a slot draws: a berry, or the reef drop. */
+interface Pickup { key: string; icon: string; color: string; haloMix: string; glowBoost: number; x: number; y: number; z: number; phase: number }
+
+const CYAN = '#67e8f9', GOLD = '#ffd166';
 
 export function BerryLayer() {
   const root = useRef<THREE.Group>(null);
@@ -69,12 +75,12 @@ export function BerryLayer() {
   const slots = useMemo<Slot[]>(() => Array.from({ length: POOL }, () => {
     const sprite = new THREE.ShaderMaterial({
       transparent: false, depthWrite: true,
-      uniforms: { uMap: { value: textureOf(BERRY_IDS[0]) }, uGlow: { value: 0 }, uLight: { value: 1 }, uTime: { value: 0 }, uPhase: { value: 0 }, uSize: { value: BERRY_RULES.SPRITE_SIZE } },
+      uniforms: { uMap: { value: textureOf(BERRIES[BERRY_IDS[0]].icon) }, uGlow: { value: 0 }, uLight: { value: 1 }, uTime: { value: 0 }, uPhase: { value: 0 }, uSize: { value: BERRY_RULES.SPRITE_SIZE } },
       vertexShader: BILLBOARD_VERT, fragmentShader: SPRITE_FRAG,
     });
     const halo = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { uColor: { value: new THREE.Color('#67e8f9') }, uGlow: { value: 0 }, uTime: { value: 0 }, uPhase: { value: 0 }, uSize: { value: BERRY_RULES.HALO_SIZE } },
+      uniforms: { uColor: { value: new THREE.Color(CYAN) }, uGlow: { value: 0 }, uTime: { value: 0 }, uPhase: { value: 0 }, uSize: { value: BERRY_RULES.HALO_SIZE } },
       vertexShader: BILLBOARD_VERT, fragmentShader: HALO_FRAG,
     });
     const group = new THREE.Group();
@@ -82,7 +88,7 @@ export function BerryLayer() {
     const spriteMesh = new THREE.Mesh(geo, sprite); spriteMesh.renderOrder = 3; spriteMesh.frustumCulled = false;
     group.add(haloMesh, spriteMesh);
     group.visible = false;
-    return { group, sprite, halo, id: null };
+    return { group, sprite, halo, key: null };
   }), [geo]);
 
   useEffect(() => {
@@ -92,15 +98,20 @@ export function BerryLayer() {
     return () => { for (const s of slots) { r.remove(s.group); s.sprite.dispose(); s.halo.dispose(); } geo.dispose(); };
   }, [slots, geo]);
 
+  const items = useMemo<Pickup[]>(() => [], []);
+
   useFrame((state) => {
-    const floor = session.berries.floor;
+    items.length = 0;
+    for (const b of session.berries.floor) items.push({ key: `berry:${b.id}`, icon: BERRIES[b.id].icon, color: BERRIES[b.id].color, haloMix: CYAN, glowBoost: 0, x: b.x, y: b.y, z: b.z, phase: b.phase });
+    const d = session.chest.drop;
+    if (d?.floor) items.push({ key: `loot:${d.id}`, icon: LOOT[d.id].icon, color: LOOT[d.id].color, haloMix: GOLD, glowBoost: 0.1, x: d.floor.x, y: d.floor.y, z: d.floor.z, phase: d.floor.phase });
     const time = state.clock.elapsedTime;
     const light = 0.5 + session.lighting.ambient * 0.7;
     for (let i = 0; i < POOL; i++) {
-      const s = slots[i], b = floor[i];
+      const s = slots[i], b = items[i];
       if (!b) { s.group.visible = false; continue; }
-      if (s.id !== b.id) { s.id = b.id; s.sprite.uniforms.uMap.value = textureOf(b.id); (s.halo.uniforms.uColor.value as THREE.Color).set(BERRIES[b.id].color).lerp(new THREE.Color('#67e8f9'), 0.45); }
-      const glow = 0.22 + 0.12 * Math.sin(time * 3.5 + b.phase * 5); // the shiny pulse
+      if (s.key !== b.key) { s.key = b.key; s.sprite.uniforms.uMap.value = textureOf(b.icon); (s.halo.uniforms.uColor.value as THREE.Color).set(b.color).lerp(new THREE.Color(b.haloMix), 0.45); }
+      const glow = 0.22 + b.glowBoost + 0.12 * Math.sin(time * 3.5 + b.phase * 5); // the shiny pulse
       s.group.visible = true;
       s.group.position.set(b.x, b.y, b.z);
       s.sprite.uniforms.uGlow.value = glow; s.sprite.uniforms.uLight.value = light; s.sprite.uniforms.uTime.value = time; s.sprite.uniforms.uPhase.value = b.phase;
