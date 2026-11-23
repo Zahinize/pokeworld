@@ -699,14 +699,17 @@ guardians keep their own routines) got three habits, all dialled in `COMBAT.BOTT
   live on `Ecosystem.holes`, not the digger: a resting dweller's hole closes 1.5 s after it climbs out and is never
   saved while occupied (the digger would not be there on resume); at most 48 holes are kept.
 - **Vicious lunges** — every 10–15 s (the ruling's "10-15ms" read as seconds) a dweller lunges at the nearest wild
-  or the trainer within 20 m at burst ×1.25, casts once on reach, and gives up after 6 s. Its own entourage,
+  or the trainer within 20 m at burst ×1.25, casts once on reach, and gives up after 6 s. **Only the mission-target
+  dwellers lunge at wilds; the ambient extras lunge at the trainer alone** (USER RULING 2026-11-23 — they are there to
+  be dangerous to the player, not to thin the reef). Its own entourage,
   companions, bosses and anything under the sand are never targets; the trainer only when huntable and past the
   opening grace. Lunges and ambush strikes at the trainer share the predators' reef-wide 4 s cast gap, so a ring of
   Krabby cannot kill in two seconds.
 - **8–12 extra dwellers on L1/L2** (`spawn.ambient.extras.bottom` is a range rolled per dive): ambient solos drawn
   from species the level is not already fielding, never mission targets — they exist to make the reef lively and
-  dangerous. Sim (L1, 5 min, 24 dives): 8–12 extras from 18 species, ~100 lunges, reef-wide predator move hits ~255 →
-  ~380 per 5 min (L2 ~220), so the sim's budget cap moved 300 → 420; KOs 67 → 80 per 5 min, covered by reinforcement.
+  dangerous to the trainer (they never lunge at wilds, see above). Sim (L1, 5 min, 24 dives): 8–12 extras from 18
+  species; reef-wide predator move hits ~255 → ~305 per 5 min (the mission dwellers' lunges at neighbours are the only
+  new source), so the sim's budget cap moved 300 → 340.
 
 **Engine note (perf):** the seven new per-entity fields live in ONE nested object, `Entity.burrow`. The spawn literal
 in `Ecosystem.spawn` must stay under 128 top-level fields — past that V8 drops the literal off its fast path and

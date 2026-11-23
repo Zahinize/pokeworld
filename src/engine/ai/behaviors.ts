@@ -1224,11 +1224,14 @@ function pickFerrySite(e: Entity, ctx: SimContext, toTrainer = false) {
 // ---------------------------------------------------------------------------------------------
 
 /** The nearest lunge target within `radius` for a vicious bottom dweller: the trainer (-2, when huntable and past the
- *  grace) or any wild that is not its own entourage, a companion, a boss, or out of reach; -1 for nobody. */
+ *  grace) or — for a MISSION dweller only — any wild that is not its own entourage, a companion, a boss, or out of reach;
+ *  -1 for nobody. An ambient dweller (USER RULING 2026-11-23) goes for the trainer alone: it is there to be dangerous
+ *  to the player, not to thin the reef. */
 function pickLungeTarget(e: Entity, ctx: SimContext, radius: number): number {
   let best = -1, bd = radius * radius;
   const p = ctx.player;
   if (p.huntable === true && ctx.playerGraceOver) { const d2 = (p.x - e.x) ** 2 + (p.y - e.y) ** 2 + (p.z - e.z) ** 2; if (d2 < bd) { bd = d2; best = -2; } }
+  if (e.ambient) return best;
   ctx.hash.query(e.x, e.y, e.z, radius, (o, d2) => {
     if (o === e || o.role === 'partner' || o.isBoss || (o.groupId >= 0 && o.groupId === e.groupId)) return;
     const st = o.state;
@@ -1264,7 +1267,7 @@ export function bottomThink(e: Entity, ctx: SimContext, dt: number) {
     if (tgt !== -1) {
       e.targetId = tgt; e.state = 'rush'; e.stateT = 0; e.home.x = e.x; e.home.z = e.z;
       e.burrow.lungeT = L.EVERY[0] + ctx.rng() * (L.EVERY[1] - L.EVERY[0]);
-      ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: tgt });
+      ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: tgt, lunge: true });
     } else e.burrow.lungeT = 2 + ctx.rng() * 2; // nobody in reach: look again shortly
   }
 

@@ -134,6 +134,7 @@ export const COMBAT = {
    *  dug stays HOLE_SECONDS on the sand (a resting dweller's hole fades BURROW.FADE s after it climbs out).
    *  LUNGE: vicious — every EVERY s (an interval in SECONDS; the ruling's "10-15ms" is read as seconds) a dweller lunges at
    *  the nearest wild or the trainer within RADIUS at burst × SPEED, casts once on reach and gives up after MAX_SECONDS.
+   *  Only MISSION dwellers lunge at wilds; the ambient extras lunge at the trainer alone (USER RULING 2026-11-23).
    *  Lunges at the trainer share the predators' reef-wide cast gap, so a ring of Krabby cannot kill in two seconds. */
   BOTTOM: {
     BURROW: { CHANCE: 0.35, BIG_CHANCE: 0.4, HOLE_R: [0.9, 1.6] as readonly [number, number], HIDE: [5, 10] as readonly [number, number], DIG: 0.5, FADE: 1.5 },

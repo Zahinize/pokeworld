@@ -207,7 +207,7 @@ export type EcoEvent =
   | { type: 'ko'; entityId: number; speciesId: string; bySpeciesId?: string }
   | { type: 'alarm'; groupId: number; threatId: number }
   | { type: 'feedChatter'; entityId: number }
-  | { type: 'huntStart'; predatorId: number; targetId: number }
+  | { type: 'huntStart'; predatorId: number; targetId: number; /** a bottom dweller's vicious lunge (COMBAT.BOTTOM.LUNGE), not a hunt */ lunge?: true }
   | { type: 'huntEnd'; predatorId: number }
   | { type: 'respawn'; speciesId: string }
   | { type: 'reinforce'; speciesId: string; count: number; objectiveId?: string }
