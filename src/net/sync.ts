@@ -39,7 +39,7 @@ export function buildSnapshot(save: SaveData) {
     flawlessClears: st.flawlessClears,
     treasures: st.treasures,
     bossesDefeated,
-    // the per-level boards (attempts, clears, flawless, bestBalls, bestHaul, leastDamage, shinies, bestHunts, time, catches)
+    // the per-level boards (flawless, bestBalls, bestHaul; Fastest Dive reads bestTimes)
     levels: save.progression.levels,
   };
 }

@@ -78,11 +78,11 @@ const forged = await call('/api/auth/me', { cookie: 'pw_session=ash_k.9999999999
 expect(forged.status === 401, 'forged session signature rejected');
 
 // ---- stats merge ----
-const L1 = { attempts: 4, clears: 2, flawless: 1, bestBalls: 12, bestHaul: 9, leastDamage: 140, shinies: 1, bestHunts: 3, time: 900, catches: 17 };
+const L1 = { flawless: 1, bestBalls: 12, bestHaul: 9 };
 const snap1 = {
   totalCaught: 30, distinctSpecies: 12, shinyCaught: 2, completedLevels: [1, 2], bestTimes: { '1': 120, '2': 300 }, kyogreCaught: 1, wailordCaught: 1,
   ballsThrown: 60, ballCatches: 27, flawlessClears: 1, treasures: 5, bossesDefeated: 2,
-  levels: { '1': L1, '2': { ...L1, attempts: 2, clears: 1, bestBalls: 0, leastDamage: 0 }, 'x': L1, '7': 'junk' },
+  levels: { '1': L1, '2': { ...L1, bestBalls: 0 }, 'x': L1, '7': 'junk' },
 };
 const p1 = await call('/api/stats', { body: snap1, cookie: li.cookie });
 expect(p1.status === 200 && p1.json.stats.totalCaught === 30, 'stats snapshot stored');
@@ -93,17 +93,17 @@ expect(JSON.stringify(Object.keys(p1.json.stats.levels).sort()) === '["1","2"]',
 const p2 = await call('/api/stats', { body: {
   totalCaught: 5, distinctSpecies: 3, shinyCaught: 0, completedLevels: [3], bestTimes: { '1': 90 }, kyogreCaught: 0, wailordCaught: 0,
   ballsThrown: 10, ballCatches: 1, flawlessClears: 0, treasures: 'nope', bossesDefeated: -4,
-  levels: { '1': { attempts: 1, clears: 0, flawless: 0, bestBalls: 7, bestHaul: 2, leastDamage: 0, shinies: 0, bestHunts: 0, time: 30, catches: 2 }, '2': { bestBalls: 9, leastDamage: 55 }, '3': { attempts: 1, time: 45 } },
+  levels: { '1': { flawless: 0, bestBalls: 7, bestHaul: 2 }, '2': { bestBalls: 9 }, '3': { bestHaul: 1 } },
 }, cookie: li.cookie });
 const st = p2.json.stats;
 expect(st.totalCaught === 30 && st.shinyCaught === 2 && st.kyogreCaught === 1, 'max-merge: counters never regress');
 expect(st.ballsThrown === 60 && st.ballCatches === 27 && st.flawlessClears === 1 && st.treasures === 5 && st.bossesDefeated === 2, 'max-merge: new scalars never regress (bad values read as 0)');
 expect(JSON.stringify(st.completedLevels) === '[1,2,3]', 'completedLevels union');
 expect(st.bestTimes['1'] === 90 && st.bestTimes['2'] === 300, 'bestTimes take the minimum');
-expect(st.levels['1'].attempts === 4 && st.levels['1'].time === 900 && st.levels['1'].catches === 17, 'per-level counts max-merge');
-expect(st.levels['1'].bestBalls === 7 && st.levels['1'].leastDamage === 140, 'per-level min fields: a better value wins, a 0 never overrides');
-expect(st.levels['2'].bestBalls === 9 && st.levels['2'].leastDamage === 55, 'per-level min fields: a real value replaces an unset 0');
-expect(JSON.stringify(Object.keys(st.levels).sort()) === '["1","2","3"]' && st.levels['3'].attempts === 1 && st.levels['3'].clears === 0, 'level keys union, missing fields default to 0');
+expect(st.levels['1'].flawless === 1 && st.levels['1'].bestHaul === 9, 'per-level counts max-merge');
+expect(st.levels['1'].bestBalls === 7 && st.levels['2'].bestHaul === 9, 'fewest balls: a better value wins; a 0 never overrides a record');
+expect(st.levels['2'].bestBalls === 9, 'fewest balls: a real value replaces an unset 0');
+expect(JSON.stringify(Object.keys(st.levels).sort()) === '["1","2","3"]' && st.levels['3'].bestHaul === 1 && st.levels['3'].flawless === 0, 'level keys union, missing fields default to 0');
 const noAuth = await call('/api/stats', { body: snap1 });
 expect(noAuth.status === 401, 'stats without session → 401');
 
@@ -112,7 +112,7 @@ const s2 = await call('/api/auth/signup', { body: { username: 'misty', password:
 await call('/api/stats', { body: {
   totalCaught: 99, distinctSpecies: 40, shinyCaught: 5, completedLevels: [1, 2, 3, 4], bestTimes: { '1': 60, '2': 60, '3': 60, '4': 60 }, kyogreCaught: 3, wailordCaught: 0,
   ballsThrown: 40, ballCatches: 40, flawlessClears: 3, treasures: 0, bossesDefeated: 6,
-  levels: { '1': { attempts: 2, clears: 2, flawless: 2, bestBalls: 5, bestHaul: 12, leastDamage: 0, shinies: 0, bestHunts: 1, time: 200, catches: 20 } },
+  levels: { '1': { flawless: 2, bestBalls: 5, bestHaul: 12 } },
 }, cookie: s2.cookie });
 
 const lb = await call('/api/leaderboard');
@@ -128,10 +128,9 @@ expect(b.sharpshooters.length === 1 && b.sharpshooters[0]?.username === 'ash_k' 
 expect(b.ironTrainers[0]?.value === 3 && b.treasureHunters.length === 1 && b.treasureHunters[0]?.value === 5 && b.bossSlayers[0]?.value === 6, 'iron trainers, treasure hunters (zero filtered), boss slayers');
 const l1 = lb.json.levels['1'], l2 = lb.json.levels['2'];
 expect(l1.fastestDive[0]?.username === 'misty' && l1.fastestDive[0]?.value === 60 && l1.fastestDive[1]?.value === 90, 'level 1 fastest dive ascending');
-expect(l1.clearRate.length === 1 && l1.clearRate[0]?.username === 'ash_k' && l1.clearRate[0]?.value === 50 && l1.clearRate[0]?.detail === '2 / 4', 'clear rate: 3-attempt minimum, rounded percent, clears / attempts detail');
-expect(l1.fewestBalls[0]?.value === 5 && l1.fewestBalls[1]?.value === 7 && l1.leastDamage.length === 1 && l1.leastDamage[0]?.value === 140, 'fewest balls ascending; unset least damage left off');
-expect(l1.biggestHaul[0]?.value === 12 && l1.timeDived[0]?.value === 900 && l1.hunts[0]?.value === 3 && l1.catches[0]?.value === 20 && l1.flawless[0]?.value === 2 && l1.clears[0]?.value === 2, 'the other level boards rank by their field');
-expect(l2.clears.length === 1 && l2.shinies[0]?.value === 1 && Array.isArray(lb.json.levels['4'].catches) && lb.json.levels['4'].catches.length === 0, 'levels 2 and 4 boards present, empty where nobody dived');
+expect(l1.fewestBalls[0]?.value === 5 && l1.fewestBalls[1]?.value === 7 && l2.fewestBalls.length === 1 && l2.fewestBalls[0]?.value === 9, 'fewest balls ascending; an unset 0 is left off');
+expect(l1.biggestHaul[0]?.value === 12 && l1.biggestHaul[1]?.value === 9 && l1.flawless[0]?.value === 2 && l1.flawless[1]?.value === 1 && l2.flawless.length === 1, 'biggest haul and flawless clears rank by their field, zeros left off');
+expect(JSON.stringify(Object.keys(l2).sort()) === '["biggestHaul","fastestDive","fewestBalls","flawless"]' && lb.json.levels['4'].biggestHaul.length === 0, 'exactly four boards per level, empty where nobody dived');
 expect(!JSON.stringify(lb.json).includes('passwordHash') && !JSON.stringify(lb.json).includes('salt'), 'leaderboard leaks no secrets');
 
 // ---- storage layout: user files must be HMAC-keyed, not username-named ----

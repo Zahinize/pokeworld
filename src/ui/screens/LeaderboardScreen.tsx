@@ -1,5 +1,5 @@
 /**
- * The Hall of Fame from /api/leaderboard: eleven global boards, then eleven boards for the level
+ * The Hall of Fame from /api/leaderboard: eleven global boards, then four boards for the level
  * picked on the L1–L4 pills. Values arrive raw (counts, seconds, percents) and are formatted here.
  * Guests get a sign-in nudge; network failure shows a friendly error; an older server response
  * missing a board renders it empty.
@@ -15,7 +15,7 @@ import { SPECIES_LIST } from '@/data/species';
 import type { LucideIcon } from 'lucide-react';
 import {
   Ic, Target, Map, Waves, Anchor, Medal, ArrowLeft, LogIn,
-  Sparkles, BookOpen, Timer, Crosshair, Shield, Gem, Skull, Trophy, Heart, Fish, HeartPulse, Gauge, Eye, Clock, Repeat,
+  Sparkles, BookOpen, Timer, Crosshair, Shield, Gem, Skull, Fish,
 } from '../components/icons';
 
 /** `time` formats seconds (h:mm:ss past an hour); `pct` appends %; `×` sits on the number; a plain unit follows it. */
@@ -35,18 +35,12 @@ const GLOBAL_BOARDS: BoardDef<GlobalBoardKey>[] = [
   { key: 'bossSlayers', icon: Skull, title: 'Boss Slayers', unit: 'bosses' },
 ];
 
+/** One board per skill: speed, precision, survival, exploration. */
 const LEVEL_BOARDS: BoardDef<LevelBoardKey>[] = [
   { key: 'fastestDive', icon: Timer, title: 'Fastest Dive', unit: '', fmt: 'time' },
-  { key: 'clears', icon: Trophy, title: 'Dive Clears', unit: 'clears' },
-  { key: 'flawless', icon: Shield, title: 'Flawless Clears', unit: 'no lifeline lost' },
   { key: 'fewestBalls', icon: Crosshair, title: 'Fewest Balls', unit: 'balls' },
+  { key: 'flawless', icon: Shield, title: 'Flawless Clears', unit: 'no lifeline lost' },
   { key: 'biggestHaul', icon: Fish, title: 'Biggest Haul', unit: 'in one dive' },
-  { key: 'leastDamage', icon: HeartPulse, title: 'Least Damage', unit: 'HP lost' },
-  { key: 'shinies', icon: Sparkles, title: 'Shiny Finds', unit: 'shinies' },
-  { key: 'clearRate', icon: Gauge, title: 'Clear Rate', unit: 'of dives', fmt: 'pct' },
-  { key: 'hunts', icon: Eye, title: 'Hunts Weathered', unit: 'in one clear' },
-  { key: 'timeDived', icon: Clock, title: 'Time Dived', unit: '', fmt: 'time' },
-  { key: 'catches', icon: Repeat, title: 'Reef Catches', unit: 'caught' },
 ];
 
 const MEDAL_COLORS = ['#ffd166', '#c9d3e0', '#d29a6b'];

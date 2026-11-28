@@ -1,9 +1,9 @@
 /**
  * POST a FULL stats snapshot derived from the client's local save. The server merges
  * rather than replaces — counters take max, completedLevels unions, bestTimes take min, and
- * the per-level records take max per field except the lower-is-better ones (fewest balls,
- * least damage: min, with 0 meaning "unset") — so stale blob reads, multi-device play and
- * cleared localStorage can never regress stats.
+ * the per-level records take max per field except fewest balls (min, with 0 meaning
+ * "unset") — so stale blob reads, multi-device play and cleared localStorage can never
+ * regress stats.
  */
 import type { ApiRequest, ApiResponse } from './_lib/http.js';
 import { methodGuard, readJson, sendJson } from './_lib/http.js';
@@ -13,7 +13,7 @@ import { putJSON } from './_lib/store.js';
 const num = (v: unknown, cap = 1_000_000) =>
   typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.min(cap, Math.floor(v)) : 0;
 const LEVEL_KEY = /^\d{1,3}$/;
-const LEVEL_CAPS: Partial<Record<keyof LevelStats, number>> = { time: 100_000_000, bestBalls: 100_000 };
+const LEVEL_CAPS: Partial<Record<keyof LevelStats, number>> = { bestBalls: 100_000 };
 
 function sanitizeLevels(raw: unknown): Record<string, LevelStats> {
   const out: Record<string, LevelStats> = {};

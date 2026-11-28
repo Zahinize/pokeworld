@@ -7,8 +7,8 @@ export interface LeaderboardRow { username: string; displayName: string; value: 
 /** The global boards. Values are counts, except `speedrunners` (seconds) and `sharpshooters` (percent, detail "caught / thrown"). */
 export type GlobalBoardKey = 'topCatchers' | 'levelCompletion' | 'kyogre' | 'wailord'
   | 'shinyHunters' | 'speciesCollectors' | 'speedrunners' | 'sharpshooters' | 'ironTrainers' | 'treasureHunters' | 'bossSlayers';
-/** One level's boards. `fastestDive` and `timeDived` are seconds; `clearRate` is a percent with a "clears / attempts" detail. */
-export type LevelBoardKey = 'fastestDive' | 'clears' | 'flawless' | 'fewestBalls' | 'biggestHaul' | 'leastDamage' | 'shinies' | 'clearRate' | 'hunts' | 'timeDived' | 'catches';
+/** One level's boards. `fastestDive` is seconds; the rest are counts. */
+export type LevelBoardKey = 'fastestDive' | 'fewestBalls' | 'flawless' | 'biggestHaul';
 export interface LeaderboardData {
   generatedAt: number;
   boards: Partial<Record<GlobalBoardKey, LeaderboardRow[]>>;

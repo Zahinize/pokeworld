@@ -98,8 +98,6 @@ interface AppState {
   completeStats: {
     levelId: number; total: number; caught: number; timeSec: number; ballsUsed: number; worldComplete?: boolean;
     roster?: { speciesId: string; dealt: number; taken: number; kills: number; assists: number }[];
-    /** The dive's tallies behind the leaderboard records (catches incl. non-targets, HP lost, lifelines lost, hunts weathered). */
-    run?: { catches: number; dmg: number; livesLost: number; hunts: number };
   } | null;
   overlay: 'none' | 'mission' | 'collection' | 'pause' | 'settings';
 
@@ -116,12 +114,8 @@ interface AppState {
   setCurrentRun(run: CurrentRun | null): void;
   setSavedParty(party: string[]): void;
   completeLevel(levelId: number, timeSec: number): void;
-  /** A fresh dive starts (not a resume): one more attempt on the level. */
-  recordDiveStart(levelId: number): void;
   /** A dive ends, cleared or wiped: fold its tallies into the level records and the global counters. */
   recordRunResult(r: RunResult): void;
-  /** Seconds dived since the last flush, so Time Dived survives a quit (saved by the setCurrentRun that follows). */
-  addLevelTime(levelId: number, sec: number): void;
   resetAll(): void;
   setMission(m: MissionState | null): void;
   setLevel(levelId: number, seed: number): void;
@@ -137,20 +131,14 @@ interface AppState {
   incBallsThrown(): void;
 }
 
-/** One finished dive, as GameSession reports it. `time` is the seconds not yet added by addLevelTime. */
+/** One finished dive, as GameSession reports it. */
 export interface RunResult {
   levelId: number;
   cleared: boolean;
-  /** Whole dive clock, seconds (the best-time candidate on a clear). */
-  timeSec: number;
-  time: number;
   balls: number;
   catches: number;
   ballCatches: number;
-  shinies: number;
-  dmg: number;
   livesLost: number;
-  hunts: number;
   treasures: number;
 }
 
@@ -234,27 +222,14 @@ export const useStore = create<AppState>((set, get) => ({
     const save = { ...s, progression: { ...s.progression, unlockedLevel: unlocked, completedLevels: completed, bestTimes }, currentRun: null, stats: { ...s.stats, levelsCompleted: s.stats.levelsCompleted + 1 } };
     saveGame(save); set({ save });
   },
-  recordDiveStart(levelId) {
-    const s = get().save;
-    const lv = levelStatsOf(s, levelId);
-    const save = withLevel(s, levelId, { ...lv, attempts: lv.attempts + 1 });
-    saveGame(save); set({ save });
-  },
   recordRunResult(r) {
     const s = get().save;
     const lv = levelStatsOf(s, r.levelId);
     const flawless = r.cleared && r.livesLost === 0;
     const next: LevelStats = {
-      ...lv,
-      clears: lv.clears + (r.cleared ? 1 : 0),
       flawless: lv.flawless + (flawless ? 1 : 0),
       bestBalls: r.cleared ? minRecord(lv.bestBalls, Math.max(1, r.balls)) : lv.bestBalls,
-      bestHaul: Math.max(lv.bestHaul, r.catches),
-      leastDamage: r.cleared ? minRecord(lv.leastDamage, Math.max(1, Math.round(r.dmg))) : lv.leastDamage,
-      shinies: lv.shinies + r.shinies,
-      bestHunts: r.cleared ? Math.max(lv.bestHunts, r.hunts) : lv.bestHunts,
-      time: lv.time + Math.max(0, Math.round(r.time)),
-      catches: lv.catches + r.catches,
+      bestHaul: Math.max(lv.bestHaul, r.catches), // a wiped dive's haul still counts
     };
     const save = withLevel(s, r.levelId, next);
     save.stats = {
@@ -265,12 +240,6 @@ export const useStore = create<AppState>((set, get) => ({
       runsEnded: s.stats.runsEnded + 1,
     };
     saveGame(save); set({ save });
-  },
-  addLevelTime(levelId, sec) {
-    if (!(sec > 0)) return;
-    const s = get().save;
-    const lv = levelStatsOf(s, levelId);
-    set({ save: withLevel(s, levelId, { ...lv, time: lv.time + Math.round(sec) }) });
   },
   resetAll() {
     const save = resetGame();

@@ -1,9 +1,9 @@
 /**
  * Public leaderboard aggregated from every user document, cached 30s per instance: eleven
- * global boards plus eleven per level (1–4). Every board is the top 20 by one value, zero or
- * unset values left out, ties broken by who got there first. Times are raw seconds and the
- * rate boards are integer percents — the client formats. O(users) on a cold cache — fine to
- * ~1k players; the escape hatch is a precomputed leaderboard.json updated on stats POST.
+ * global boards plus four per level (1–4). Every board is the top 20 by one value, zero or
+ * unset values left out, ties broken by who got there first. Times are raw seconds and
+ * Sharpshooters is an integer percent — the client formats. O(users) on a cold cache — fine
+ * to ~1k players; the escape hatch is a precomputed leaderboard.json updated on stats POST.
  */
 import type { ApiRequest, ApiResponse } from './_lib/http.js';
 import { methodGuard, sendJson } from './_lib/http.js';
@@ -13,8 +13,8 @@ import { listJSON } from './_lib/store.js';
 interface Row { username: string; displayName: string; value: number; detail?: string }
 const TOP = 20;
 const LEVEL_IDS = ['1', '2', '3', '4'] as const;
-/** Sharpshooters needs this many throws; Clear Rate this many dives — one lucky dive is not a record. */
-const MIN_THROWS = 50, MIN_ATTEMPTS = 3;
+/** Sharpshooters needs this many throws — one lucky dive is not a record. */
+const MIN_THROWS = 50;
 
 let cache: { at: number; data: unknown } | null = null;
 
@@ -51,17 +51,9 @@ function levelBoards(users: UserDoc[], id: string) {
   const f = (k: keyof LevelStats) => (u: UserDoc) => lv(u, id)[k];
   return {
     fastestDive: rank(users, (u) => u.stats.bestTimes[id] ?? null, { lowerIsBetter: true }),
-    clears: rank(users, f('clears')),
-    flawless: rank(users, f('flawless')),
     fewestBalls: rank(users, f('bestBalls'), { lowerIsBetter: true }),
+    flawless: rank(users, f('flawless')),
     biggestHaul: rank(users, f('bestHaul')),
-    leastDamage: rank(users, f('leastDamage'), { lowerIsBetter: true }),
-    shinies: rank(users, f('shinies')),
-    clearRate: rank(users, (u) => { const s = lv(u, id); return s.attempts >= MIN_ATTEMPTS ? pct(s.clears, s.attempts) : null; },
-      { detail: (u) => { const s = lv(u, id); return `${s.clears} / ${s.attempts}`; } }),
-    hunts: rank(users, f('bestHunts')),
-    timeDived: rank(users, f('time')),
-    catches: rank(users, f('catches')),
   };
 }
 

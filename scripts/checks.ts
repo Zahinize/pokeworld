@@ -169,18 +169,18 @@ console.log('Save migration');
     && Object.keys(fresh.stats).sort().join() === Object.keys(blank.stats).sort().join();
   if (zeroed) ok('garbage save → defaults; stats keys match createNewSave'); else fail(`migrateSave defaults: ${JSON.stringify({ levels: fresh.progression.levels, stats: fresh.stats })}`);
   // a valid save round-trips; corrupt entries are clamped or dropped, never thrown on
-  const lv = { attempts: 4, clears: 2, flawless: 1, bestBalls: 12, bestHaul: 9, leastDamage: 140, shinies: 1, bestHunts: 3, time: 900, catches: 17 };
+  const lv = { flawless: 1, bestBalls: 12, bestHaul: 9 };
   const m = migrateSave({
     ...blank,
-    progression: { unlockedLevel: 3, completedLevels: [1, 2], bestTimes: { '1': 120, '2': -5, 'x': 30 }, levels: { '1': lv, '2': { ...lv, time: -9, catches: NaN, bogus: 1 }, 'abc': lv, '3': 'junk' } },
+    progression: { unlockedLevel: 3, completedLevels: [1, 2], bestTimes: { '1': 120, '2': -5, 'x': 30 }, levels: { '1': lv, '2': { ...lv, bestHaul: -9, flawless: NaN, bogus: 1 }, 'abc': lv, '3': 'junk' } },
     stats: { ...blank.stats, ballsThrown: 60.4, ballCatches: -1, treasures: 'five', runsEnded: 3 },
-    currentRun: { levelId: 1, seed: 7, startedAt: 1, objectives: [], caught: 0, total: 5, lives: 3, elapsed: 61.5, run: { balls: 4, catches: 2, ballCatches: 2, shinies: 0, dmg: 33.3, livesLost: 1, hunts: 2, treasures: 'x' } },
+    currentRun: { levelId: 1, seed: 7, startedAt: 1, objectives: [], caught: 0, total: 5, lives: 3, elapsed: 61.5, run: { balls: 4, catches: 2, ballCatches: 2, livesLost: 1, treasures: 'x' } },
   });
   const l1 = m.progression.levels['1'], l2 = m.progression.levels['2'], run = m.currentRun?.run;
-  const good = JSON.stringify(l1) === JSON.stringify(lv) && l2.time === 0 && l2.catches === 0 && !('bogus' in l2) && Object.keys(m.progression.levels).sort().join() === '1,2'
+  const good = JSON.stringify(l1) === JSON.stringify(lv) && l2.bestHaul === 0 && l2.flawless === 0 && !('bogus' in l2) && Object.keys(m.progression.levels).sort().join() === '1,2'
     && JSON.stringify(m.progression.bestTimes) === '{"1":120}'
     && m.stats.ballsThrown === 60 && m.stats.ballCatches === 0 && m.stats.treasures === 0 && m.stats.runsEnded === 3
-    && m.currentRun?.elapsed === 61.5 && run?.balls === 4 && run.dmg === 33 && run.treasures === 0;
+    && m.currentRun?.elapsed === 61.5 && run?.balls === 4 && run.livesLost === 1 && run.treasures === 0;
   if (good) ok('valid records round-trip; bad level keys, negative/NaN fields and junk best times are dropped or clamped'); else fail(`migrateSave round-trip: ${JSON.stringify({ levels: m.progression.levels, bestTimes: m.progression.bestTimes, stats: m.stats, run: m.currentRun })}`);
 }
 

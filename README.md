@@ -62,17 +62,15 @@ dev, **Vercel Blob** in production.
 The client derives a full stats snapshot from its local save (`src/net/sync.ts`) and POSTs
 it after every catch (throttled), level clear and dive result; the server merges rather than
 replaces, so stats never regress (`api/stats.ts`: counters take max, completed levels union,
-best times and the per-level "fewest balls" / "least damage" records take min with 0 meaning
-unset). `api/leaderboard.ts` ranks the top 20 per board:
+best times and the per-level "fewest balls" record take min with 0 meaning unset). `api/leaderboard.ts` ranks the top 20 per board:
 
 - **Global** — Top Catchers, Level Completion, Kyogre and Wailord Catchers, Shiny Hunters,
   Species Collectors, Speedrunners (sum of best times, all four levels cleared), Sharpshooters
   (ball catches ÷ balls thrown, 50-throw minimum), Iron Trainers (clears without losing a
   lifeline), Treasure Hunters (chest loot + reef drops), Boss Slayers.
-- **Per level (L1–L4)** — Fastest Dive, Dive Clears, Flawless Clears, Fewest Balls, Biggest
-  Haul (catches in one dive), Least Damage, Shiny Finds, Clear Rate (clears ÷ fresh dives,
-  3-dive minimum; wipes count), Hunts Weathered (predators that came for you in one clear),
-  Time Dived, Reef Catches.
+- **Per level (L1–L4)** — one board per skill: Fastest Dive (speed), Fewest Balls
+  (precision), Flawless Clears (survival: no lifeline lost), Biggest Haul (exploration:
+  catches in one dive, wipes included).
 
 The dive tallies live on `GameSession.run`, are saved with the resumable run (so a resumed dive
 keeps its clock and counts) and are folded into `save.progression.levels` / `save.stats` by

@@ -49,39 +49,23 @@ export interface RunCounters {
   catches: number;
   /** Catches made with a thrown ball (not a laser, not a companion) — the accuracy numerator. */
   ballCatches: number;
-  shinies: number;
-  /** HP lost to wild attacks, post-cap. */
-  dmg: number;
   livesLost: number;
-  /** Times a predator (or a lunging bottom dweller) turned on the trainer. */
-  hunts: number;
   /** Chest loot items taken plus stray reef drops picked up. */
   treasures: number;
 }
-export const emptyRunCounters = (): RunCounters => ({ balls: 0, catches: 0, ballCatches: 0, shinies: 0, dmg: 0, livesLost: 0, hunts: 0, treasures: 0 });
+export const emptyRunCounters = (): RunCounters => ({ balls: 0, catches: 0, ballCatches: 0, livesLost: 0, treasures: 0 });
 
-/** Lifetime records on one level (progression.levels[levelId]). `bestBalls` and `leastDamage` use 0 as "unset". */
+/** Lifetime records on one level (progression.levels[levelId]), beside progression.bestTimes. `bestBalls` uses 0 as "unset". */
 export interface LevelStats {
-  /** Fresh dives started here (resumes do not count). */
-  attempts: number;
-  clears: number;
   /** Clears without losing a lifeline. */
   flawless: number;
   /** Fewest balls on a clear (0 = none yet). */
   bestBalls: number;
   /** Most catches in a single dive, cleared or wiped. */
   bestHaul: number;
-  /** Least HP lost on a clear (0 = none yet). */
-  leastDamage: number;
-  shinies: number;
-  /** Most hunts on the trainer weathered in one clear. */
-  bestHunts: number;
-  /** Seconds dived here, every dive. */
-  time: number;
-  catches: number;
 }
-export const LEVEL_STAT_KEYS = ['attempts', 'clears', 'flawless', 'bestBalls', 'bestHaul', 'leastDamage', 'shinies', 'bestHunts', 'time', 'catches'] as const satisfies readonly (keyof LevelStats)[];
-export const emptyLevelStats = (): LevelStats => ({ attempts: 0, clears: 0, flawless: 0, bestBalls: 0, bestHaul: 0, leastDamage: 0, shinies: 0, bestHunts: 0, time: 0, catches: 0 });
+export const LEVEL_STAT_KEYS = ['flawless', 'bestBalls', 'bestHaul'] as const satisfies readonly (keyof LevelStats)[];
+export const emptyLevelStats = (): LevelStats => ({ flawless: 0, bestBalls: 0, bestHaul: 0 });
 
 export interface Settings {
   audioEnabled: boolean;

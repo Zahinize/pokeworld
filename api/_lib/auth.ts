@@ -18,23 +18,16 @@ if (process.env.BLOB_READ_WRITE_TOKEN && !process.env.SESSION_SECRET) {
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 
-/** Lifetime records on one level. `bestBalls` and `leastDamage` are lower-is-better with 0 meaning "unset". */
+/** Lifetime records on one level (best times live in `bestTimes`). `bestBalls` is lower-is-better with 0 meaning "unset". */
 export interface LevelStats {
-  attempts: number;
-  clears: number;
   flawless: number;
   bestBalls: number;
   bestHaul: number;
-  leastDamage: number;
-  shinies: number;
-  bestHunts: number;
-  time: number;
-  catches: number;
 }
-export const LEVEL_STAT_KEYS = ['attempts', 'clears', 'flawless', 'bestBalls', 'bestHaul', 'leastDamage', 'shinies', 'bestHunts', 'time', 'catches'] as const;
+export const LEVEL_STAT_KEYS = ['flawless', 'bestBalls', 'bestHaul'] as const;
 /** Per-level fields where lower is better (0 = unset, never overrides a real value). */
-export const LEVEL_MIN_FIELDS: ReadonlySet<keyof LevelStats> = new Set(['bestBalls', 'leastDamage']);
-export const emptyLevelStats = (): LevelStats => ({ attempts: 0, clears: 0, flawless: 0, bestBalls: 0, bestHaul: 0, leastDamage: 0, shinies: 0, bestHunts: 0, time: 0, catches: 0 });
+export const LEVEL_MIN_FIELDS: ReadonlySet<keyof LevelStats> = new Set(['bestBalls']);
+export const emptyLevelStats = (): LevelStats => ({ flawless: 0, bestBalls: 0, bestHaul: 0 });
 
 export interface UserStats {
   totalCaught: number;
