@@ -970,7 +970,7 @@ and crosses at `SPEED` 2× its burst. `nightHunterThink` hunts **the nearest liv
 trainer**, in passes: close to `STRIKE_R`, cast a damage move (the reef-wide trainer cast gap and the level hit cap
 apply; it hits like a shiny, `elite`), swing `SWING_R` wide, come again `PASS_EVERY` 12–18 s later; while the trainer
 is down it only circles. The first time it closes within `REVEAL_R` it is revealed (`nightHunter` 2, true colours,
-"X, out of the dark!", `huntStart`). After `CHASE` 120–240 s it turns for the point it came from and is removed past
-`LEAVE_R`. Balls and the laser glance off it (as off a boss); on the companion levels the team can knock it out, and
+"X, out of the dark!", `huntStart`). After `CHASE` 120–180 s (two to three minutes — it is immune to balls, so longer would be a death sentence for a
+lone trainer) it turns for the point it came from and is removed past `LEAVE_R`. Balls and the laser glance off it (as off a boss); on the companion levels the team can knock it out, and
 that KO is a catch — the trophy joins the collection. `HP_MULT` 2, `ATK_MULT` 1.5. Sprites are vendored GIFs by dex
 number like the roster's; a missing sheet falls back to the coloured blob. Sim: `scripts/sim.ts` "Night hunter".

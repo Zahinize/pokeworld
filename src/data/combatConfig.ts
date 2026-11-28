@@ -186,8 +186,9 @@ export const NIGHT_HUNTER = {
   POOL: { 1: ['dragonair', 'beartic', 'golisopod'], 2: ['dragonair', 'golisopod', 'beartic', 'eelektross'], 3: ['dragonite', 'dragonair', 'golisopod', 'eelektross', 'beartic'], 4: ['dragonite', 'eelektross', 'golisopod', 'beartic', 'dragonair'] } as Record<number, string[]>,
   /** One roll per night, FIRST_ROLL seconds after dark; CHANCE that the night has a hunter at all. */
   FIRST_ROLL: [40, 90] as const, CHANCE: 0.6,
-  /** How long it hunts before it turns back, seconds. */
-  CHASE: [120, 240] as const,
+  /** How long it hunts before it turns back, seconds. Two to three minutes (USER RULING 2026-11-28: it is immune to
+   *  Poké Balls, so a longer visit would simply be a death sentence for a lone trainer). */
+  CHASE: [120, 180] as const,
   /** It appears SPAWN_R from the trainer (past the night fog's reach) and is gone again LEAVE_R out, or LEAVE_MAX s after turning. */
   SPAWN_R: 85, LEAVE_R: 95, LEAVE_MAX: 40,
   /** Twice its burst speed on the approach, the pass and the way out; SCALE× the sprite. */
