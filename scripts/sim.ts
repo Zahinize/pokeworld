@@ -973,7 +973,8 @@ for (const levelId of [1, 2]) {
   const boss = eco3.spawnBoss('dondozo', gen3.playerStart.x + 10, gen3.playerStart.z, false);
   const wantHp = Math.round(hp('dondozo') * BT.dondozo.hp);
   const wantAtk = combatStatsOfSim('dondozo').atk * BT.dondozo.atk * BOSS_ATK_MULT;
-  if (boss.maxHp === wantHp && Math.abs(boss.cs.atk - wantAtk) < 1e-6 && boss.spdMul === 1) ok(`L3: Dondozo spawns at ${boss.maxHp} HP and Attack ×${(BT.dondozo.atk * BOSS_ATK_MULT).toFixed(2)} (tuning × rage), no elite stacking`);
+  const wantDef = combatStatsOfSim('dondozo').def * BT.dondozo.def, wantSpDef = combatStatsOfSim('dondozo').spDef * BT.dondozo.spDef;
+  if (boss.maxHp === wantHp && Math.abs(boss.cs.atk - wantAtk) < 1e-6 && Math.abs(boss.cs.def - wantDef) < 1e-6 && Math.abs(boss.cs.spDef - wantSpDef) < 1e-6 && boss.spdMul === 1) ok(`L3: Dondozo spawns at ${boss.maxHp} HP, Attack ×${(BT.dondozo.atk * BOSS_ATK_MULT).toFixed(2)} (tuning × rage), Defense ×${BT.dondozo.def} / Sp. Def ×${BT.dondozo.spDef}, no elite stacking`);
   else fail(`L3: boss tuning off — hp ${boss.maxHp} (want ${wantHp}), atk ${boss.cs.atk.toFixed(1)} (want ${wantAtk.toFixed(1)}), spdMul ${boss.spdMul}`);
   // an elite predator really covers ground twice as fast
   const p3 = { x: gen3.playerStart.x, y: gen3.playerStart.y, z: gen3.playerStart.z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false };

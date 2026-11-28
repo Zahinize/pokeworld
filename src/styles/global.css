@@ -231,6 +231,7 @@ a { color: var(--aqua); }
 .info-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; width: min(280px, 78vw); padding: 10px 12px; border-radius: 12px; background: rgba(6,24,44,.96); border: 1px solid rgba(53,208,255,.35); box-shadow: 0 10px 30px rgba(0,0,0,.35); color: var(--text); font-size: 12.5px; line-height: 1.45; font-weight: 500; text-align: left; }
 .party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
 .boss-cell .stat { color: var(--gold); }
+.party-cell .defs { font-size: 9.5px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; line-height: 1; white-space: nowrap; }
 .shiny-cell { border-color: rgba(255,209,102,.5); }
 /* the shiny cap note under the party header: blue while picks remain, red at the cap */
 .shiny-note { margin: 8px 0 0; padding: 6px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; line-height: 1.3; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.4); color: var(--aqua); }
@@ -264,6 +265,7 @@ a { color: var(--aqua); }
   .brief .party-cell .sprite { width: 34px; height: 34px; }
   .brief .party-cell .n { font-size: 10px; }
   .brief .party-cell .stat { font-size: 9px; }
+  .brief .party-cell .defs { font-size: 8.5px; }
   .brief .objective .count { font-size: 14px; }
   .brief .lineup-row { min-height: 26px; padding: 2px 8px; gap: 6px; }
   .brief .lineup-row .nm { font-size: 11px; }

@@ -853,6 +853,15 @@ trainer reaches the bosses (the 30 m greeting trigger), each one renders as a bl
 status 4 in `PokemonLayer`: no light, depth tint or caustics, a faint violet sheen on its brightest markings
 pulsing with `aGlow`, and a deep-violet halo instead of the cyan one. The greeting reveals the true colours.
 
+**Boss armour (USER RULING 2026-11-28).** `BOSS_TUNING` scales the two defences separately: `def` is what physical
+moves run into, `spDef` what special moves do (`computeDamage` picks the side from the move's category). Kyogre is
+armoured on both sides (×1.5) — a long fight that rewards the hardest hitters instead of another HP doubling —
+and Dondozo is a physical wall (Defense ×1.3, Sp. Def ×1), so special attackers (Kingdra's Dragon Pulse, Lanturn's
+Thunder, Starmie's Psychic) are the answer to it. Companion boss trophies keep the same armour. The party picker
+(`MissionBrief`) prints `Def · SpD` under every roster cell and sorts by either, and the Collection's stat bars show
+a boss's tuned defences in gold, so a tank-and-striker pair can be built on purpose. The other dials (`PLAYER_DEF_NORM`
+100 as a difficulty knob; shiny Defense instead of HP) are noted but untouched.
+
 All bosses periodically **charge violently** at the player or a companion: telegraph (1 s glow + water
 draw-in) → fast lunge along a straight line with wake FX → heavy damage on contact (player 30–40, companion
 formula damage ×1.5) → drift recovery (4 s, the punish window). Charge cadence/speed per boss in config

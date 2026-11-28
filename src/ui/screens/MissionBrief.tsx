@@ -12,10 +12,10 @@ import { SpriteImg } from '../components/common';
 import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT } from '@/data/combatConfig';
 import { combatStatsOf } from '@/pokeapi/client';
 
-type StatKey = 'atk' | 'hp' | 'def';
+type StatKey = 'atk' | 'hp' | 'def' | 'spDef';
 /** Roster order: strongest-first by a stat, or only the sky Pokémon you have caught (sorted by Attack). */
 type RosterSort = StatKey | 'sky';
-const STAT_SUFFIX: Record<StatKey, string> = { atk: 'Atk', hp: 'HP', def: 'Def' };
+const STAT_SUFFIX: Record<StatKey, string> = { atk: 'Atk', hp: 'HP', def: 'Def', spDef: 'SpD' };
 
 /** The roster-sort stat for a species token — boss trophies show their real (multiplied) battle values. */
 function statOf(token: string, key: StatKey): number {
@@ -25,7 +25,8 @@ function statOf(token: string, key: StatKey): number {
   const shinyMult = isShinyToken(token) ? (t ? BOSS_SHINY_MULT : 2) : 1; // a shiny reef companion fights at double strength
   if (key === 'hp') return Math.round(st.maxHp * (t?.hp ?? 1) * shinyMult);
   if (key === 'atk') return Math.round(Math.max(st.atk, st.spAtk) * (t?.atk ?? 1) * shinyMult);
-  return st.def;
+  if (key === 'spDef') return Math.round(st.spDef * (t?.spDef ?? 1)); // boss trophies keep their armour
+  return Math.round(st.def * (t?.def ?? 1));
 }
 
 export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { levelId: number; seed?: number; resume?: CurrentRun | null; onEnter: () => void; onBack: () => void }) {
@@ -169,6 +170,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                       <option value="atk">Max Atk</option>
                       <option value="hp">Max HP</option>
                       <option value="def">Max Def</option>
+                      <option value="spDef">Max Sp. Def</option>
                       <option value="sky">Sky</option>
                     </select>
                     {party.length > 0 && (
@@ -201,6 +203,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                             <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
                             <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
                             <span className="stat">{statOf(t, statKey)} {STAT_SUFFIX[statKey]}</span>
+                            <span className="defs" title="Defense · Special Defense">Def {statOf(t, 'def')} · SpD {statOf(t, 'spDef')}</span>
                             {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                           </button>
                         );
@@ -221,6 +224,7 @@ export function MissionBrief({ levelId, seed, resume, onEnter, onBack }: { level
                                 <SpriteImg id={baseSpeciesId(t)} shiny={shiny} size={48} className={shiny ? 'shiny-glow' : ''} />
                                 <span className="n">{shiny && <Ic icon={Shiny} size={12} color="var(--gold)" />}{tokenLabel(t)}</span>
                                 <span className="stat">{statOf(t, statKey)} {STAT_SUFFIX[statKey]}</span>
+                                <span className="defs" title="Defense · Special Defense">Def {statOf(t, 'def')} · SpD {statOf(t, 'spDef')}</span>
                                 {idx >= 0 && <span className={`slot ${idx < 2 ? 'active' : ''}`}>{idx < 2 ? `Active ${idx + 1}` : `#${idx + 1}`}</span>}
                               </button>
                             );

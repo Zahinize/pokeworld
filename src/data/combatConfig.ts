@@ -158,15 +158,19 @@ export const COMBAT = {
   CHARGE_COMPANION_MULT: 1.5,
 } as const;
 
-/** Per-boss stat multipliers and charge cadence (level configs reference these by boss id). */
-export interface BossTuning { hp: number; atk: number; def: number; chargeEvery: number; chargeSpeed: number }
-/** Bosses fight at 2× HP/Attack — stage-2 frontlines (Kingdra/Gyarados/Basculegion) melt 1× rulers. */
+/** Per-boss stat multipliers and charge cadence (level configs reference these by boss id). `def` scales Defense
+ *  (what physical moves run into), `spDef` Special Defense (special moves) — see computeDamage. */
+export interface BossTuning { hp: number; atk: number; def: number; spDef: number; chargeEvery: number; chargeSpeed: number }
+/** Bosses fight at 2× HP/Attack — stage-2 frontlines (Kingdra/Gyarados/Basculegion) melt 1× rulers.
+ *  Defense (USER RULING 2026-11-28): Kyogre is armoured on both sides (×1.5), a long fight that rewards the
+ *  hardest hitters rather than another HP doubling; Dondozo is a physical wall (Defense ×1.3, Sp. Def ×1)
+ *  so special attackers — Kingdra's Dragon Pulse, Lanturn's Thunder — are the answer to it. */
 export const BOSS_TUNING: Record<string, BossTuning> = {
-  dondozo: { hp: 2, atk: 2, def: 1, chargeEvery: 20, chargeSpeed: 9 },
-  tatsugiri: { hp: 2, atk: 2, def: 1, chargeEvery: 26, chargeSpeed: 7 },
-  basculegion: { hp: 2, atk: 2, def: 1, chargeEvery: 18, chargeSpeed: 10 },
-  wailord: { hp: 2, atk: 2, def: 1, chargeEvery: 25, chargeSpeed: 8 },
-  kyogre: { hp: 2, atk: 2, def: 1, chargeEvery: 15, chargeSpeed: 11 },
+  dondozo: { hp: 2, atk: 2, def: 1.3, spDef: 1, chargeEvery: 20, chargeSpeed: 9 },
+  tatsugiri: { hp: 2, atk: 2, def: 1, spDef: 1, chargeEvery: 26, chargeSpeed: 7 },
+  basculegion: { hp: 2, atk: 2, def: 1, spDef: 1, chargeEvery: 18, chargeSpeed: 10 },
+  wailord: { hp: 2, atk: 2, def: 1, spDef: 1, chargeEvery: 25, chargeSpeed: 8 },
+  kyogre: { hp: 2, atk: 2, def: 1.5, spDef: 1.5, chargeEvery: 15, chargeSpeed: 11 },
 };
 
 /** Swagger: every boss moves this much faster while the fight is on — brawl, saddle ride and charge lunge

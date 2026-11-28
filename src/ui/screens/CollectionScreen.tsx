@@ -128,12 +128,13 @@ export function CollectionView({ onClose, embedded = false }: { onClose: () => v
                     const t = s.bossOnly ? BOSS_TUNING[s.id] : undefined;
                     const hpMult = (t?.hp ?? 1) * (t && selShiny ? BOSS_SHINY_MULT : 1);
                     const atkMult = (t?.atk ?? 1) * (t && selShiny ? BOSS_SHINY_MULT : 1);
+                    const defMult = t?.def ?? 1, spDefMult = t?.spDef ?? 1; // a boss's armour, per side
                     const rows: [string, number, boolean][] = [
                       ['HP', Math.round(st.maxHp * hpMult), hpMult > 1],
                       ['Attack', Math.round(st.atk * atkMult), atkMult > 1],
-                      ['Defense', st.def, false],
+                      ['Defense', Math.round(st.def * defMult), defMult > 1],
                       ['Sp. Atk', Math.round(st.spAtk * atkMult), atkMult > 1],
-                      ['Sp. Def', st.spDef, false],
+                      ['Sp. Def', Math.round(st.spDef * spDefMult), spDefMult > 1],
                       ['Speed', st.speed, false],
                     ];
                     const kit = SPECIES_MOVES[s.id]?.map((id) => MOVES[id]).filter(Boolean) ?? [];

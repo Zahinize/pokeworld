@@ -1268,13 +1268,13 @@ export class Ecosystem {
     const fy = floorY(x, z);
     const y = Math.max(fy + s.size * 0.7 + 1.5, -(s.depth[0] + s.depth[1]) / 2);
     const e = this.spawn({ speciesId, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z }, boss: true });
-    const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
+    const t = BOSS_TUNING[speciesId] ?? { hp: 1, atk: 1, def: 1, spDef: 1, chargeEvery: 20, chargeSpeed: 8 };
     e.isBoss = true;
     e.isShiny = shiny;
     const shinyMult = shiny ? BOSS_SHINY_MULT : 1;
     const atkMult = t.atk * shinyMult * BOSS_ATK_MULT; // rage: half again on top of the tuning
     e.maxHp = Math.round(e.maxHp * t.hp * shinyMult); e.hp = e.maxHp;
-    e.cs = { ...e.cs, atk: e.cs.atk * atkMult, spAtk: e.cs.spAtk * atkMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.def };
+    e.cs = { ...e.cs, atk: e.cs.atk * atkMult, spAtk: e.cs.spAtk * atkMult, def: e.cs.def * t.def, spDef: e.cs.spDef * t.spDef }; // armour per side: physical moves meet def, special ones spDef
     e.home = { x, y, z };
     e.state = 'wander'; e.stateT = 0;
     e.t2 = (3 + this.rng.next() * 2) / BOSS_ATTACK_RATE_MULT; // bosses open aggressively — first charge comes fast
@@ -1457,7 +1457,7 @@ export class Ecosystem {
       return;
     }
     if (e.state === 'rest') { e.state = 'wander'; e.stateT = 0; }
-    const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, chargeEvery: 20, chargeSpeed: 8 };
+    const t = BOSS_TUNING[e.species.id] ?? { hp: 1, atk: 1, def: 1, spDef: 1, chargeEvery: 20, chargeSpeed: 8 };
     const p = this.player;
     // Basculegion: the fight opens — it rises wearing the souls of everything that fell on this reef
     const legion = e.species.id === 'basculegion';
