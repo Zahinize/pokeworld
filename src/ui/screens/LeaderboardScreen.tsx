@@ -4,7 +4,7 @@
  * Guests get a sign-in nudge; network failure shows a friendly error; an older server response
  * missing a board renders it empty.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { OceanBackdrop, Panel, fmtTime } from '../components/common';
 import { apiLeaderboard, type GlobalBoardKey, type LeaderboardData, type LeaderboardRow, type LevelBoardKey } from '@/net/api';
 import { useAuth } from '@/state/auth';
@@ -15,33 +15,71 @@ import { SPECIES_LIST } from '@/data/species';
 import type { LucideIcon } from 'lucide-react';
 import {
   Ic, Target, Map, Waves, Anchor, Medal, ArrowLeft, LogIn,
-  Sparkles, BookOpen, Timer, Crosshair, Shield, Gem, Skull, Fish,
+  Sparkles, BookOpen, Timer, Crosshair, Shield, Gem, Skull, Fish, Info,
 } from '../components/icons';
 
-/** `time` formats seconds (h:mm:ss past an hour); `pct` appends %; `×` sits on the number; a plain unit follows it. */
-interface BoardDef<K extends string> { key: K; icon: LucideIcon; title: string; unit: string; fmt?: 'time' | 'pct' }
+/** `time` formats seconds (h:mm:ss past an hour); `pct` appends %; `×` sits on the number; a plain unit follows it.
+ *  `blurb` is the plain-English note behind the (i) on the heading. */
+interface BoardDef<K extends string> { key: K; icon: LucideIcon; title: string; unit: string; fmt?: 'time' | 'pct'; blurb: string }
 
 const GLOBAL_BOARDS: BoardDef<GlobalBoardKey>[] = [
-  { key: 'topCatchers', icon: Target, title: 'Top Catchers', unit: 'caught' },
-  { key: 'levelCompletion', icon: Map, title: 'Level Completion', unit: 'levels' },
-  { key: 'kyogre', icon: Waves, title: 'Kyogre Catchers', unit: '×' },
-  { key: 'wailord', icon: Anchor, title: 'Wailord Catchers', unit: '×' },
-  { key: 'shinyHunters', icon: Sparkles, title: 'Shiny Hunters', unit: 'shinies' },
-  { key: 'speciesCollectors', icon: BookOpen, title: 'Species Collectors', unit: 'species' },
-  { key: 'speedrunners', icon: Timer, title: 'Speedrunners', unit: 'all 4 levels', fmt: 'time' },
-  { key: 'sharpshooters', icon: Crosshair, title: 'Sharpshooters', unit: 'accuracy', fmt: 'pct' },
-  { key: 'ironTrainers', icon: Shield, title: 'Iron Trainers', unit: 'flawless clears' },
-  { key: 'treasureHunters', icon: Gem, title: 'Treasure Hunters', unit: 'treasures' },
-  { key: 'bossSlayers', icon: Skull, title: 'Boss Slayers', unit: 'bosses' },
+  { key: 'topCatchers', icon: Target, title: 'Top Catchers', unit: 'caught',
+    blurb: 'Every Pokémon you have ever caught, across all your dives. If two trainers are level, the one who has caught more different species ranks higher.' },
+  { key: 'levelCompletion', icon: Map, title: 'Level Completion', unit: 'levels',
+    blurb: 'How many of the four levels you have cleared at least once. If two trainers are level, the quicker combined best time ranks higher.' },
+  { key: 'kyogre', icon: Waves, title: 'Kyogre Catchers', unit: '×',
+    blurb: 'How many times you have defeated Kyogre, the ruler of the Deep Trench.' },
+  { key: 'wailord', icon: Anchor, title: 'Wailord Catchers', unit: '×',
+    blurb: 'How many times you have defeated Wailord in the Deep Trench.' },
+  { key: 'shinyHunters', icon: Sparkles, title: 'Shiny Hunters', unit: 'shinies',
+    blurb: 'Shiny Pokémon caught, counting every catch, not just the first of each kind.' },
+  { key: 'speciesCollectors', icon: BookOpen, title: 'Species Collectors', unit: 'species',
+    blurb: 'How many different species you have caught at least once, out of everything that lives in the reef and the sky above it.' },
+  { key: 'speedrunners', icon: Timer, title: 'Speedrunners', unit: 'all 4 levels', fmt: 'time',
+    blurb: 'Your best time on each of the four levels, added together. You need to have cleared every level to appear here. Lower is better.' },
+  { key: 'sharpshooters', icon: Crosshair, title: 'Sharpshooters', unit: 'accuracy', fmt: 'pct',
+    blurb: 'Catches made with a thrown ball, as a share of every ball you have thrown. You need at least 50 throws to appear here.' },
+  { key: 'ironTrainers', icon: Shield, title: 'Iron Trainers', unit: 'flawless clears',
+    blurb: 'Levels cleared without losing a single lifeline along the way.' },
+  { key: 'treasureHunters', icon: Gem, title: 'Treasure Hunters', unit: 'treasures',
+    blurb: 'Items taken from the treasure chest, plus stray items picked up off the reef floor.' },
+  { key: 'bossSlayers', icon: Skull, title: 'Boss Slayers', unit: 'bosses',
+    blurb: 'Bosses defeated: Dondozo, Tatsugiri, Basculegion, Wailord and Kyogre. Every victory counts.' },
 ];
 
 /** One board per skill: speed, precision, survival, exploration. */
 const LEVEL_BOARDS: BoardDef<LevelBoardKey>[] = [
-  { key: 'fastestDive', icon: Timer, title: 'Fastest Dive', unit: '', fmt: 'time' },
-  { key: 'fewestBalls', icon: Crosshair, title: 'Fewest Balls', unit: 'balls' },
-  { key: 'flawless', icon: Shield, title: 'Flawless Clears', unit: 'no lifeline lost' },
-  { key: 'biggestHaul', icon: Fish, title: 'Biggest Haul', unit: 'in one dive' },
+  { key: 'fastestDive', icon: Timer, title: 'Fastest Dive', unit: '', fmt: 'time',
+    blurb: 'Your quickest clear of this level, from the first splash to the last mission catch. Lower is better.' },
+  { key: 'fewestBalls', icon: Crosshair, title: 'Fewest Balls', unit: 'balls',
+    blurb: 'The fewest throws you have needed to clear this level. Launcher rounds and laser shots count as throws. Lower is better.' },
+  { key: 'flawless', icon: Shield, title: 'Flawless Clears', unit: 'no lifeline lost',
+    blurb: 'How many times you have cleared this level without losing a single lifeline.' },
+  { key: 'biggestHaul', icon: Fish, title: 'Biggest Haul', unit: 'in one dive',
+    blurb: 'The most Pokémon you have caught in one dive here, mission targets or not. A dive you did not finish still counts.' },
 ];
+
+/** The (i) beside a board title: tap or click to open a short note, tap anywhere else to close it. */
+function InfoTip({ title, text }: { title: string; text: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  return (
+    <span ref={ref} className={`info-tip${open ? ' open' : ''}`}>
+      <button type="button" aria-label={`What is ${title}?`} aria-expanded={open} title={open ? undefined : text}
+        onClick={() => { Audio.uiClick(); setOpen((o) => !o); }}>
+        <Ic icon={Info} size={15} />
+      </button>
+      {open && <span role="note" className="info-pop">{text}</span>}
+    </span>
+  );
+}
 
 const MEDAL_COLORS = ['#ffd166', '#c9d3e0', '#d29a6b'];
 /** Species in the dex (shiny forms are the same species). */
@@ -55,12 +93,13 @@ function fmtLong(sec: number) {
 const fmtValue = (v: number, fmt?: 'time' | 'pct') => (fmt === 'time' ? fmtLong(v) : fmt === 'pct' ? `${v}%` : `${v}`);
 
 function Board<K extends string>({ def, rows, me }: { def: BoardDef<K>; rows: LeaderboardRow[]; me: string | null }) {
-  const { icon, title, unit, fmt } = def;
+  const { icon, title, unit, fmt, blurb } = def;
   return (
     <Panel style={{ padding: 18 }}>
       <div className="row" style={{ marginBottom: 10 }}>
         <Ic icon={icon} size={20} color="var(--aqua)" />
         <b style={{ fontFamily: 'var(--font-display)' }}>{title}</b>
+        <InfoTip title={title} text={blurb} />
       </div>
       {rows.length === 0 && <p className="dim small" style={{ margin: 0 }}>No trainers on this board yet — be the first!</p>}
       {rows.map((r, i) => {

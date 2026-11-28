@@ -224,6 +224,11 @@ a { color: var(--aqua); }
 .stat-filter { min-height: 32px; padding: 0 10px; border-radius: 10px; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.35); color: var(--aqua); font: 800 12.5px var(--font-body); cursor: pointer; color-scheme: dark; }
 .stat-filter:hover { background: rgba(53,208,255,.2); }
 .stat-filter.active { background: rgba(53,208,255,.3); border-color: var(--aqua); color: #fff; }
+/* leaderboard board headings: the (i) opens a plain-English note on what the board counts */
+.info-tip { position: relative; display: inline-flex; margin-left: auto; }
+.info-tip > button { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 999px; border: 1px solid rgba(53,208,255,.35); background: rgba(53,208,255,.1); color: var(--aqua); cursor: pointer; padding: 0; }
+.info-tip > button:hover, .info-tip.open > button { background: rgba(53,208,255,.25); }
+.info-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 5; width: min(280px, 78vw); padding: 10px 12px; border-radius: 12px; background: rgba(6,24,44,.96); border: 1px solid rgba(53,208,255,.35); box-shadow: 0 10px 30px rgba(0,0,0,.35); color: var(--text); font-size: 12.5px; line-height: 1.45; font-weight: 500; text-align: left; }
 .party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
 .boss-cell .stat { color: var(--gold); }
 .shiny-cell { border-color: rgba(255,209,102,.5); }
