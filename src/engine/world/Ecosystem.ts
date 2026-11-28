@@ -6,7 +6,7 @@
 import type { Entity, Group, EcoEvent, PlayerSnapshot, Vec3, EntityRole, EntityState } from '../ai/types';
 import { underSand, HOLE_OPEN, type Hole } from '../ai/types';
 import type { SimContext } from '../ai/behaviors';
-import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, seatOf, wingSlotOf } from '../ai/behaviors';
+import { memberThink, groupThink, guardianThink, predatorThink, curiousThink, bottomThink, defensiveThink, giantThink, soloDrifterThink, ferryRiderThink, nightHunterThink, seatOf, wingSlotOf } from '../ai/behaviors';
 
 const tmpSeat = { x: 0, y: 0, z: 0 };
 import type { GeneratedEcosystem, SpawnSpec, MissionObjective } from '../ecosystem/generator';
@@ -16,7 +16,7 @@ import { getSpecies } from '@/data/species';
 import type { BehaviorGroup, ZoneId } from '@/data/types';
 import { GAME } from '@/data/gameConfig';
 import { SKY, skyPartnerScale } from '@/data/sky';
-import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, BOSS_ATTACK_RATE_MULT, BOSS_ATK_MULT, COMMANDER, LEGION } from '@/data/combatConfig';
+import { COMBAT, BOSS_TUNING, BOSS_SHINY_MULT, BOSS_FIGHT_SPEED_MULT, BOSS_ATTACK_RATE_MULT, BOSS_ATK_MULT, COMMANDER, LEGION, NIGHT_HUNTER } from '@/data/combatConfig';
 import { type SkyBodyRef, MoveSystem, type MoveTarget } from '../sim/moveSystem';
 import { combatStatsOf } from '@/pokeapi/client';
 import { companionMovesFor, isSupportive } from '@/data/moves';
@@ -190,7 +190,7 @@ export class Ecosystem {
     const e: Entity = {
       id: this.nextId++, species: s, behavior, role: sp.role, groupId: sp.groupIndex, objectiveId: sp.objectiveId, ambient: sp.ambient,
       x: sp.pos.x, y: sp.pos.y, z: sp.pos.z, vx: 0, vy: 0, vz: 0, dx: 0, dy: 0, dz: 0,
-      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, spdMul: 1, spdBase: 1, cdRate: 1, hunter: false, boostT: 0, wasChasing: false, phase: this.rng.next() * Math.PI * 2, scaleMul: 1,
+      maxSpeed: s.speed, speedMul: 0.85 + this.rng.next() * 0.3, spdMul: 1, spdBase: 1, cdRate: 1, hunter: false, boostT: 0, wasChasing: false, phase: this.rng.next() * Math.PI * 2, scaleMul: 1, nightHunter: 0,
       state: defaultState(), stateT: 0, nextThink: this.rng.next() * 0.3, lod: 0,
       hp: maxHp, maxHp, hpBarT: 0, flashT: 0, animT: 0,
       home: { ...sp.pos }, target: { x: 0, y: sp.pos.y, z: 0 }, wander: { x: this.rng.next() - 0.5, y: 0, z: this.rng.next() - 0.5 },
@@ -368,6 +368,7 @@ export class Ecosystem {
 
   /** Retaliation roll (anti-chaos window enforced). `attackerId` may be -2 for the player. */
   maybeRetaliate(t: Entity, attackerId: number) {
+    if (t.nightHunter) return; // the night hunter is already on the attack; a guardian's bite does not turn it
     // a boss runs its own AI and nothing else: the generic retaliation used to knock a predator-type boss
     // (Basculegion) out of its charge mid-lunge, so the charge timer never reset and it charged every ~7 s
     if (t.isBoss) return;
@@ -550,6 +551,7 @@ export class Ecosystem {
     const ctx = this.ctx;
     ctx.time = this.time; ctx.nightness = nightness; ctx.isNight = nightness > 0.55; ctx.predatorGraceOver = this.time > GAME.PREDATOR_GRACE;
     ctx.playerGraceOver = this.time > COMBAT.PREDATOR_HUNT.PLAYER_GRACE;
+    this.updateNightHunter(); // once the reef is dark: sometimes, something huge out of the fog (NIGHT_HUNTER)
     // the trainer's living companions: prey for the posse and for raiders, exactly like the trainer
     ctx.partners.length = 0;
     for (const e of this.alive) if (e.role === 'partner' && e.state !== 'ko' && e.state !== 'removed' && e.state !== 'caught') ctx.partners.push(e);
@@ -673,7 +675,7 @@ export class Ecosystem {
       if (e.stunT > 0) { e.vx *= 0.9; e.vy *= 0.9; e.vz *= 0.9; e.x += e.vx * dt; e.y += e.vy * dt; e.z += e.vz * dt; continue; }
 
       const d = len3(e.x - px, e.y - py, e.z - pz);
-      e.lod = d < GAME.AI_NEAR_DIST ? 0 : d < GAME.AI_MID_DIST ? 1 : 2;
+      e.lod = e.nightHunter ? 0 : d < GAME.AI_NEAR_DIST ? 0 : d < GAME.AI_MID_DIST ? 1 : 2; // the night hunter thinks at full rate from the fog in
       if (this.time >= e.nextThink) {
         const interval = e.lod === 0 ? 1 / GAME.AI_NEAR_HZ : e.lod === 1 ? 1 / GAME.AI_MID_HZ : 1 / GAME.AI_FAR_HZ;
         const tdt = Math.max(interval, this.time - (e.nextThink - interval));
@@ -733,6 +735,7 @@ export class Ecosystem {
   }
 
   private think(e: Entity, dt: number) {
+    if (e.nightHunter) { nightHunterThink(e, this.ctx, dt); return; } // the night hunter answers to nothing on this reef
     if (e.state === 'retaliate') { this.retaliateThink(e, dt); return; }
     if (e.state === 'flee' && e.groupId < 0 && e.behavior !== 'defensive' && e.behavior !== 'passive') {
       // generic post-breakout flee for solos
@@ -1279,6 +1282,78 @@ export class Ecosystem {
     e.state = 'wander'; e.stateT = 0;
     e.t2 = (3 + this.rng.next() * 2) / BOSS_ATTACK_RATE_MULT; // bosses open aggressively — first charge comes fast
     this.events.push({ type: 'bossSpawn', entityId: e.id, speciesId });
+    return e;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // The night hunter (NIGHT_HUNTER): once per night, sometimes, something huge comes out of the fog
+
+  /** Campaign dives only (GameSession.prepare sets it): never the menu reef, never the arena. */
+  nightHunterEnabled = false;
+  /** The hunter out there now, or -1. */
+  nightHunterId = -1;
+  private nightHunterSpecies = '';
+  private nightHunterLeftAt = -1;
+  private nightHunterRollAt = -1;
+  private nightHunterRolled = false;
+  private wasNight = false;
+
+  private updateNightHunter() {
+    const NH = NIGHT_HUNTER;
+    if (!this.ctx.isNight) { this.wasNight = false; this.nightHunterRolled = false; this.nightHunterRollAt = -1; }
+    else if (!this.wasNight) { this.wasNight = true; this.nightHunterRollAt = this.time + NH.FIRST_ROLL[0] + this.rng.next() * (NH.FIRST_ROLL[1] - NH.FIRST_ROLL[0]); }
+    // the one out there: gone once it has swum back past LEAVE_R (or dawdled LEAVE_MAX s), or when the team knocked it out
+    if (this.nightHunterId >= 0) {
+      const h = this.byId.get(this.nightHunterId);
+      if (!h || h.state === 'removed' || h.state === 'ko' || h.state === 'caught') {
+        // knocked out (the team's trophy, or a guardian's lucky night) or otherwise gone: the fog clears all the same
+        this.events.push({ type: 'nightHunter', entityId: this.nightHunterId, speciesId: h?.species.id ?? this.nightHunterSpecies, phase: 'gone' });
+        this.nightHunterId = -1;
+      } else if (h.nightHunter === 3) {
+        // turned back: gone once it is LEAVE_R out, or LEAVE_MAX s after turning (its own clock — the reef can knock the entity's about)
+        if (this.nightHunterLeftAt < 0) this.nightHunterLeftAt = this.time;
+        const d = len3(h.x - this.player.x, h.y - this.player.y, h.z - this.player.z);
+        if (d > NH.LEAVE_R || this.time - this.nightHunterLeftAt > NH.LEAVE_MAX) { this.events.push({ type: 'nightHunter', entityId: h.id, speciesId: h.species.id, phase: 'gone' }); this.remove(h); this.nightHunterId = -1; }
+      }
+      return;
+    }
+    if (!this.nightHunterEnabled || !this.ctx.isNight || this.nightHunterRolled || this.time < this.nightHunterRollAt) return;
+    if (!this.ctx.playerGraceOver || this.player.huntable !== true) return; // not while the trainer is down — it waits for the next tick
+    this.nightHunterRolled = true; // one roll a night: CHANCE that tonight has a hunter at all
+    if (this.rng.next() < NH.CHANCE) this.spawnNightHunter();
+  }
+
+  /** Raise tonight's hunter SPAWN_R out from the trainer, in the fog, and point it at them. */
+  spawnNightHunter(speciesId?: string): Entity {
+    const NH = NIGHT_HUNTER;
+    const pool = NH.POOL[this.levelId] ?? NH.POOL[1];
+    const id = speciesId ?? pool[Math.floor(this.rng.next() * pool.length)];
+    const s = getSpecies(id);
+    const p = this.player;
+    // a heading that keeps the spawn point inside the world disc (try a few; then pull the last one in radially)
+    const lim = GAME.WORLD_RADIUS - 10;
+    let x = p.x, z = p.z;
+    for (let i = 0; i < 8; i++) {
+      const ang = this.rng.next() * Math.PI * 2;
+      x = p.x + Math.cos(ang) * NH.SPAWN_R; z = p.z + Math.sin(ang) * NH.SPAWN_R;
+      if (Math.hypot(x, z) < lim) break;
+    }
+    const r = Math.hypot(x, z);
+    if (r > lim) { x *= lim / r; z *= lim / r; }
+    const y = Math.max(floorY(x, z) + s.size * NH.SCALE * 0.6 + 1.5, -(s.depth[0] + s.depth[1]) / 2);
+    const e = this.spawn({ speciesId: id, role: 'solo', groupIndex: -1, ambient: true, zone: zoneAtSafe(x, z), pos: { x, y, z } });
+    e.nightHunter = 1; e.scaleMul = NH.SCALE;
+    // its own tuning from the base stats — none of the level's elite/hunter/pace bonuses that spawn() hands predators
+    const base = combatStatsOf(s.id);
+    e.maxHp = Math.round(this.hpOf(s.id) * NH.HP_MULT); e.hp = e.maxHp;
+    e.cs = { ...base, atk: base.atk * NH.ATK_MULT, spAtk: base.spAtk * NH.ATK_MULT };
+    e.hunter = false; e.cdRate = 1; e.spdBase = 1; e.spdMul = 1; e.speedMul = 1; // its pace is the think's own (burst × SPEED)
+    e.home = { x, y, z }; // the horizon it came from, and goes back to
+    e.state = 'approach'; e.stateT = 0; e.targetId = -2;
+    e.t1 = this.time + NH.CHASE[0] + this.rng.next() * (NH.CHASE[1] - NH.CHASE[0]); // when it turns back
+    e.t2 = 0; // the next pass is allowed at once
+    this.nightHunterId = e.id; this.nightHunterSpecies = id; this.nightHunterLeftAt = -1;
+    this.events.push({ type: 'nightHunter', entityId: e.id, speciesId: id, phase: 'arrive' });
     return e;
   }
 

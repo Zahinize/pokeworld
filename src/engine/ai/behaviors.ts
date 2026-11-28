@@ -10,7 +10,7 @@ import { floorY } from '../world/terrain';
 import { ZONES } from '../world/zones';
 import type { SpatialHash } from '../spatialHash';
 import { GAME } from '@/data/gameConfig';
-import { COMBAT, MILOTIC_CALM_R } from '@/data/combatConfig';
+import { COMBAT, MILOTIC_CALM_R, NIGHT_HUNTER } from '@/data/combatConfig';
 
 import type { MoveTarget } from '../sim/moveSystem';
 
@@ -691,7 +691,7 @@ export function predatorThink(e: Entity, ctx: SimContext, dt: number) {
           if (o === e) return;
           let pw = preyWeight(e, o);
           // a shiny eats anything that is not its own pack — other predators, giants, guardians, all of it
-          if (shiny && pw <= 0 && o.species.id !== s.id && !o.isBoss && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed' && o.state !== 'captureAttempt') pw = H.SHINY_ANY_W;
+          if (shiny && pw <= 0 && o.species.id !== s.id && !o.isBoss && !o.nightHunter && o.state !== 'ko' && o.state !== 'caught' && o.state !== 'removed' && o.state !== 'captureAttempt') pw = H.SHINY_ANY_W;
           const w = pw * (1 - Math.sqrt(d2) / R) * (0.6 + ctx.rng() * 0.8);
           if (w > bestW) { bestW = w; best = o; }
         });
@@ -1233,7 +1233,7 @@ function pickLungeTarget(e: Entity, ctx: SimContext, radius: number): number {
   if (p.huntable === true && ctx.playerGraceOver) { const d2 = (p.x - e.x) ** 2 + (p.y - e.y) ** 2 + (p.z - e.z) ** 2; if (d2 < bd) { bd = d2; best = -2; } }
   if (e.ambient) return best;
   ctx.hash.query(e.x, e.y, e.z, radius, (o, d2) => {
-    if (o === e || o.role === 'partner' || o.isBoss || (o.groupId >= 0 && o.groupId === e.groupId)) return;
+    if (o === e || o.role === 'partner' || o.isBoss || o.nightHunter || (o.groupId >= 0 && o.groupId === e.groupId)) return;
     const st = o.state;
     if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'faint' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'leapAir' || underSand(o)) return;
     if (d2 < bd) { bd = d2; best = o.id; }
@@ -1625,4 +1625,88 @@ export function soloDrifterThink(e: Entity, ctx: SimContext, dt: number) {
   containWorld(e);
   if (e.lod === 0) avoidObstacles(e, ctx.obstacles, 2);
   commit(e, speed * activityFactor(e, ctx));
+}
+
+// ---------------------------------------------------------------------------------------------
+// The night hunter (NIGHT_HUNTER): out of the fog, in passes, then back to the horizon
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * One thing hunts tonight, and it is not from this reef. It comes in from SPAWN_R at twice its burst, picks the
+ * nearest living companion (companion levels) or the trainer, and strikes in passes: close to STRIKE_R, cast a
+ * damage move, swing SWING_R wide, come again PASS_EVERY seconds later. While the trainer is down (not huntable)
+ * it only circles. At `t1` it turns for the point it came from; the ecosystem removes it past LEAVE_R.
+ * `nightHunter` 1 → 2 the first time it is within REVEAL_R: the silhouette gets its colours and the reef its name.
+ */
+export function nightHunterThink(e: Entity, ctx: SimContext, dt: number) {
+  const NH = NIGHT_HUNTER;
+  const s = e.species;
+  accReset();
+  updateWander(e, ctx.rng, 1.2, dt);
+  // the target: the nearest companion still standing, else the trainer
+  let partner: Entity | null = null, pd = Infinity;
+  for (const pt of ctx.partners) {
+    if (pt.state === 'ko' || pt.state === 'removed' || pt.state === 'caught' || pt.state === 'faint') continue;
+    const d = len3(pt.x - e.x, pt.y - e.y, pt.z - e.z);
+    if (d < pd) { pd = d; partner = pt; }
+  }
+  const vsPlayer = !partner;
+  const target: Prey = partner ?? playerPrey(ctx);
+  e.targetId = partner ? partner.id : PLAYER_ID;
+  const targetOk = vsPlayer ? ctx.player.huntable === true : true;
+  const tdist = len3(target.x - e.x, target.y - e.y, target.z - e.z);
+  const swingOut = (wait: number) => { e.state = 'circle'; e.stateT = 0; e.t2 = ctx.time + wait; e.lureOrbit = Math.atan2(e.z - target.z, e.x - target.x); };
+
+  // its time is up: turn for the horizon, once (nightHunter 3 — nothing the reef does to it changes its mind)
+  if (ctx.time >= e.t1 && e.nightHunter !== 3) {
+    e.nightHunter = 3; e.state = 'retreat'; e.stateT = 0;
+    ctx.events.push({ type: 'nightHunter', entityId: e.id, speciesId: s.id, phase: 'leave' });
+    ctx.events.push({ type: 'huntEnd', predatorId: e.id });
+  }
+  if (e.nightHunter === 1 && tdist < NH.REVEAL_R) {
+    e.nightHunter = 2;
+    ctx.events.push({ type: 'nightHunter', entityId: e.id, speciesId: s.id, phase: 'reveal' });
+    ctx.events.push({ type: 'huntStart', predatorId: e.id, targetId: e.targetId });
+  }
+  // a guardian's move or a predator's bite may have knocked its state about: the hunt has only these four states
+  if (e.nightHunter === 3) e.state = 'retreat';
+  else if (e.state !== 'approach' && e.state !== 'rush' && e.state !== 'circle') { e.state = 'approach'; e.stateT = 0; }
+
+  let speed = s.burst * NH.SPEED;
+  switch (e.state) {
+    case 'retreat': {
+      // back the way it came and on past it, the fog closing behind it (the world's edge may stop it short: the ecosystem's clock removes it then)
+      const hx = e.home.x - target.x, hz = e.home.z - target.z, hl = Math.hypot(hx, hz) || 1;
+      seek(e, e.home.x + (hx / hl) * 40, e.home.y, e.home.z + (hz / hl) * 40, 2.0);
+      break;
+    }
+    case 'circle': {
+      // swing wide and come round again
+      e.lureOrbit += dt * 0.45;
+      seek(e, target.x + Math.cos(e.lureOrbit) * NH.SWING_R, target.y + Math.sin(ctx.time * 0.6) * 1.5, target.z + Math.sin(e.lureOrbit) * NH.SWING_R, 1.6, 2.5);
+      speed = s.burst;
+      if (ctx.time >= e.t2 && targetOk) { e.state = 'approach'; e.stateT = 0; }
+      break;
+    }
+    case 'rush': {
+      // lead the target and hit it with a damage move; the reef-wide trainer cast gap applies like any predator's
+      seek(e, target.x + target.vx * 0.35, target.y + target.vy * 0.35, target.z + target.vz * 0.35, 2.5);
+      const slot = ctx.pickMove(e, tdist, false, true);
+      if (!targetOk) { swingOut(4); break; }
+      if (slot !== -1 && ctx.cast(e, slot, vsPlayer ? { kind: 'player' } : { kind: 'entity', id: partner!.id })) {
+        swingOut(NH.PASS_EVERY[0] + ctx.rng() * (NH.PASS_EVERY[1] - NH.PASS_EVERY[0]));
+      } else if (e.stateT > 5) swingOut(3); // no opening (cooldowns, the shared gap): go round once more
+      break;
+    }
+    case 'approach':
+    default: {
+      seek(e, target.x, target.y, target.z, 1.8);
+      if (tdist < NH.STRIKE_R) { if (targetOk) { e.state = 'rush'; e.stateT = 0; } else swingOut(4); }
+      break;
+    }
+  }
+  floorAndSurface(e, s.size * NH.SCALE * 0.5 + 1);
+  containWorld(e);
+  if (e.lod === 0) avoidObstacles(e, ctx.obstacles, e.state === 'rush' ? 0.8 : 1.5);
+  commit(e, speed);
 }

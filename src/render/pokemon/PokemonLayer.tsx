@@ -412,8 +412,9 @@ export function PokemonLayer() {
         : e.species.bioluminescent ? night * (0.55 + 0.45 * Math.sin(time * 2 + e.phase * 9))
         : e.species.id === 'finneon' || e.species.id === 'lumineon' ? night * 0.25 : 0);
 
-      // a boss waiting in its lair is a black glowing shadow until the trainer reaches it
-      const shadow = e.isBoss && !eco.bossesActive;
+      // a boss waiting in its lair is a black glowing shadow until the trainer reaches it — and so is the night
+      // hunter until it first closes within NIGHT_HUNTER.REVEAL_R (nightHunter 1 → 2)
+      const shadow = (e.isBoss && !eco.bossesActive) || e.nightHunter === 1;
       b.aGlow.array[i] = shadow ? 0.7 + 0.3 * Math.sin(time * 1.7 + e.phase * 5) : glow;
       b.aSize.array[i] = scale;
       b.aStatus.array[i] = shadow ? 4 : e.stunT > 0 ? 3 : e.blindT > 0 ? 2 : e.slowT > 0 ? 1 : 0;

@@ -871,6 +871,48 @@ export const SPECIES: Record<string, SpeciesConfig> = {
     rarity: 'legendary', catchBase: 0.436, fallbackStats: { hp: 126, atk: 131, def: 95, spAtk: 131, spDef: 98, speed: 99 },
     blurb: 'A wing-shaped shadow against the stars, wrapped in violet murk.',
   },
+
+  // ---- Night hunters (NIGHT_HUNTER): outside the roster on purpose — they rise out of the dark, never the reef's spawn tables
+  dragonite: {
+    id: 'dragonite', name: 'Dragonite', dexId: 149, sprite: SPRITE(149), stage: 2,
+    primary: 'predator', secondary: [], hunterOnly: true, habitatLabel: 'The Dark Water, at Night',
+    size: 2.3, speed: 3.2, burst: 6.4, depth: [4, 26], habitat: ['openReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0, fear: 0, aggression: 1, activity: 'night',
+    rarity: 'rare', catchBase: 0.2, fallbackStats: { hp: 91, atk: 134, def: 95, spAtk: 100, spDef: 100, speed: 80 },
+    blurb: 'Said to circle the globe in sixteen hours. On the night reef it circles you.',
+  },
+  dragonair: {
+    id: 'dragonair', name: 'Dragonair', dexId: 148, sprite: SPRITE(148), stage: 1,
+    primary: 'predator', secondary: [], hunterOnly: true, habitatLabel: 'The Dark Water, at Night',
+    size: 2.2, speed: 3.0, burst: 6.0, depth: [4, 24], habitat: ['openReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0, fear: 0, aggression: 1, activity: 'night',
+    rarity: 'rare', catchBase: 0.25, fallbackStats: { hp: 61, atk: 84, def: 65, spAtk: 70, spDef: 70, speed: 70 },
+    blurb: 'The crystal orbs on its body glow when the weather turns. Tonight the weather is you.',
+  },
+  golisopod: {
+    id: 'golisopod', name: 'Golisopod', dexId: 768, sprite: SPRITE(768), stage: 1,
+    primary: 'predator', secondary: [], hunterOnly: true, habitatLabel: 'The Dark Water, at Night',
+    size: 2.0, speed: 2.4, burst: 5.6, depth: [6, 30], habitat: ['openReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0, fear: 0, aggression: 1, activity: 'night',
+    rarity: 'rare', catchBase: 0.25, fallbackStats: { hp: 75, atk: 125, def: 140, spAtk: 60, spDef: 90, speed: 40 },
+    blurb: 'What a Wimpod becomes. It lurks in the deep until something small and warm swims past.',
+  },
+  eelektross: {
+    id: 'eelektross', name: 'Eelektross', dexId: 604, sprite: SPRITE(604), stage: 2,
+    primary: 'predator', secondary: [], hunterOnly: true, habitatLabel: 'The Dark Water, at Night',
+    size: 2.1, speed: 2.6, burst: 5.8, depth: [5, 28], habitat: ['openReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0, fear: 0, aggression: 1, activity: 'night',
+    rarity: 'rare', catchBase: 0.25, fallbackStats: { hp: 85, atk: 115, def: 80, spAtk: 105, spDef: 80, speed: 50 },
+    blurb: 'It crawls out of the ocean to hunt, and the lightning it carries lights the fog from inside.',
+  },
+  beartic: {
+    id: 'beartic', name: 'Beartic', dexId: 614, sprite: SPRITE(614), stage: 1,
+    primary: 'predator', secondary: [], hunterOnly: true, habitatLabel: 'The Dark Water, at Night',
+    size: 2.6, speed: 2.4, burst: 5.6, depth: [3, 22], habitat: ['openReef', 'deepWater'],
+    groupSize: [1, 1], curiosity: 0, fear: 0, aggression: 1, activity: 'night',
+    rarity: 'rare', catchBase: 0.25, fallbackStats: { hp: 95, atk: 130, def: 80, spAtk: 70, spDef: 80, speed: 50 },
+    blurb: 'A polar bear that freezes its own breath into fangs. It swims the cold water in the dark, and it is hungry.',
+  },
 };
 
 /**

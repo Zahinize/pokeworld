@@ -36,9 +36,11 @@ export function SceneLighting() {
   const hemi = useRef<THREE.HemisphereLight>(null);
   const { scene } = useThree();
   const fog = useMemo(() => new THREE.FogExp2('#1f8fd6', 0.018), []);
+  const VIOLET_FOG = useMemo(() => new THREE.Color('#2a1343'), []); // the night hunter's purple shadow
   const bg = useMemo(() => new THREE.Color(), []);
   useEffect(() => { scene.fog = fog; return () => { scene.fog = null; }; }, [scene, fog]);
   const storm = useRef(0);
+  const shadow = useRef(0);
   useFrame((state, dt) => {
     const L = session.lighting;
     // Crossing the waterline swaps the whole atmosphere: dense tinted water fog → thin air haze.
@@ -47,9 +49,13 @@ export function SceneLighting() {
     const stormTarget = session.sky?.rampaging ? 1 : 0;
     storm.current += (stormTarget - storm.current) * Math.min(1, dt * 1.6);
     const gloom = storm.current;
-    fog.color.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45);
-    fog.density = (L.fogDensity + (L.airFogDensity - L.fogDensity) * above) * (1 + gloom * 0.7);
-    scene.background = bg.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45);
+    // the night hunter's purple shadow: while one is out, the water fog drifts violet and thickens a little (~2.5 s ease)
+    const shadowTarget = session.shadowHunt ? 1 : 0;
+    shadow.current += (shadowTarget - shadow.current) * Math.min(1, dt * 0.9);
+    const violet = shadow.current * (1 - above);
+    fog.color.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45).lerp(VIOLET_FOG, violet * 0.6);
+    fog.density = (L.fogDensity + (L.airFogDensity - L.fogDensity) * above) * (1 + gloom * 0.7 + violet * 0.3);
+    scene.background = bg.copy(L.sky).lerp(L.skyHorizon, above).multiplyScalar(1 - gloom * 0.45).lerp(VIOLET_FOG, violet * 0.6);
     if (sun.current) {
       sun.current.intensity = L.sunIntensity * (1 - gloom * 0.5);
       sun.current.color.copy(L.sun);

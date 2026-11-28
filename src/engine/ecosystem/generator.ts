@@ -81,7 +81,7 @@ export interface GeneratedEcosystem {
 const RARITY_W: Record<Rarity, number> = { common: 1, uncommon: 0.6, rare: 0.25, legendary: 0 };
 
 /** Species eligible for normal (non-boss) spawning. */
-const SPAWNABLE = SPECIES_LIST.filter((s) => !s.bossOnly && !s.skyOnly);
+const SPAWNABLE = SPECIES_LIST.filter((s) => !s.bossOnly && !s.skyOnly && !s.hunterOnly); // the night hunters come on their own
 
 function hasGuardian(s: SpeciesConfig) { return !!s.guardedBy && s.guardedBy.length > 0; }
 
@@ -465,9 +465,9 @@ export function generateEcosystem(level: LevelConfig, seed: number): GeneratedEc
   if (level.mission.stageCatch) {
     const sc = level.mission.stageCatch;
     const required = rng.int(sc.min, sc.max);
-    const eligible = Array.from(new Set(spawns.map((sp) => sp.speciesId))).filter((id) => SPECIES[id].stage >= sc.minStage && !SPECIES[id].bossOnly && !SPECIES[id].skyOnly);
+    const eligible = Array.from(new Set(spawns.map((sp) => sp.speciesId))).filter((id) => SPECIES[id].stage >= sc.minStage && !SPECIES[id].bossOnly && !SPECIES[id].skyOnly && !SPECIES[id].hunterOnly);
     // Guarantee a healthy pool: the reinforcement system tops these up if predators thin them out
-    objectives.push({ id: 'stageCatch', kind: 'stageCatch', label: `Catch Stage ${sc.minStage}+ Pokémon`, required, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: eligible.length ? eligible : SPECIES_LIST.filter((x) => x.stage >= sc.minStage && !x.bossOnly && !x.skyOnly).map((x) => x.id), minStage: sc.minStage });
+    objectives.push({ id: 'stageCatch', kind: 'stageCatch', label: `Catch Stage ${sc.minStage}+ Pokémon`, required, caught: 0, guardianRequired: false, guardianCaught: false, candidateSpecies: eligible.length ? eligible : SPECIES_LIST.filter((x) => x.stage >= sc.minStage && !x.bossOnly && !x.skyOnly && !x.hunterOnly).map((x) => x.id), minStage: sc.minStage });
   }
   for (const phase of level.bossPhases ?? []) {
     for (const b of phase.bosses) {

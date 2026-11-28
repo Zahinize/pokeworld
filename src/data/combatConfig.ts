@@ -173,6 +173,33 @@ export const BOSS_TUNING: Record<string, BossTuning> = {
   kyogre: { hp: 2, atk: 2, def: 1.5, spDef: 1.5, chargeEvery: 15, chargeSpeed: 11 },
 };
 
+/**
+ * The night hunter (USER RULING 2026-11-28): once the reef is dark, sometimes a huge Pokémon that is NOT part of the
+ * roster (the surprise is the point) rises out of the fog far away, crosses the reef at twice its burst speed and
+ * hunts for CHASE seconds — the trainer on L1/L2, the companions on L3/L4 — striking in passes (close, cast, swing
+ * wide, come again), then turns back for the horizon and vanishes. Rendered at SCALE× size, as a black violet-lit
+ * silhouette until it is within REVEAL_R, while the night fog itself turns violet. Balls glance off it; on the
+ * companion levels the team can knock it out, and a KO is a catch like any other.
+ */
+export const NIGHT_HUNTER = {
+  /** Candidate species per level (all hunter-only, never generated into the reef). */
+  POOL: { 1: ['dragonair', 'beartic', 'golisopod'], 2: ['dragonair', 'golisopod', 'beartic', 'eelektross'], 3: ['dragonite', 'dragonair', 'golisopod', 'eelektross', 'beartic'], 4: ['dragonite', 'eelektross', 'golisopod', 'beartic', 'dragonair'] } as Record<number, string[]>,
+  /** One roll per night, FIRST_ROLL seconds after dark; CHANCE that the night has a hunter at all. */
+  FIRST_ROLL: [40, 90] as const, CHANCE: 0.6,
+  /** How long it hunts before it turns back, seconds. */
+  CHASE: [120, 240] as const,
+  /** It appears SPAWN_R from the trainer (past the night fog's reach) and is gone again LEAVE_R out, or LEAVE_MAX s after turning. */
+  SPAWN_R: 85, LEAVE_R: 95, LEAVE_MAX: 40,
+  /** Twice its burst speed on the approach, the pass and the way out; SCALE× the sprite. */
+  SPEED: 2, SCALE: 2,
+  /** Tougher than its stats: HP ×, Attack/Sp. Atk ×. */
+  HP_MULT: 2, ATK_MULT: 1.5,
+  /** A pass: closes to STRIKE_R, casts, swings SWING_R wide and comes again PASS_EVERY seconds later. */
+  STRIKE_R: 9, SWING_R: 24, PASS_EVERY: [12, 18] as const,
+  /** Closer than this its true colours show (and the reef learns its name); farther it is a shadow in the violet. */
+  REVEAL_R: 30,
+};
+
 /** Swagger: every boss moves this much faster while the fight is on — brawl, saddle ride and charge lunge
  *  alike (never while dormant in its lair). The charge telegraph is unchanged, so the warning stays fair. */
 export const BOSS_FIGHT_SPEED_MULT = 1.5;

@@ -173,8 +173,8 @@ export class BallSystem {
   }
 
   private onHit(b: Ball, e: Entity, eco: Ecosystem) {
-    if (e.isBoss) {
-      // Bosses cannot be caught — the ball glances off; only companion moves can bring them down
+    if (e.isBoss || e.nightHunter) {
+      // Bosses (and the night hunter) cannot be caught — the ball glances off; only companion moves can bring them down
       this.events.push({ type: 'bossDeflect', ball: b, entity: e });
       b.vx *= -0.35; b.vy = Math.abs(b.vy) * 0.3 + 1.2; b.vz *= -0.35;
       return;

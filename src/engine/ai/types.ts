@@ -48,6 +48,9 @@ export interface Entity {
   wasChasing: boolean;
   phase: number;
   scaleMul: number;
+  /** The night hunter (NIGHT_HUNTER): 0 = not one · 1 = out in the dark, a silhouette · 2 = revealed (within REVEAL_R
+   *  once) · 3 = turned back for the horizon. */
+  nightHunter: 0 | 1 | 2 | 3;
 
   state: EntityState;
   stateT: number;
@@ -252,7 +255,10 @@ export type EcoEvent =
   | { type: 'bossDefeated'; entityId: number; speciesId: string; how: 'ko' | 'caught'; shiny: boolean }
   /** A bottom dweller and the sand (COMBAT.BOTTOM): dig = hides in a hole · ambush = dug in after a failed ball and
    *  tunnelling at the trainer · trail = a sand puff along the tunnel · erupt = bursts out to strike · emerge = climbs out. */
-  | { type: 'burrow'; entityId: number; speciesId: string; phase: 'dig' | 'ambush' | 'trail' | 'erupt' | 'emerge'; x: number; y: number; z: number; size: number };
+  | { type: 'burrow'; entityId: number; speciesId: string; phase: 'dig' | 'ambush' | 'trail' | 'erupt' | 'emerge'; x: number; y: number; z: number; size: number }
+  /** The night hunter (NIGHT_HUNTER): arrive = rises out of the fog · reveal = within REVEAL_R, its colours and name
+   *  show · leave = turns back for the horizon · gone = out of the world. */
+  | { type: 'nightHunter'; entityId: number; speciesId: string; phase: 'arrive' | 'reveal' | 'leave' | 'gone' };
 
 /** A hole in the sand (COMBAT.BOTTOM): where, how wide, seconds left before it closes (HOLE_OPEN while its digger is
  *  still inside), whether an ambush dug it (those last AMBUSH.HOLE_SECONDS and are saved with the run), and the digger. */

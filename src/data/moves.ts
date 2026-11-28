@@ -267,6 +267,12 @@ export const SPECIES_MOVES: Record<string, [string, string]> = {
   hooh: ['sacredFire', 'wingAttack'],
   yveltal: ['oblivionWing', 'wingAttack'],
   cramorant: ['airSlash', 'waterGun'],
+  // the night hunters (NIGHT_HUNTER): two damage moves each, nothing to swap for a companion
+  dragonite: ['dragonPulse', 'hydroPump'],
+  dragonair: ['dragonPulse', 'twister'],
+  golisopod: ['liquidation', 'aquaJet'],
+  eelektross: ['discharge', 'crunch'],
+  beartic: ['iceShard', 'crunch'],
 };
 
 /** Companion replacements: species whose wild kit carries a utility swap it for this damage move. */

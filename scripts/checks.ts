@@ -145,7 +145,7 @@ console.log('Shiny sprites');
   // every species that can appear shiny in play — pack-lead predators, the chest guardians, the shiny flocks and
   // the forced-shiny boss waves — needs its shiny front AND back sheets, or the game (and the Collection) fall back
   const shinyAble = new Set<string>([
-    ...SPECIES_LIST.filter((s) => s.primary === 'predator' && !s.bossOnly).map((s) => s.id),
+    ...SPECIES_LIST.filter((s) => s.primary === 'predator' && !s.bossOnly && !s.hunterOnly).map((s) => s.id), // the night hunters never lead a pack, so never shiny
     ...CHEST.GUARDIANS,
     ...SKY.FLOCKS.filter((f) => f.shiny).map((f) => f.speciesId),
     ...[1, 2, 3, 4].flatMap((l) => (getLevel(l).bossPhases ?? []).filter((p) => p.shiny).flatMap((p) => p.bosses)),
@@ -157,6 +157,26 @@ console.log('Shiny sprites');
     for (const path of [`public/sprites/pokemon/shiny/${dex}.gif`, `public/sprites/pokemon/back/shiny/${dex}.gif`]) if (!existsSync(path)) { bad++; fail(`${id}: missing ${path}`); }
   }
   if (!bad) ok(`${shinyAble.size} shiny-capable species all have shiny front + back sheets`);
+}
+
+console.log('Night hunter dials');
+{
+  const { NIGHT_HUNTER: NH } = await import('@/data/combatConfig');
+  const { SPECIES_MOVES } = await import('@/data/moves');
+  const ids = new Set(Object.values(NH.POOL).flat());
+  let bad = 0;
+  for (const id of ids) {
+    const sp = SPECIES[id];
+    if (!sp) { fail(`night hunter ${id}: not a species`); bad++; continue; }
+    if (!sp.hunterOnly) { fail(`night hunter ${id}: must be hunterOnly (outside the roster)`); bad++; }
+    const kit = SPECIES_MOVES[id]?.map((m) => MOVES[m]);
+    if (!kit || kit.length !== 2 || kit.some((m) => !m || m.kind !== 'damage')) { fail(`night hunter ${id}: needs two damage moves from the roster's move list`); bad++; }
+  }
+  for (const sp of SPECIES_LIST) if (sp.hunterOnly && !ids.has(sp.id)) { fail(`${sp.id} is hunterOnly but in no level's pool`); bad++; }
+  for (const lvl of [1, 2, 3, 4]) if (!NH.POOL[lvl]?.length) { fail(`night hunter: level ${lvl} has no pool`); bad++; }
+  const dials = NH.SPEED === 2 && NH.SCALE === 2 && NH.CHASE[0] >= 120 && NH.CHASE[1] <= 300 && NH.CHASE[0] < NH.CHASE[1] && NH.SPAWN_R > NH.REVEAL_R && NH.LEAVE_R >= NH.SPAWN_R && NH.SWING_R > NH.STRIKE_R && NH.PASS_EVERY[0] >= 8 && NH.CHANCE > 0 && NH.CHANCE <= 1;
+  if (!dials) { fail(`night hunter dials off: ${JSON.stringify({ SPEED: NH.SPEED, SCALE: NH.SCALE, CHASE: NH.CHASE, SPAWN_R: NH.SPAWN_R, REVEAL_R: NH.REVEAL_R, LEAVE_R: NH.LEAVE_R })}`); bad++; }
+  if (!bad) ok(`${ids.size} night hunters (${[...ids].join(', ')}), all hunter-only with two roster damage moves; 2× speed and scale, ${NH.CHASE[0]}–${NH.CHASE[1]} s hunts, rise ${NH.SPAWN_R} m out, revealed within ${NH.REVEAL_R} m`);
 }
 
 console.log('Save migration');

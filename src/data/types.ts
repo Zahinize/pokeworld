@@ -72,6 +72,9 @@ export interface SpeciesConfig {
   amphibious?: boolean;
   /** Boss-only species never appear in normal ecosystem generation. */
   bossOnly?: boolean;
+  /** Night-hunter-only species (COMBAT NIGHT_HUNTER): never generated into the reef, never a mission target — it
+   *  comes out of the dark on its own. Outside the roster on purpose, for the surprise. */
+  hunterOnly?: boolean;
   /** Lives above the waves: catchable from the surface, never a reef battle companion. */
   skyOnly?: boolean;
   /** Collection habitat text override (sky species have no underwater zone). */

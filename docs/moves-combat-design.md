@@ -955,3 +955,22 @@ Headless sim harness (esbuild bundle, as used for predator tuning) extends with:
 | 5 | Companions: party picker (≤6, 2 active, L4 re-pick), back sprites vendored, follow AI, ball-style aiming, duels, party HUD, save v2 | `engine/companions/*` (new), `ui/*`, `persistence/*` |
 | 6 | Levels 3–4: phased missions, boss events (duo, currents, camera shake), defeat screen, Sea World completion screen | `data/levels/*`, `engine/world/*`, `ui/screens/*` |
 | 7 | Final balancing sweep + README/docs | sim harness, docs |
+
+
+## The night hunter (USER RULING 2026-11-28)
+
+Once the reef is dark (`ctx.isNight`, nightness > 0.55: L3 from the start, L2 about two minutes in, L1/L4 five to
+seven minutes in) **sometimes something huge comes out of the fog** — and it is never a roster species, so the
+surprise holds: `hunterOnly` species (Dragonite, Dragonair, Golisopod, Eelektross, Beartic; `NIGHT_HUNTER.POOL` per
+level) are excluded from generation and from stage-catch candidates and only `Ecosystem.spawnNightHunter` fields
+them. One roll a night, `FIRST_ROLL` 40–90 s after dark, `CHANCE` 0.6; never while the trainer is down. It rises
+`SPAWN_R` 85 m out (past the night fog's reach), rendered at `SCALE` 2× as the dormant bosses' **black violet-lit
+silhouette** (`Entity.nightHunter` 1) while the water fog itself drifts violet (`Environment`, `session.shadowHunt`),
+and crosses at `SPEED` 2× its burst. `nightHunterThink` hunts **the nearest living companion on L3/L4, else the
+trainer**, in passes: close to `STRIKE_R`, cast a damage move (the reef-wide trainer cast gap and the level hit cap
+apply; it hits like a shiny, `elite`), swing `SWING_R` wide, come again `PASS_EVERY` 12–18 s later; while the trainer
+is down it only circles. The first time it closes within `REVEAL_R` it is revealed (`nightHunter` 2, true colours,
+"X, out of the dark!", `huntStart`). After `CHASE` 120–240 s it turns for the point it came from and is removed past
+`LEAVE_R`. Balls and the laser glance off it (as off a boss); on the companion levels the team can knock it out, and
+that KO is a catch — the trophy joins the collection. `HP_MULT` 2, `ATK_MULT` 1.5. Sprites are vendored GIFs by dex
+number like the roster's; a missing sheet falls back to the coloured blob. Sim: `scripts/sim.ts` "Night hunter".

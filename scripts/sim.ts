@@ -1618,5 +1618,85 @@ for (const levelId of [1, 2]) {
 }
 
 
+// ===================================================================================== Night hunter
+console.log('\nNight hunter (NIGHT_HUNTER)');
+{
+  const { NIGHT_HUNTER: NH } = await import('@/data/combatConfig');
+  const P = (x: number, y: number, z: number) => ({ x, y, z, vx: 0, vy: 0, vz: 0, speed: 0, lureActive: false, huntable: true });
+  const dist = (a: { x: number; y: number; z: number }, b: { x: number; y: number; z: number }) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+  // a. the hunters never come from the spawn tables: 24 generated reefs, no hunter-only species, none a stage-catch candidate
+  {
+    let bad = 0;
+    for (const lvl of [1, 2, 3, 4]) for (let seed = 1; seed <= 6; seed++) {
+      const gen = generateEcosystem(getLevel(lvl), seed);
+      for (const sp of gen.spawns) if (SPECIES[sp.speciesId].hunterOnly) bad++;
+      for (const o of gen.objectives) if ((o as { candidateSpecies?: string[] }).candidateSpecies?.some((id) => SPECIES[id].hunterOnly)) bad++;
+    }
+    if (!bad) ok('night hunter: hunter-only species are never generated into the reef nor offered as stage-catch candidates (24 reefs)'); else fail(`night hunter: ${bad} leaks into generation`);
+  }
+  // b. by day, nothing: 6 min on L1 at nightness 0.2
+  {
+    const gen = generateEcosystem(getLevel(1), 11); const eco = new Ecosystem(gen, hp); eco.nightHunterEnabled = true;
+    const p = P(gen.playerStart.x, gen.playerStart.y, gen.playerStart.z);
+    let arrived = false;
+    for (let i = 0; i < 60 * 360; i++) { eco.update(1 / 60, p, 0.2); for (const ev of eco.drainEvents()) if (ev.type === 'nightHunter') arrived = true; }
+    if (!arrived && eco.nightHunterId < 0) ok('night hunter: none by day (6 min on L1)'); else fail('night hunter: came out by day');
+  }
+  // c. night on L1, 12 seeds: it rises SPAWN_R out as a 2× shadow within FIRST_ROLL of dark on about CHANCE of the nights,
+  //    crosses at ~2× burst, is revealed, strikes the trainer, turns back after CHASE seconds and is gone
+  {
+    let hunters = 0, nearest = Infinity, revealed = 0, left = 0, gone = 0, hitNights = 0, lateArrive = 0, slow = 0, small = 0;
+    const species = new Set<string>(); const chases: number[] = [];
+    for (let seed = 1; seed <= 12; seed++) {
+      const gen = generateEcosystem(getLevel(1), 200 + seed); const eco = new Ecosystem(gen, hp); eco.nightHunterEnabled = true;
+      const p = P(gen.playerStart.x, gen.playerStart.y, gen.playerStart.z);
+      for (let i = 0; i < 60 * 12; i++) eco.update(1 / 60, p, 0.2); eco.drainEvents(); // the trainer's grace passes in daylight
+      const dark = eco.time;
+      let h: Entity | null = null, maxV = 0, hits = 0, arriveAt = -1, leaveAt = -1;
+      const limit = 60 * (NH.FIRST_ROLL[1] + NH.CHASE[1] + NH.LEAVE_MAX + 15);
+      for (let i = 0; i < limit; i++) {
+        eco.update(1 / 60, p, 1);
+        for (const ev of eco.drainEvents()) {
+          if (ev.type === 'nightHunter') {
+            if (ev.phase === 'arrive') { h = eco.byId.get(ev.entityId)!; hunters++; species.add(ev.speciesId); arriveAt = eco.time; nearest = Math.min(nearest, dist(h, p)); if (h.nightHunter !== 1 || h.scaleMul !== NH.SCALE) small++; if (eco.time - dark > NH.FIRST_ROLL[1] + 1) lateArrive++; }
+            if (ev.phase === 'reveal') revealed++;
+            if (ev.phase === 'leave') { left++; leaveAt = eco.time; }
+            if (ev.phase === 'gone') gone++;
+          }
+          if (ev.type === 'playerHit' && h && ev.casterId === h.id) hits++;
+        }
+        if (h) { const v = Math.hypot(h.vx, h.vy, h.vz); if (v > maxV) maxV = v; if (h.state === 'removed') break; }
+      }
+      if (h) { if (maxV < h.species.burst * NH.SPEED * 0.85) slow++; if (hits > 0) hitNights++; if (leaveAt > 0) chases.push(leaveAt - arriveAt); }
+    }
+    const lo = chases.length ? Math.min(...chases) : 0, hi = chases.length ? Math.max(...chases) : 0;
+    if (hunters >= 3 && hunters <= 11 && nearest >= NH.SPAWN_R - 3 && small === 0 && lateArrive === 0 && slow === 0 && revealed === hunters && left === hunters && gone === hunters && hitNights === hunters && lo >= NH.CHASE[0] - 1 && hi <= NH.CHASE[1] + 1)
+      ok(`night hunter: ${hunters} of 12 L1 nights had one (${[...species].join(', ')}) — rose ≥${nearest.toFixed(0)} m out as a ${NH.SCALE}× shadow within ${NH.FIRST_ROLL[1]} s of dark, crossed at ≥${(NH.SPEED * 0.85).toFixed(1)}× burst, was revealed, struck the trainer every night, hunted ${lo.toFixed(0)}–${hi.toFixed(0)} s, turned back and was gone`);
+    else fail(`night hunter L1: hunters ${hunters}, nearest ${nearest.toFixed(1)}, small ${small}, late ${lateArrive}, slow ${slow}, revealed ${revealed}, left ${left}, gone ${gone}, hitNights ${hitNights}, chases ${lo.toFixed(0)}–${hi.toFixed(0)}`);
+  }
+  // d. companion level: the hunter goes for the team — its hits land on companions and never on the trainer while one stands
+  {
+    const gen = generateEcosystem(getLevel(3), 7); const eco = new Ecosystem(gen, hp); eco.nightHunterEnabled = true;
+    const p = P(gen.playerStart.x, gen.playerStart.y, gen.playerStart.z);
+    const k = eco.addPartner('kingdra', 0); const g = eco.addPartner('gyarados', 1);
+    for (let i = 0; i < 60 * 12; i++) eco.update(1 / 60, p, 0.2); eco.drainEvents();
+    const h = eco.spawnNightHunter('dragonite'); eco.drainEvents();
+    let partnerHits = 0, trainerHits = 0, otherHits = 0, targetedPartner = false;
+    for (let i = 0; i < 60 * 90 && h.state !== 'removed' && h.state !== 'caught' && h.state !== 'ko'; i++) {
+      eco.update(1 / 60, p, 1);
+      if (h.targetId === k.id || h.targetId === g.id) targetedPartner = true;
+      for (const ev of eco.drainEvents()) {
+        if (ev.type === 'moveHit' && ev.casterId === h.id) { if (ev.targetId === k.id || ev.targetId === g.id) partnerHits++; else otherHits++; }
+        if (ev.type === 'playerHit' && ev.casterId === h.id) trainerHits++;
+      }
+    }
+    const scale = h.scaleMul === NH.SCALE, tough = h.maxHp === Math.round(hp('dragonite') * NH.HP_MULT);
+    // its ring moves splash whoever stands beside the companion it is after — the trainer included — but the companion is the target
+    if (targetedPartner && partnerHits > 0 && trainerHits <= partnerHits && otherHits === 0 && scale && tough)
+      ok(`night hunter: on L3 Dragonite went for the team — ${partnerHits} hits on Kingdra/Gyarados (${trainerHits} splashed the trainer beside them), at ${h.maxHp} HP (×${NH.HP_MULT}) and ${NH.SCALE}× size (${h.state === 'caught' || h.state === 'ko' ? `the team knocked it out in ${eco.time.toFixed(0)} s` : 'still out there after 90 s'})`);
+    else fail(`night hunter L3: targetedPartner ${targetedPartner}, partnerHits ${partnerHits}, trainerHits ${trainerHits}, otherHits ${otherHits}, scale ${scale}, tough ${tough}, state ${h.state}`);
+  }
+}
+
 if (failures) { console.error(`\n${failures} sim check(s) FAILED`); process.exit(1); }
 console.log('\nSim checks passed.');

@@ -240,6 +240,7 @@ export class GameSession {
     // Cramorant floats with its catch in its beak: the Gulping form sheet
     if (!this.sheets.has(sheetKey('cramorant', 'gulping'))) loadSpriteSheet('cramorant', 'gulping').then((sh) => this.sheets.set(sheetKey('cramorant', 'gulping'), sh));
     this.eco = new Ecosystem(this.gen, maxHpOf);
+    this.eco.nightHunterEnabled = !this.arena; // the night hunter walks campaign dives only (the menu reef never calls prepare)
     this.chest = new ChestSystem(this.gen.chest ? { x: this.gen.chest.x, y: this.gen.chest.y, z: this.gen.chest.z } : null, new RNG(randomSeed()));
     this.chestHudKey = ''; this.chestToastT = 0; this.chestSwarmToastT = 0;
     if (this.chest.present) { this.chest.setLoot(useStore.getState().save.loot); this.lootKey = JSON.stringify(this.chest.lootSnapshot()); } // the bag is the save's: it outlives hearts, resumes and dives
@@ -275,7 +276,7 @@ export class GameSession {
       const attacker = this.eco?.byId.get(casterId) ?? this.skyCombat?.shimById.get(casterId);
       // elite = a shiny (reef or sky) or a legendary: it keeps a harder hit under the level's cap
       const bird = this.skyCombat && casterId <= -1000 ? this.sky?.birds.find((b) => b.id === this.skyCombat!.birdIdOf(casterId)) : undefined;
-      const elite = !!attacker && (attacker.isShiny || !!bird?.shiny || attacker.species.rarity === 'legendary');
+      const elite = !!attacker && (attacker.isShiny || !!bird?.shiny || attacker.species.rarity === 'legendary' || attacker.nightHunter > 0); // the night hunter hits like a shiny
       // the chest fight has its own, lower per-hit cap (CHEST.HIT_CAP) for anyone fighting around the chest
       const ch = this.eco?.chest;
       const pl = this.player;
@@ -336,6 +337,9 @@ export class GameSession {
     }
     this.eco.update(0.016, this.eco.player, 0); // flush removals
   }
+
+  /** A night hunter is out there: the fog turns violet (Environment) while it is. */
+  get shadowHunt(): boolean { return (this.eco?.nightHunterId ?? -1) >= 0; }
 
   summaryLines(): string[] {
     const s = this.gen?.summary; if (!s) return [];
@@ -698,7 +702,7 @@ export class GameSession {
     const L = CHEST.LASER;
     let hit: Entity | null = null, hitT: number = L.RANGE;
     for (const e of eco.alive) {
-      if (e.isBoss || e.role === 'partner') continue;
+      if (e.isBoss || e.nightHunter || e.role === 'partner') continue; // the laser never catches a boss or the night hunter
       const st = e.state;
       if (st === 'ko' || st === 'caught' || st === 'captureAttempt' || st === 'removed' || st === 'ferryRise' || st === 'ferry' || st === 'ferryVoyage' || st === 'ferryDisembark' || st === 'burrow' || st === 'ambush') continue;
       const ex = e.x - ox, ey = e.y - oy, ez = e.z - oz;
@@ -1927,6 +1931,22 @@ export class GameSession {
             if (e) this.toast('hunt', { kind: 'warn', title: `${e.species.name} dug in!`, body: 'It is tunnelling toward you under the sand — watch for the trail, and move.', speciesId: e.species.id, ttl: 4 });
           }
           this.persistRun(); // the burrows are part of the run save (an ambush hole lasts ten minutes)
+          break;
+        }
+        case 'nightHunter': {
+          // something huge out of the fog (NIGHT_HUNTER): its sheet loads as it arrives, the reef learns its name when it closes
+          const sp = getSpecies(ev.speciesId);
+          if (ev.phase === 'arrive') {
+            if (!this.sheets.has(sheetKey(sp.id, 'front'))) loadSpriteSheet(sp.id, 'front').then((sh) => this.sheets.set(sheetKey(sp.id, 'front'), sh));
+            Audio.playCry(sp.dexId, 0.35, 0.3, 0.7); // a low cry from far off
+            this.shakeT = Math.max(this.shakeT, 0.6);
+            this.toast('hunt', { kind: 'alert', title: 'Something huge moves in the dark', body: this.companionsEnabled ? 'A shadow is coming in from the deep for your team. Stand together.' : 'A shadow is coming in from the deep. Keep moving, and watch the violet water.', ttl: 6 });
+          } else if (ev.phase === 'reveal') {
+            Audio.playCry(sp.dexId, 0.6, 0, 0.85);
+            this.toast('hunt', { kind: 'alert', title: `${sp.name}, out of the dark!`, body: this.companionsEnabled ? 'It is after your companions — knock it out together, or lose them one by one.' : 'It strikes in passes and comes round again until it tires of the chase. Dodge the pass.', speciesId: sp.id, ttl: 6 });
+          } else if (ev.phase === 'leave') {
+            this.toast('hunt', { kind: 'event', title: `${sp.name} turns back for the deep`, body: 'The shadow fades toward the horizon. The reef breathes again.', speciesId: sp.id, ttl: 5 });
+          }
           break;
         }
         case 'devour': {
