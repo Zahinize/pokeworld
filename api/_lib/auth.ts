@@ -18,6 +18,24 @@ if (process.env.BLOB_READ_WRITE_TOKEN && !process.env.SESSION_SECRET) {
 
 export const USERNAME_RE = /^[A-Za-z0-9_]{3,20}$/;
 
+/** Lifetime records on one level. `bestBalls` and `leastDamage` are lower-is-better with 0 meaning "unset". */
+export interface LevelStats {
+  attempts: number;
+  clears: number;
+  flawless: number;
+  bestBalls: number;
+  bestHaul: number;
+  leastDamage: number;
+  shinies: number;
+  bestHunts: number;
+  time: number;
+  catches: number;
+}
+export const LEVEL_STAT_KEYS = ['attempts', 'clears', 'flawless', 'bestBalls', 'bestHaul', 'leastDamage', 'shinies', 'bestHunts', 'time', 'catches'] as const;
+/** Per-level fields where lower is better (0 = unset, never overrides a real value). */
+export const LEVEL_MIN_FIELDS: ReadonlySet<keyof LevelStats> = new Set(['bestBalls', 'leastDamage']);
+export const emptyLevelStats = (): LevelStats => ({ attempts: 0, clears: 0, flawless: 0, bestBalls: 0, bestHaul: 0, leastDamage: 0, shinies: 0, bestHunts: 0, time: 0, catches: 0 });
+
 export interface UserStats {
   totalCaught: number;
   distinctSpecies: number;
@@ -26,6 +44,17 @@ export interface UserStats {
   bestTimes: Record<string, number>;
   kyogreCaught: number;
   wailordCaught: number;
+  /** Balls thrown (hand or launcher) and the catches they made: the Sharpshooters accuracy. */
+  ballsThrown: number;
+  ballCatches: number;
+  /** Clears without losing a lifeline. */
+  flawlessClears: number;
+  /** Chest loot taken plus reef drops picked up. */
+  treasures: number;
+  /** Bosses defeated (any boss species in the collection). */
+  bossesDefeated: number;
+  /** Per-level records keyed by level id. Older documents lack this (and the scalars above): read with `?? {}` / `?? 0`. */
+  levels: Record<string, LevelStats>;
 }
 export interface UserDoc {
   v: 1;
@@ -41,6 +70,7 @@ export interface UserDoc {
 export const emptyStats = (): UserStats => ({
   totalCaught: 0, distinctSpecies: 0, shinyCaught: 0,
   completedLevels: [], bestTimes: {}, kyogreCaught: 0, wailordCaught: 0,
+  ballsThrown: 0, ballCatches: 0, flawlessClears: 0, treasures: 0, bossesDefeated: 0, levels: {},
 });
 
 const hmacHex = (msg: string) => createHmac('sha256', SECRET).update(msg).digest('hex');

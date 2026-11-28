@@ -1,4 +1,4 @@
-import { createNewSave, SAVE_VERSION, type SaveData, DEFAULT_SETTINGS } from './schema';
+import { createNewSave, SAVE_VERSION, type SaveData, DEFAULT_SETTINGS, LEVEL_STAT_KEYS, emptyLevelStats, emptyRunCounters, type LevelStats, type RunCounters } from './schema';
 import { STARTING_INVENTORY } from '@/data/balls';
 import { BERRY_IDS, type BerryId } from '@/data/berries';
 import { LOOT_ORDER, type LootId } from '@/data/chest';
@@ -22,7 +22,8 @@ export function migrateSave(raw: unknown): SaveData {
     progression: {
       unlockedLevel: clampInt(r.progression?.unlockedLevel, 1, 4, 1),
       completedLevels: Array.isArray(r.progression?.completedLevels) ? r.progression!.completedLevels.filter((n: unknown) => Number.isInteger(n)) : [],
-      bestTimes: isObj(r.progression?.bestTimes) ? r.progression!.bestTimes : {},
+      bestTimes: sanitizeBestTimes(r.progression?.bestTimes),
+      levels: sanitizeLevels(r.progression?.levels),
     },
     inventory: {
       pokeball: clampInt(r.inventory?.pokeball, 0, 99, STARTING_INVENTORY.pokeball),
@@ -40,6 +41,10 @@ export function migrateSave(raw: unknown): SaveData {
       totalCaught: clampInt(r.stats?.totalCaught, 0, 1e9, 0),
       levelsCompleted: clampInt(r.stats?.levelsCompleted, 0, 1e9, 0),
       ballsThrown: clampInt(r.stats?.ballsThrown, 0, 1e9, 0),
+      ballCatches: clampInt(r.stats?.ballCatches, 0, 1e9, 0),
+      flawlessClears: clampInt(r.stats?.flawlessClears, 0, 1e9, 0),
+      treasures: clampInt(r.stats?.treasures, 0, 1e9, 0),
+      runsEnded: clampInt(r.stats?.runsEnded, 0, 1e9, 0),
     },
   };
   void version;
@@ -47,6 +52,32 @@ export function migrateSave(raw: unknown): SaveData {
 }
 
 function isObj(v: unknown): v is Record<string, any> { return !!v && typeof v === 'object' && !Array.isArray(v); }
+const LEVEL_KEY = /^\d{1,3}$/;
+/** Best clear times: level-id keys, positive finite seconds (an older save's garbage entry is dropped, not kept). */
+function sanitizeBestTimes(bt: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isObj(bt)) return out;
+  for (const [k, v] of Object.entries(bt).slice(0, 100)) if (LEVEL_KEY.test(k) && Number.isFinite(v) && (v as number) > 0) out[k] = Math.min(86_400, v as number);
+  return out;
+}
+/** Per-level records: every field a clamped integer; unknown fields and keys dropped. */
+export function sanitizeLevels(lv: unknown): Record<string, LevelStats> {
+  const out: Record<string, LevelStats> = {};
+  if (!isObj(lv)) return out;
+  for (const [k, v] of Object.entries(lv).slice(0, 100)) {
+    if (!LEVEL_KEY.test(k) || !isObj(v)) continue;
+    const s = emptyLevelStats();
+    for (const f of LEVEL_STAT_KEYS) s[f] = clampInt(v[f], 0, 1e9, 0);
+    out[k] = s;
+  }
+  return out;
+}
+function sanitizeRunCounters(c: unknown): RunCounters {
+  const out = emptyRunCounters();
+  if (!isObj(c)) return out;
+  for (const f of Object.keys(out) as (keyof RunCounters)[]) out[f] = clampInt(c[f], 0, 1e6, 0);
+  return out;
+}
 function sanitizeLoot(l: any): SaveData['loot'] {
   const none: SaveData['loot'] = { ballGun: null, laserGun: null, timer: null, blueHeart: null };
   if (!isObj(l)) return none;
@@ -73,6 +104,8 @@ function sanitizeRun(r: any): SaveData['currentRun'] {
     caught: clampInt(r.caught, 0, 999, 0), total: clampInt(r.total, 0, 999, 0),
     lives: clampInt(r.lives, 1, 9, 4),
     chestLooted: !!r.chestLooted,
+    ...(Number.isFinite(r.elapsed) && r.elapsed >= 0 ? { elapsed: Math.min(86_400, r.elapsed) } : null),
+    ...(isObj(r.run) ? { run: sanitizeRunCounters(r.run) } : null),
     berries: sanitizeBerries(r.berries),
     ...(r.lootDrop !== undefined ? { lootDrop: sanitizeDrop(r.lootDrop) } : null),
     ...(Array.isArray(r.holes) ? { holes: r.holes.filter((h: any) => isObj(h) && [h.x, h.z, h.r, h.t].every((n: unknown) => Number.isFinite(n)) && h.r > 0 && h.r <= 12 && h.t > 0).slice(0, 48).map((h: any) => ({ x: h.x, z: h.z, r: h.r, t: Math.min(h.t, 3600), ambush: !!h.ambush, by: -1 })) } : null),

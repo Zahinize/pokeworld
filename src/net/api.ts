@@ -4,7 +4,17 @@
  */
 export interface ApiUser { username: string; displayName: string; stats?: unknown }
 export interface LeaderboardRow { username: string; displayName: string; value: number; detail?: string }
-export interface LeaderboardData { generatedAt: number; boards: { topCatchers: LeaderboardRow[]; levelCompletion: LeaderboardRow[]; kyogre: LeaderboardRow[]; wailord: LeaderboardRow[] } }
+/** The global boards. Values are counts, except `speedrunners` (seconds) and `sharpshooters` (percent, detail "caught / thrown"). */
+export type GlobalBoardKey = 'topCatchers' | 'levelCompletion' | 'kyogre' | 'wailord'
+  | 'shinyHunters' | 'speciesCollectors' | 'speedrunners' | 'sharpshooters' | 'ironTrainers' | 'treasureHunters' | 'bossSlayers';
+/** One level's boards. `fastestDive` and `timeDived` are seconds; `clearRate` is a percent with a "clears / attempts" detail. */
+export type LevelBoardKey = 'fastestDive' | 'clears' | 'flawless' | 'fewestBalls' | 'biggestHaul' | 'leastDamage' | 'shinies' | 'clearRate' | 'hunts' | 'timeDived' | 'catches';
+export interface LeaderboardData {
+  generatedAt: number;
+  boards: Partial<Record<GlobalBoardKey, LeaderboardRow[]>>;
+  /** Keyed by level id ('1'..'4'). Absent from older server responses. */
+  levels?: Record<string, Partial<Record<LevelBoardKey, LeaderboardRow[]>>>;
+}
 export type AuthResult = { ok: true; user: ApiUser } | { ok: false; message: string };
 
 async function req(path: string, init?: RequestInit): Promise<{ status: number; json: any } | null> {

@@ -223,6 +223,7 @@ a { color: var(--aqua); }
 /* roster sort dropdown + the sorted stat on every cell */
 .stat-filter { min-height: 32px; padding: 0 10px; border-radius: 10px; background: rgba(53,208,255,.12); border: 1px solid rgba(53,208,255,.35); color: var(--aqua); font: 800 12.5px var(--font-body); cursor: pointer; color-scheme: dark; }
 .stat-filter:hover { background: rgba(53,208,255,.2); }
+.stat-filter.active { background: rgba(53,208,255,.3); border-color: var(--aqua); color: #fff; }
 .party-cell .stat { font-size: 10px; font-weight: 800; color: var(--aqua); font-variant-numeric: tabular-nums; line-height: 1; }
 .boss-cell .stat { color: var(--gold); }
 .shiny-cell { border-color: rgba(255,209,102,.5); }

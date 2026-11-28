@@ -9,6 +9,7 @@ import {
   Lock, Map, Medal, Moon, Pause, Play, Search, Settings, Shield, Sparkles, Star,
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
   AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone, Heart, Maximize, Minimize,
+  Crosshair, Skull, Clock, HeartPulse, Repeat, Eye, Gauge,
 } from 'lucide-react';
 import type { LucideProps } from 'lucide-react';
 import { forwardRef, type CSSProperties } from 'react';
@@ -22,6 +23,7 @@ export {
   Lock, Map, Medal, Moon, Pause, Play, Search, Settings, Shield, Sparkles, Star,
   Sun, Sunset, Swords, Target, Timer, Trees, Trophy, Wand2, Waves, Wind, Zap,
   AlertTriangle, LifeBuoy, LogIn, LogOut, User, ArrowLeft, Smartphone, Heart, Maximize, Minimize,
+  Crosshair, Skull, Clock, HeartPulse, Repeat, Eye, Gauge,
 };
 
 /**

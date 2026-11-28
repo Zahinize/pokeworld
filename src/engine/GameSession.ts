@@ -24,7 +24,7 @@ import { ChestSystem } from './sim/chest';
 import { CHEST, CHEST_ICONS, LOOT, LOOT_KEYS, LOOT_ORDER, laserFraction, restockFor, type LootId } from '@/data/chest';
 import { maxHpOf, combatStatsOf, preloadSpeciesData } from '@/pokeapi/client';
 import { preloadSprites, disposeSheetsExcept, loadSpriteSheet, sheetKey, type SpriteSheet } from '@/render/pokemon/sprites';
-import { useStore, type Toast } from '@/state/store';
+import { useStore, type Toast, type RunResult } from '@/state/store';
 import { Audio, type WhaleSource } from '@/audio/AudioManager';
 import { BALL_ORDER, STARTING_INVENTORY } from '@/data/balls';
 import type { BallId } from '@/data/types';
@@ -38,7 +38,7 @@ import { lightingAt, type LightingState } from './world/lighting';
 import { zoneAt, ZONES } from './world/zones';
 import type { Entity } from './ai/types';
 import { len3 } from './ai/steering';
-import type { CurrentRun } from '@/persistence';
+import { emptyRunCounters, type CurrentRun, type RunCounters } from '@/persistence';
 import { BEHAVIOR_GROUPS } from '@/data/behaviorGroups';
 import { SKY, SKY_SPECIES_IDS } from '@/data/sky';
 
@@ -105,6 +105,12 @@ export class GameSession {
   lighting: LightingState = lightingAt(0.4);
   elapsed = 0;
   ballsUsed = 0;
+  /** This dive's leaderboard tallies (catches, damage, hunts…): saved with the run, reported at its end. */
+  run: RunCounters = emptyRunCounters();
+  /** Seconds of `elapsed` already folded into the level's Time Dived (whole seconds, remainder carries). */
+  private timeFlushed = 0;
+  /** The dive was counted as an attempt (resumes arrive counted; start() counts a fresh one once). */
+  private attemptCounted = false;
   lureCooldown = 0;
   playerHp: number = COMBAT.PLAYER_MAX_HP;
   /** This heart's berries: floor drops, the bag, held berries and running effects (see sim/berries.ts). */
@@ -259,6 +265,14 @@ export class GameSession {
     this.timeOfDay = this.level.timeOfDay;
     this.lighting = lightingAt(this.timeOfDay, this.lighting);
     this.elapsed = 0; this.ballsUsed = 0; this.lureCooldown = 0; this.completeTimer = -1; this.hintStep = 0; this.hintTimer = 0;
+    this.run = emptyRunCounters(); this.timeFlushed = 0; this.attemptCounted = false;
+    if (resume && resume.seed === this.seed) {
+      // the dive clock and tallies carry on: a resumed clear is still one dive for the records (and one attempt)
+      this.elapsed = Math.max(0, resume.elapsed ?? 0);
+      this.timeFlushed = Math.floor(this.elapsed); // the save holds whole seconds; the fraction is still owed
+      if (resume.run) { this.run = { ...resume.run }; this.ballsUsed = resume.run.balls; }
+      this.attemptCounted = true;
+    }
     this.playerHp = COMBAT.PLAYER_MAX_HP; this.recoveringT = 0; this.calmT = 0; this.regenGrace = 0; this.ride = null;
     this.bossWave = this.level.bossPhases?.length ? 0 : -1; this.bossPhaseActive = false; this.bossIds = []; this.shakeT = 0; this.autoSend = [];
     this.bossEncounter = 'none'; this.pendingWaveConfig = null; this.eco.bossesActive = true;
@@ -346,8 +360,24 @@ export class GameSession {
     if (this.phase !== 'ready' && this.phase !== 'paused') return;
     this.phase = 'playing';
     Audio.init(); Audio.startAmbience();
+    if (!this.attemptCounted && this.recordsStats) { this.attemptCounted = true; useStore.getState().recordDiveStart(this.level.id); }
     this.persistRun();
     this.emit();
+  }
+  /** Only campaign dives feed the leaderboard — never the menu demo or the dev arena. */
+  private get recordsStats() { return !this.demo && !this.arena && this.level.id <= 4; }
+  /** The dive as the leaderboard sees it: the running tallies plus the clock seconds not yet flushed. */
+  private runResult(cleared: boolean): RunResult {
+    const time = Math.max(0, Math.floor(this.elapsed - this.timeFlushed));
+    this.timeFlushed += time;
+    return { levelId: this.level.id, cleared, timeSec: Math.round(this.elapsed), time, ...this.run, balls: this.ballsUsed };
+  }
+  /** Fold whole seconds of dive time into the level's Time Dived (called from persistRun, which then saves). */
+  private flushLevelTime() {
+    const whole = Math.floor(this.elapsed - this.timeFlushed);
+    if (whole < 1 || !this.recordsStats) return;
+    this.timeFlushed += whole;
+    useStore.getState().addLevelTime(this.level.id, whole);
   }
   pause() { if (this.phase === 'playing') { this.phase = 'paused'; this.clearSlingAim(); Audio.setMusicPaused(true); useStore.getState().setPaused(true); this.emit(); } }
   resume() { if (this.phase === 'paused') { this.phase = 'playing'; Audio.setMusicPaused(false); useStore.getState().setPaused(false); this.emit(); } }
@@ -774,6 +804,7 @@ export class GameSession {
         case 'open': break;
         case 'looted':
           Audio.lootPickup();
+          this.run.treasures += ev.loot.length;
           for (const id of ev.loot) this.toast('chest', { kind: 'catch', title: `${LOOT[id].name} acquired`, body: `${how(id)} · ${LOOT[id].blurb}`, icon: LOOT[id].icon, ttl: 7 });
           break;
         case 'equip':
@@ -812,6 +843,7 @@ export class GameSession {
           break;
         case 'dropPickup':
           Audio.lootPickup();
+          this.run.treasures++;
           this.pushFx('lure', ev.x, ev.y + 0.3, ev.z, 0.9, LOOT[ev.id].color);
           this.toast('chest', { kind: 'catch', title: `${LOOT[ev.id].name} acquired`, body: `${how(ev.id)} · ${LOOT[ev.id].blurb}`, icon: LOOT[ev.id].icon, ttl: 7 });
           this.persistRun();
@@ -855,6 +887,7 @@ export class GameSession {
     if (by?.chestFight) cap = Math.min(cap, Math.round(COMBAT.PLAYER_MAX_HP * CHEST.HIT_CAP[by.chestFight]));
     amount = Math.min(amount, cap);
     this.playerHp = Math.max(0, this.playerHp - amount);
+    this.run.dmg += amount;
     { const [fx, fy, fz] = this.player.forward(); this.pushNumber(`-${Math.round(amount)}`, '#ff5a6e', this.player.x + fx * 2, this.player.y + fy * 2 - 0.4, this.player.z + fz * 2, true); } // the number is what actually landed (post-cap)
     // a held Sitrus/Figy is eaten the instant a hit lands under its threshold — including the hit that would have KO'd
     const pinch = this.berries.trainerPinch(this.playerHp, COMBAT.PLAYER_MAX_HP);
@@ -872,6 +905,7 @@ export class GameSession {
     if (this.ride) this.dismount(true); // knocked off the bird
     // a lifeline is spent; the fourth fall wipes the level — the trainer starts it from scratch
     this.lives = Math.max(0, this.lives - 1);
+    this.run.livesLost++;
     const store0 = useStore.getState();
     store0.setHud({ lives: this.lives });
     if (this.lives <= 0) {
@@ -1154,7 +1188,9 @@ export class GameSession {
   }
 
   private triggerDefeat(cause: 'party' | 'lives' = 'party') {
+    if (this.phase === 'defeated') return;
     this.defeatCause = cause;
+    if (this.recordsStats) useStore.getState().recordRunResult(this.runResult(false)); // a wipe still counts its catches, shinies and time
     this.dismount(true);
     this.phase = 'defeated';
     this.recoveringT = 0; this.calmT = 0;
@@ -1804,6 +1840,7 @@ export class GameSession {
         }
         case 'huntStart': {
           const pred = eco.byId.get(ev.predatorId), t = eco.byId.get(ev.targetId);
+          if (ev.targetId === -2 && this.phase === 'playing') this.run.hunts++; // Hunts Weathered: every time the reef comes for you
           if (pred && ev.targetId === -2 && this.huntToastCooldown <= 0) {
             // the predator is hunting YOU
             store.pushToast({ channel: 'hunt', kind: 'warn', title: `${pred.isShiny ? 'SHINY ' : ''}${pred.species.name} is hunting you!`, body: pred.isShiny ? 'Twice the bite, twice the HP, and it will not stop. Catch it, or let your team deal with it.' : 'Catch it, fight it with your team, or get out of its water.', speciesId: pred.species.id, ttl: 4 });
@@ -1963,6 +2000,7 @@ export class GameSession {
           }
           // A defeated boss is yours — into the collection, trophy-style (shinies as their own entry)
           store.recordCatch(token, this.level.id);
+          this.run.catches++; if (ev.shiny) this.run.shinies++;
           store.setLastCatch({ speciesId: sp.id, shiny: ev.shiny, missionTarget: true, objectiveLabel: ev.shiny ? 'SHINY boss defeated' : 'Boss defeated' });
           Audio.levelComplete();
           Audio.playCry(sp.dexId, 0.25, 0.4); // a last, low cry as it sinks
@@ -2035,6 +2073,7 @@ export class GameSession {
     Audio.playCry(sp.dexId, 0.5, 0.25);
     this.pushFx('catch', at.x, at.y, at.z, sp.size);
     store.recordCatch(makeToken(sp.id, shiny), this.level.id); // a shiny is its own collection entry, like a shiny boss
+    this.run.catches++; if (shiny) this.run.shinies++; if (!byCompanion) this.run.ballCatches++;
     store.setLastCatch({ speciesId: sp.id, missionTarget: false, objectiveLabel: undefined });
     const legendary = sp.rarity === 'legendary';
     store.pushToast({
@@ -2288,6 +2327,7 @@ export class GameSession {
     this.pushFx('catch', e.x, e.y, e.z, e.species.size);
     const token = this.tok(e); // a shiny is its own trophy and its own party pick — never folded into the plain form
     store.recordCatch(token, this.level.id);
+    this.run.catches++; if (e.isShiny) this.run.shinies++; if (!byCompanion && !byLaser) this.run.ballCatches++;
     let missionTarget = false, label: string | undefined;
     if (this.mission) {
       const out = applyCatch(this.mission, e);
@@ -2317,7 +2357,9 @@ export class GameSession {
     const roster = this.companionsEnabled
       ? this.party.map((t) => ({ speciesId: t, ...( this.battleStats.get(t) ?? { dealt: 0, taken: 0, kills: 0, assists: 0 }) }))
       : undefined;
-    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id), roster });
+    const { catches, dmg, livesLost, hunts } = this.run;
+    store.setCompleteStats({ levelId: this.level.id, total: this.mission!.total, caught: this.mission!.caught, timeSec: Math.round(this.elapsed), ballsUsed: this.ballsUsed, worldComplete: isFinalLevel(this.level.id), roster, run: { catches, dmg: Math.round(dmg), livesLost, hunts } });
+    if (this.recordsStats) store.recordRunResult(this.runResult(true)); // the leaderboard records, before completeLevel clears the run
     store.completeLevel(this.level.id, Math.round(this.elapsed));
     store.setScreen('complete');
     this.emit();
@@ -2328,8 +2370,10 @@ export class GameSession {
 
   private persistRun() {
     if (!this.mission || this.phase === 'complete' || this.phase === 'idle' || this.phase === 'preparing') return;
+    this.flushLevelTime(); // Time Dived keeps up with the save, so a quit loses at most the unflushed second
     useStore.getState().setCurrentRun({
       levelId: this.level.id, seed: this.seed, startedAt: Date.now() - this.elapsed * 1000,
+      elapsed: this.elapsed, run: { ...this.run, balls: this.ballsUsed },
       objectives: this.mission.objectives.map((o) => ({ id: o.id, caught: o.caught, guardianCaught: o.guardianCaught })),
       caught: this.mission.caught, total: this.mission.total, lives: this.lives,
       chestLooted: this.chest.state === 'looted',
